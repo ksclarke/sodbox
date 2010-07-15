@@ -1,0 +1,224 @@
+package info.freelibrary.sodbox;
+
+import java.util.Date;
+
+/**
+ * Base class for version of versioned object. All versions are kept in version
+ * history.
+ */
+public class Version extends PersistentResource {
+
+	private Link<Version> successors;
+	private Link<Version> predecessors;
+	private String[] labels;
+	private Date date;
+	private String id;
+	VersionHistory<Version> history;
+	
+	/**
+	 * Default constructor. Not directly accessible.
+	 */
+	@SuppressWarnings("unused")
+	private Version() {
+	}
+	
+	/**
+	 * Constructor of root version. All other versions should be created using
+	 * <code>Version.newVersion</code> or <code>VersionHistory.checkout</code>
+	 * methods
+	 */
+	protected Version(Storage storage) {
+		super(storage);
+
+		successors = storage.<Version> createLink(1);
+		predecessors = storage.<Version> createLink(1);
+		labels = new String[0];
+		date = new Date();
+		id = "1";
+	}
+	
+	/**
+	 * Get version history containing this versioned object
+	 */
+	public synchronized VersionHistory<Version> getVersionHistory() {
+		return history;
+	}
+
+	/**
+	 * Get predecessors of this version
+	 * 
+	 * @return array of predecessor versions
+	 */
+	public synchronized Version[] getPredecessors() {
+		return predecessors.toArray(new Version[predecessors.size()]);
+	}
+
+	/**
+	 * Get successors of this version
+	 * 
+	 * @return array of predecessor versions
+	 */
+	public synchronized Version[] getSuccessors() {
+		return successors.toArray(new Version[successors.size()]);
+	}
+
+	/**
+	 * Check if version is checked-in
+	 * 
+	 * @return <code>true</code> if version belongs to version history
+	 */
+	public boolean isCheckedIn() {
+		return id != null;
+	}
+
+	/**
+	 * Check if version is checked-out
+	 * 
+	 * @return <code>true</code> if version is just created and not checked-in
+	 *         yet (and so belongs to version history)
+	 */
+	public boolean isCheckedOut() {
+		return id == null;
+	}
+
+	/**
+	 * Create new version which will be direct successor of this version. This
+	 * version has to be checked-in in order to be placed in version history.
+	 */
+	public Version newVersion() {
+		try {
+			Version newVersion = (Version) clone();
+
+			newVersion.predecessors = getStorage().<Version> createLink(1);
+			newVersion.predecessors.add(this);
+			newVersion.successors = getStorage().<Version> createLink(1);
+			newVersion.labels = new String[0];
+			newVersion.id = null;
+			newVersion.myOid = 0;
+			newVersion.myState = 0;
+
+			return newVersion;
+		}
+		catch (CloneNotSupportedException x) {
+			// Could not happen since we cloned ourself
+			throw new AssertionFailed("Clone not supported");
+		}
+	}
+
+	/**
+	 * Check-in new version. This method inserts in version history version
+	 * created by <code>Version.newVersion</code> or
+	 * <code>VersionHistory.checkout</code> method
+	 */
+	public void checkin() {
+		synchronized (history) {
+			Assert.that(isCheckedOut());
+
+			for (int i = 0; i < predecessors.size(); i++) {
+				Version predecessor = predecessors.get(i);
+
+				synchronized (predecessor) {
+					if (i == 0) {
+						id = predecessor.constructId();
+					}
+					predecessor.successors.add(this);
+				}
+			}
+
+			date = new Date();
+			history.versions.add(this);
+			history.current = this;
+			modify();
+		}
+	}
+
+	/**
+	 * Make specified version predecessor of this version. This method can be
+	 * used to perform merge of two versions (merging of version data should be
+	 * done by application itself)
+	 * 
+	 * @param predecessor version to merged with
+	 */
+	public void addPredecessor(Version predecessor) {
+		synchronized (predecessor) {
+			synchronized (this) {
+				predecessors.add(predecessor);
+
+				if (isCheckedIn()) {
+					predecessor.successors.add(this);
+				}
+			}
+		}
+	}
+
+	/**
+	 * Get date of version creation
+	 * 
+	 * @return date when this version was created
+	 */
+	public Date getDate() {
+		return date;
+	}
+
+	/**
+	 * Get labels associated with this version
+	 * 
+	 * @return array of labels assigned to this version
+	 */
+	public synchronized String[] getLabels() {
+		return labels;
+	}
+
+	/**
+	 * Add new label to this version
+	 * 
+	 * @param label label to be associated with this version
+	 */
+	public synchronized void addLabel(String label) {
+		String[] newLabels = new String[labels.length + 1];
+
+		System.arraycopy(labels, 0, newLabels, 0, labels.length);
+		newLabels[newLabels.length - 1] = label;
+		labels = newLabels;
+
+		modify();
+	}
+
+	/**
+	 * Check if version has specified label
+	 * 
+	 * @param label version label
+	 */
+	public synchronized boolean hasLabel(String label) {
+		for (int i = 0; i < labels.length; i++) {
+			if (labels[i].equals(label)) {
+				return true;
+			}
+		}
+
+		return false;
+	}
+
+	/**
+	 * Get identifier of the version
+	 * 
+	 * @return version identifier automatically assigned by system
+	 */
+	public String getId() {
+		return id;
+	}
+
+	private String constructId() {
+		int suffixPos = id.lastIndexOf('.');
+		int suffix = Integer.parseInt(id.substring(suffixPos + 1));
+		String nextId = suffixPos < 0 ? Integer.toString(suffix + 1) : id
+				.substring(0, suffixPos)
+				+ Integer.toString(suffix + 1);
+
+		if (successors.size() != 0) {
+			nextId += '.' + successors.size() + ".1";
+		}
+
+		return nextId;
+	}
+}

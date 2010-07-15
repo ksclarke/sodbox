@@ -1,0 +1,30 @@
+<web-app xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+ xsi:schemaLocation="http://java.sun.com/xml/ns/javaee http://java.sun.com/xml/ns/javaee/web-app_2_5.xsd"
+ xmlns="http://java.sun.com/xml/ns/javaee" version="2.5" metadata-complete="true">
+ <display-name>Sodbox Server</display-name>
+ <context-param>
+  <param-name>db.master.port</param-name>
+  <param-value>9889</param-value>
+ </context-param>
+ <context-param>
+  <param-name>db.replication.ports</param-name>
+  <param-value>9890-9897</param-value>
+ </context-param>
+<!-- <listener>
+  <listener-class>info.freelibrary.sodbox.server.ServletListener</listener-class>
+ </listener>
+ <servlet>
+  <servlet-name>SodboxServlet</servlet-name>
+  <servlet-class>info.freelibrary.sodbox.server.SodboxServlet</servlet-class>
+ </servlet>
+ <servlet-mapping>
+  <servlet-name>default</servlet-name>
+  <url-pattern>/xsltforms/*</url-pattern>
+  <url-pattern>*.html</url-pattern>
+  <url-pattern>index.html</url-pattern> <!-\- req. for some reason -\->
+ </servlet-mapping>
+ <servlet-mapping>
+  <servlet-name>SodboxServlet</servlet-name>
+  <url-pattern>/*</url-pattern>
+ </servlet-mapping>-->
+</web-app>
