@@ -1,0 +1,7 @@
+Sodbox - Simple Object Database for XML
+================================================================================
+
+This is a fork of the Perst database. It's not a real fork but just a place to
+experiment with some ideas. If you are interested in a Java object-oriented
+database, I'd recommend you check out the Perst project instead of Sodbox. Perst
+is a GNU GPL'ed (v2) database that can be found at http://www.mcobject.com/perst
