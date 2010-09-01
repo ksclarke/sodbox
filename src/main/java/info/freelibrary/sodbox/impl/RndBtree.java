@@ -227,7 +227,7 @@ class RndBtree<T> extends PersistentCollection<T> implements Index<T> {
             } else { /* page is full then divide page */
                 BtreePage b = clonePage();
                 Assert.that(n == max);
-                int m = max/2;
+                int m = (max+1)/2;
                 if (r < m) {
                     memcpy(b, 0, this, 0, r);
                     memcpy(b, r+1, this, r, m-r-1);
@@ -295,7 +295,7 @@ class RndBtree<T> extends PersistentCollection<T> implements Index<T> {
                     a.nItems += bn;
                     nItems -= 1;
                     nChildren[r] += nMergedChildren-1;
-                    return nItems < (items.size() >> 1) ? op_underflow : op_done;
+                    return nItems < items.size()/3 ? op_underflow : op_done;
                 }
             } else { // page b is before a
                 BtreePage b = (BtreePage)items.get(r-1);
@@ -336,7 +336,7 @@ class RndBtree<T> extends PersistentCollection<T> implements Index<T> {
                     nChildren[r-1] += nChildren[r] - 1;
                     a.nItems += bn;
                     nItems -= 1;
-                    return nItems < (items.size() >> 1) ? op_underflow : op_done;
+                    return nItems < items.size()/3 ? op_underflow : op_done;
                 }
             }
         }
@@ -363,7 +363,7 @@ class RndBtree<T> extends PersistentCollection<T> implements Index<T> {
                             memcpy(this, r, this, r+1, n - r - 1);
                             nItems = --n;
                             memset(n, 1);
-                            return n < (items.size() >> 1) ? op_underflow : op_done;
+                            return n < items.size()/3 ? op_underflow : op_done;
                         }
                     } else {
                         break;
@@ -580,7 +580,7 @@ class RndBtree<T> extends PersistentCollection<T> implements Index<T> {
         }
 
         int compare(Key key, int i) {
-            return key.ival - data[i];
+        	return key.ival < data[i] ? -1 : key.ival == data[i] ? 0 : 1;
         }
 
         void insert(BtreeKey key, int i) { 
@@ -735,7 +735,7 @@ class RndBtree<T> extends PersistentCollection<T> implements Index<T> {
         int compare(Key key, int i) {
             Object obj = data.getRaw(i);
             int oid = getStorage().getOid(obj);
-            return key.ival - oid;
+            return key.ival < oid ? -1 : key.ival == oid ? 0 : 1;
         }
 
         void insert(BtreeKey key, int i) { 

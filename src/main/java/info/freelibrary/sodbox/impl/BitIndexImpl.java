@@ -325,7 +325,7 @@ class BitIndexImpl<T> extends Btree<T> implements BitIndex<T>
                     pageId = db.allocatePage();
                     Page b = db.putPage(pageId);
                     Assert.that(n == max);
-                    int m = max/2;
+                    int m = (max+1)/2;
                     if (r < m) {
                         memcpy(b, 0, pg, 0, r);
                         memcpy(b, r+1, pg, r, m-r-1);
@@ -410,7 +410,7 @@ class BitIndexImpl<T> extends Btree<T> implements BitIndex<T>
                     setnItems(pg, nItems - 1);
                     db.pool.unfix(a);
                     db.pool.unfix(b);
-                    return nItems < max/2 ? op_underflow : op_done;
+                    return nItems < max/3 ? op_underflow : op_done;
                 }
             } else { // page b is before a
                 Page b = db.getPage(getItem(pg, maxItems-r));
@@ -454,7 +454,7 @@ class BitIndexImpl<T> extends Btree<T> implements BitIndex<T>
                     setnItems(pg, nItems - 1);
                     db.pool.unfix(a);
                     db.pool.unfix(b);
-                    return nItems < max/2 ? op_underflow : op_done;
+                    return nItems < max/3 ? op_underflow : op_done;
                 }
             }
         }
@@ -480,7 +480,7 @@ class BitIndexImpl<T> extends Btree<T> implements BitIndex<T>
                         memcpy(pg, r, pg, r+1, n - r - 1);
                         memcpy(pg, maxItems-n+1, pg, maxItems-n, n - r - 1);
                         setnItems(pg, --n);
-                        return n < max/2 ? op_underflow : op_done;
+                        return n < max/3 ? op_underflow : op_done;
                     }
                     return op_not_found;
                 } else { 

@@ -484,7 +484,7 @@ class BtreePage {
                     pageId = db.allocatePage();
                     Page b = db.putPage(pageId);
                     Assert.that(n == max);
-                    int m = max/2;
+                    int m = (max+1)/2;
                     if (r < m) {
                         memcpy(b, 0, pg, 0, r, itemSize);
                         memcpy(b, r+1, pg, r, m-r-1, itemSize);
@@ -626,7 +626,7 @@ class BtreePage {
         }
         setnItems(pg, nItems);
         setSize(pg, size);
-        return size + strKeySize*(nItems+1) < keySpace/2 
+        return size + strKeySize*(nItems+1) < keySpace/3 
             ? Btree.op_underflow : Btree.op_done;
     }
 
@@ -734,7 +734,7 @@ class BtreePage {
         }
         setnItems(pg, nItems);
         setSize(pg, size);
-        return size + strKeySize*(nItems+1) < keySpace/2 
+        return size + strKeySize*(nItems+1) < keySpace/3 
             ? Btree.op_underflow : Btree.op_done;
     }
 
@@ -898,7 +898,7 @@ class BtreePage {
             setSize(pg, size -= len);
         }
         setnItems(pg, nItems - 1);
-        return size + strKeySize*nItems < keySpace/2 
+        return size + strKeySize*nItems < keySpace/3 
             ? Btree.op_underflow : Btree.op_done;
     }
 
@@ -923,7 +923,7 @@ class BtreePage {
             setSize(pg, size -= len);
         }
         setnItems(pg, nItems - 1);
-        return size + strKeySize*nItems < keySpace/2 
+        return size + strKeySize*nItems < keySpace/3 
             ? Btree.op_underflow : Btree.op_done;
     }
     
@@ -1413,7 +1413,7 @@ class BtreePage {
                     setnItems(pg, nItems - 1);
                     db.pool.unfix(a);
                     db.pool.unfix(b);
-                    return nItems*(itemSize + 4) < keySpace/2
+                    return nItems*(itemSize + 4) < keySpace/3
                         ? Btree.op_underflow : Btree.op_done;
                 }
             } else { // page b is before a
@@ -1457,7 +1457,7 @@ class BtreePage {
                     setnItems(pg, nItems - 1);
                     db.pool.unfix(a);
                     db.pool.unfix(b);
-                    return nItems*(itemSize + 4) < keySpace/2
+                    return nItems*(itemSize + 4) < keySpace/3
                         ? Btree.op_underflow : Btree.op_done;
                 }
             }
@@ -1578,7 +1578,7 @@ class BtreePage {
                                 memcpy(pg, r, pg, r+1, n - r - 1, itemSize);
                                 memcpy(pg, maxItems-n+1, pg, maxItems-n, n - r - 1, 4);
                                 setnItems(pg, --n);
-                                return n*(itemSize + 4) < keySpace/2
+                                return n*(itemSize + 4) < keySpace/3
                                     ? Btree.op_underflow : Btree.op_done;
                             }
                         } else {

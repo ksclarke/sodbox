@@ -1450,6 +1450,9 @@ public class StorageImpl implements Storage {
 			pool.unfix(pg);
 			pool.flush();
 		}
+		if (listener != null) { 
+            listener.onTransactionCommit();
+        }
 	}
 
 	public synchronized void rollback() {
@@ -1509,9 +1512,12 @@ public class StorageImpl implements Storage {
 		currRBitmapPage = currPBitmapPage = 0;
 		currRBitmapOffs = currPBitmapOffs = 0;
 		reloadScheme();
+		if (listener != null) { 
+            listener.onTransactionRollback();
+        }
 	}
 
-	public synchronized void backup(OutputStream out)
+	public /* synchronized */ void backup(OutputStream out)
 			throws java.io.IOException {
 		if (!opened) {
 			throw new StorageError(StorageError.STORAGE_NOT_OPENED);
@@ -2852,6 +2858,9 @@ public class StorageImpl implements Storage {
 			modified.clear();
 			ctx.deleted.clear();
 			locked.clear();
+			if (listener != null) { 
+                listener.onTransactionRollback();
+            }
 		}
 		else {
 			synchronized (transactionMonitor) {
@@ -3032,12 +3041,15 @@ public class StorageImpl implements Storage {
 		if ((value = props.getProperty("sodbox.reuse.oid")) != null) {
 			reuseOid = getBooleanValue(value);
 		}
+		if ((value = props.getProperty("sodbox.serialize.system.collections")) != null) { 
+            serializeSystemCollections = getBooleanValue(value);
+        }
 		if ((value = props.getProperty("sodbox.compatibility.mode")) != null) {
 			compatibilityMode = (int) getIntegerValue(value);
 		}
 		if (multiclientSupport && backgroundGc) {
 			throw new IllegalArgumentException(
-					"In mutliclient access mode bachround GC is not supported");
+					"In mutliclient access mode background GC is not supported");
 		}
 	}
 
@@ -3113,6 +3125,9 @@ public class StorageImpl implements Storage {
 		else if (name.equals("sodbox.compatibility.mode")) {
 			compatibilityMode = (int) getIntegerValue(value);
 		}
+		else if (name.equals("sodbox.serialize.system.collections")) { 
+            serializeSystemCollections = getBooleanValue(value);
+        }
 		else {
 			throw new StorageError(StorageError.NO_SUCH_PROPERTY);
 		}
@@ -4509,7 +4524,7 @@ public class StorageImpl implements Storage {
 				}
 			}
 			else if (obj instanceof Collection
-					&& t.getName().startsWith("java.util.")) {
+					 & (!serializeSystemCollections || t.getName().startsWith("java.util."))) {
 				ClassDescriptor valueDesc = getClassDescriptor(obj.getClass());
 				offs = buf.packI4(offs, -ClassDescriptor.tpValueTypeBias
 						- valueDesc.getOid());
@@ -5353,6 +5368,7 @@ public class StorageImpl implements Storage {
 	private boolean reuseOid = true;
 	private long pagePoolLruLimit = dbDefaultPagePoolLruLimit;
 	private int compatibilityMode = 0;
+	private boolean serializeSystemCollections = true;
 
 	private HashMap customAllocatorMap;
 	private ArrayList customAllocatorList;

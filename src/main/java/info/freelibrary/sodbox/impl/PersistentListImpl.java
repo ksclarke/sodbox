@@ -100,7 +100,7 @@ class PersistentListImpl<E> extends PersistentCollection<E> implements IPersiste
         }
 
         boolean underflow() {
-            return nItems < getMaxItems()/2;
+        	return nItems < getMaxItems()/3;
         }
 
         ListPage add(int i, Object obj) {
@@ -113,7 +113,7 @@ class PersistentListImpl<E> extends PersistentCollection<E> implements IPersiste
                 return null;
             } else {
                 ListPage b = clonePage();
-                int m = max/2;
+                int m = (max+1)/2;
                 if (i < m) {
                     b.copy(0, this, 0, i);
                     b.copy(i+1, this, i, m-i-1);

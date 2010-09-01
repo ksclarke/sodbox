@@ -52,11 +52,20 @@ public abstract class StorageListener {
 	public void onObjectAssignOid(Object obj) {
 	}
 
-	/**
-	 * Method invoked by Sodbox when slave node receive updates from master
-	 */
-	public void onDatabaseUpdated() {
-	}
+    /**
+     * Method invoked by Sodbox when slave node receive updates from master
+     */
+    public void onMasterDatabaseUpdate() {}
+
+    /**
+     * Method invoked by Sodbox when transaction is committed
+     */
+    public void onTransactionCommit() {}
+
+    /**
+     * Method invoked by Sodbox when transaction is aborted
+     */
+    public void onTransactionRollback() {}
 
 	/**
 	 * This method is called when garbage collection is started (either

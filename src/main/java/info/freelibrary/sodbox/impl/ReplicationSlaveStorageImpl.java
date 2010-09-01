@@ -218,7 +218,7 @@ public abstract class ReplicationSlaveStorageImpl extends StorageImpl implements
 						commit.notifyAll();
 					}
 					if (listener != null) {
-						listener.onDatabaseUpdated();
+						listener.onMasterDatabaseUpdate();
 					}
 					pool.flush();
 				}

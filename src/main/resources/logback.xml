@@ -7,10 +7,8 @@
   </appender>
   
   <logger name="info.freelibrary.sodbox.impl.StandardReflectionProvider" level="DEBUG"/>
-  <!--<logger name="org.mortbay.log" level="ERROR"/> 
-  <logger name="info.freelibrary.util" level="ERROR"/> -->
   
-  <root level="ERROR">
+  <root level="INFO">
     <appender-ref ref="STDOUT" />
   </root>
 </configuration>
