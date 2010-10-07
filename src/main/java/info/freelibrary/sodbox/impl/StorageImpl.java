@@ -358,7 +358,7 @@ public class StorageImpl implements Storage {
 					& ~(dbAllocationQuantum - 1);
 			Assert.that(size != 0);
 			allocatedDelta += size;
-			if (allocatedDelta > gcThreshold) {
+			if (allocatedDelta > gcThreshold && !insideCloneBitmap) {
 				gc0();
 			}
 			int objBitSize = (int) (size >> dbAllocationQuantumBits);
@@ -710,7 +710,7 @@ public class StorageImpl implements Storage {
 					}
 					return pos;
 				}
-				if (gcThreshold != Long.MAX_VALUE && !gcDone && !gcActive) {
+				if (gcThreshold != Long.MAX_VALUE && !gcDone && !gcActive && !insideCloneBitmap) {
 					allocatedDelta -= size;
 					usedSize -= size;
 					gc0();
@@ -2428,6 +2428,14 @@ public class StorageImpl implements Storage {
 							offs = markObjectReference(obj, offs);
 						}
 					}
+					else if (desc.isMap) { 
+                        len = Bytes.unpack4(obj, offs);   
+                        offs += 4;
+                        for (int i = 0; i < len; i++) { 
+                            offs = markObjectReference(obj, offs);
+                            offs = markObjectReference(obj, offs);
+                        }
+                    }
 					else {
 						offs = markObject(obj, offs, desc);
 					}
@@ -3591,6 +3599,14 @@ public class StorageImpl implements Storage {
 							offs = skipObjectReference(obj, offs);
 						}
 					}
+					else if (desc.isMap) { 
+						len = Bytes.unpack4(obj, offs);   
+						offs += 4;
+						for (int i = 0; i < len; i++) { 
+							offs = skipObjectReference(obj, offs);
+						    offs = skipObjectReference(obj, offs);
+						}
+					}
 					else {
 						offs = unpackObject(null, findClassDescriptor(typeOid),
 								false, obj, offs, null);
@@ -3797,6 +3813,17 @@ public class StorageImpl implements Storage {
 									recursiveLoading));
 						}
 						return collection;
+					}
+					else if (desc.isMap) { 
+						int len = Bytes.unpack4(body, offs);   
+						obj.offs = offs + 4;
+						Map map = (Map)val;
+						for (int i = 0; i < len; i++) {  
+							Object key = unswizzle(obj, Object.class, parent, recursiveLoading);
+							Object value = unswizzle(obj, Object.class, parent, recursiveLoading);
+							map.put(key, value);
+						}                            
+						return map;
 					}
 					else {
 						offs = unpackObject(val, desc, recursiveLoading, body,
@@ -4532,6 +4559,17 @@ public class StorageImpl implements Storage {
 				offs = buf.packI4(offs, c.size());
 				for (Object elem : c) {
 					offs = swizzle(buf, offs, elem);
+				}
+			}
+			else if (obj instanceof Map && (!serializeSystemCollections || t.getName().startsWith("java.util."))) {
+				ClassDescriptor valueDesc = getClassDescriptor(obj.getClass());
+				offs = buf.packI4(offs, -ClassDescriptor.tpValueTypeBias - valueDesc.getOid());
+				Map map = (Map)obj;
+				offs = buf.packI4(offs, map.size());
+				for (Object entry : map.entrySet()) {
+					Map.Entry e = (Map.Entry)entry;
+					offs = swizzle(buf, offs, e.getKey());
+					offs = swizzle(buf, offs, e.getValue());
 				}
 			}
 			else if (obj instanceof IValue) {

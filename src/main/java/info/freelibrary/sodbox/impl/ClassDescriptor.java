@@ -20,6 +20,7 @@ import java.util.Arrays;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.Collection;
+import java.util.Map;
 import java.util.ResourceBundle;
 
 import org.slf4j.Logger;
@@ -65,6 +66,7 @@ public final class ClassDescriptor extends Persistent {
 	transient boolean hasSubclasses;
 	transient boolean resolved;
 	transient boolean isCollection;
+	transient boolean isMap;
 
 	static ReflectionProvider reflectionProvider;
 
@@ -393,6 +395,7 @@ public final class ClassDescriptor extends Persistent {
 		customSerializable = storage.serializer != null
 				&& storage.serializer.isApplicable(cls);
 		isCollection = Collection.class.isAssignableFrom(cls);
+		isMap = Map.class.isAssignableFrom(cls);
 		name = getClassName(cls);
 		ArrayList list = new ArrayList();
 		buildFieldList(storage, cls, list);
@@ -478,6 +481,7 @@ public final class ClassDescriptor extends Persistent {
 		customSerializable = s.serializer != null
 				&& s.serializer.isApplicable(cls);
 		isCollection = Collection.class.isAssignableFrom(cls);
+		isMap = Map.class.isAssignableFrom(cls);
 		Class scope = cls;
 		int n = allFields.length;
 		for (int i = n; --i >= 0;) {
