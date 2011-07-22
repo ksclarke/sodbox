@@ -83,7 +83,7 @@ public class XMLExporter {
     { 
         Btree btree = new Btree(data, ObjectHeader.sizeof);
         storage.assignOid(btree, oid, false);
-        writer.write(" <info.freelibrary.sodbox.impl.PersistentSet id=\"" + oid + "\">\n");
+        writer.write(" <info.freelibrary.sodbox.impl.PersistentSet id=\"" + oid + "\" unique=\"" + (btree.unique ? '1' : '0') + "\">\n");
         btree.export(this);
         writer.write(" </info.freelibrary.sodbox.impl.PersistentSet>\n");
     }

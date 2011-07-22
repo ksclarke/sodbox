@@ -1,6 +1,5 @@
 package info.freelibrary.sodbox.impl;
-import info.freelibrary.sodbox.*;
-
+import  info.freelibrary.sodbox.*;
 import  java.util.*;
 import  java.lang.reflect.Array;
 
@@ -155,13 +154,13 @@ public class LinkImpl<T> implements EmbeddedLink<T>, ICloneable
     }
     
     public boolean addAll(int index, Collection<? extends T> c) {
-	boolean modified = false;
-	Iterator<? extends T> e = c.iterator();
-	while (e.hasNext()) {
-	    add(index++, e.next());
-	    modified = true;
-	}
-	return modified;
+        boolean modified = false;
+        Iterator<? extends T> e = c.iterator();
+        while (e.hasNext()) {
+            add(index++, e.next());
+            modified = true;
+        }
+        return modified;
     }
 
     public void addAll(T[] a, int from, int length) {

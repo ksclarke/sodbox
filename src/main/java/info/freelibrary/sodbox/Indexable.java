@@ -31,4 +31,9 @@ public @interface Indexable {
      * String index is case insensitive
      */
     boolean caseInsensitive() default false;
+    
+    /**
+     * Index supports fast access to elements by position
+     */
+    boolean randomAccess() default false;
 }

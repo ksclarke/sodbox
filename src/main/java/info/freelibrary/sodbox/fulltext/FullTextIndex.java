@@ -1,7 +1,6 @@
 package info.freelibrary.sodbox.fulltext;
 
 import info.freelibrary.sodbox.*;
-
 import java.io.Reader;
 import java.util.Iterator;
 
@@ -57,7 +56,7 @@ public interface FullTextIndex extends IPersistent, IResource
 
     /**
      * Get iterator through full text index keywords started with specified prefix
-     * @param prefix keyword prefix (user empty string to get list of all keywords)
+     * @param prefix keyword prefix (use empty string to get list of all keywords)
      * @return iterator through list of all keywords with specified prefix
      */
     Iterator<Keyword> getKeywords(String prefix);
@@ -68,7 +67,7 @@ public interface FullTextIndex extends IPersistent, IResource
      * @param maxResults maximal amount of selected documents
      * @param timeLimit limit for query execution time
      * @param sort whether it is necessary to sort result by rank
-     * @return result of query execution ordered by rank (of sort==true) or null in case of empty or incorrect query     
+     * @return result of query execution ordered by rank (if sort==true) or null in case of empty or incorrect query     
      */
     FullTextSearchResult searchPrefix(String prefix, int maxResults, int timeLimit, boolean sort);
 

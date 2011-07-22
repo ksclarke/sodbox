@@ -2,7 +2,6 @@ package info.freelibrary.sodbox.impl;
 
 import java.io.*;
 import java.util.*;
-
 import info.freelibrary.sodbox.*;
 import info.freelibrary.sodbox.fulltext.*;
 
@@ -342,7 +341,7 @@ public class FullTextIndexImpl extends PersistentResource implements FullTextInd
         super.deallocate();
     }
 
-    public void clear() { 
+    public void clear() {
         inverseIndex.deallocateMembers();
         documents.deallocateMembers();
     }

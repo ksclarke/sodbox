@@ -94,7 +94,7 @@ public class Version extends PersistentResource {
 			newVersion.successors = getStorage().<Version> createLink(1);
 			newVersion.labels = new String[0];
 			newVersion.id = null;
-			newVersion.myOid = 0;
+			newVersion.myOID = 0;
 			newVersion.myState = 0;
 
 			return newVersion;

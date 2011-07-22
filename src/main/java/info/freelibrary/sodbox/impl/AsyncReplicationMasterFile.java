@@ -14,9 +14,11 @@ public class AsyncReplicationMasterFile extends ReplicationMasterFile {
      * @param storage replication storage
      * @param file local file used to store data locally
      * @param asyncBufSize size of asynchronous buffer
+     * @param pageTimestampFile path to the file with pages timestamps. This file is used for synchronizing
+     * with master content of newly attached node
      */
-    public AsyncReplicationMasterFile(ReplicationMasterStorageImpl storage, IFile file, int asyncBufSize) { 
-        super(storage, file);
+    public AsyncReplicationMasterFile(ReplicationMasterStorageImpl storage, IFile file, int asyncBufSize, String pageTimestampFile) { 
+        super(storage, file, pageTimestampFile);
         this.asyncBufSize = asyncBufSize;
         start();
     }
@@ -30,7 +32,20 @@ public class AsyncReplicationMasterFile extends ReplicationMasterFile {
      * @param ack whether master should wait acknowledgment from slave node during trasanction commit
      */
     public AsyncReplicationMasterFile(IFile file, String[] hosts, int asyncBufSize, boolean ack) {                 
-        super(file, hosts, ack);
+        this(file, hosts, asyncBufSize, ack, null);
+    }
+
+    /**
+     * Constructor of replication master file
+     * @param file local file used to store data locally
+     * @param hosts slave node hosts to which replicastion will be performed
+     * @param asyncBufSize size of asynchronous buffer
+     * @param ack whether master should wait acknowledgment from slave node during trasanction commit
+     * @param pageTimestampFile path to the file with pages timestamps. This file is used for synchronizing
+     * with master content of newly attached node
+     */
+    public AsyncReplicationMasterFile(IFile file, String[] hosts, int asyncBufSize, boolean ack, String pageTimestampFile) {                 
+        super(file, hosts, ack, pageTimestampFile);
         this.asyncBufSize = asyncBufSize;
         start();
     }
@@ -57,6 +72,24 @@ public class AsyncReplicationMasterFile extends ReplicationMasterFile {
     
     public void write(long pos, byte[] buf) {
         file.write(pos, buf);
+        synchronized (mutex) { 
+            if (pageTimestamps != null) { 
+                int pageNo = (int)(pos >> Page.pageSizeLog);
+                if (pageNo >= pageTimestamps.length) { 
+                    int newLength = pageNo >= pageTimestamps.length*2 ? pageNo+1 : pageTimestamps.length*2;
+
+                    int[] newPageTimestamps = new int[newLength];
+                    System.arraycopy(pageTimestamps, 0, newPageTimestamps, 0, pageTimestamps.length);
+                    pageTimestamps = newPageTimestamps;
+
+                    int[] newDirtyPageTimestampMap = new int[(((newLength*4 + Page.pageSize - 1) >> Page.pageSizeLog) + 31) >> 5];
+                    System.arraycopy(dirtyPageTimestampMap, 0, newDirtyPageTimestampMap, 0, dirtyPageTimestampMap.length);
+                    dirtyPageTimestampMap = newDirtyPageTimestampMap;                    
+                }
+                pageTimestamps[pageNo] = ++timestamp;
+                dirtyPageTimestampMap[pageNo >> (Page.pageSizeLog - 2 + 5)] |= 1 << ((pageNo >> (Page.pageSizeLog - 2)) & 31);
+            }
+        }
         for (int i = 0; i < out.length; i++) { 
             if (out[i] != null) {                
                 byte[] data = new byte[8 + buf.length];

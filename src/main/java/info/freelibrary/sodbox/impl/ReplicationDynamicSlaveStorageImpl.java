@@ -8,7 +8,8 @@ import info.freelibrary.sodbox.*;
 
 public class ReplicationDynamicSlaveStorageImpl extends ReplicationSlaveStorageImpl
 {
-    public ReplicationDynamicSlaveStorageImpl(String host, int port) { 
+    public ReplicationDynamicSlaveStorageImpl(String host, int port, String pageTimestampFilePath) { 
+        super(pageTimestampFilePath);
         this.host = host;
         this.port = port;
     }

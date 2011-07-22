@@ -1,7 +1,6 @@
 package info.freelibrary.sodbox.impl;
 
 import info.freelibrary.sodbox.*;
-
 import java.io.*;
 import java.util.*;
 import java.text.DateFormat;
@@ -479,12 +478,12 @@ public class XMLImporter {
                 btree = new BtreeCompoundIndex(types, unique);
             } else if (type == null) { 
                 if (indexType.equals("info.freelibrary.sodbox.impl.PersistentSet")) { 
-                    btree = new PersistentSet();
+                    btree = new PersistentSet(unique);
                 } else { 
                     throwException("Key type is not specified for index");
                 }
             } else { 
-                btree = new Btree(mapType(type), unique);
+                    btree = new Btree(mapType(type), unique);
             }
         }
         storage.assignOid(btree, oid, false);
@@ -511,10 +510,10 @@ public class XMLImporter {
                 }
                 key = createCompoundKey(types, values);
             } else { 
-                key = createKey(btree.type, getAttribute(ref, "key"));
+                    key = createKey(btree.type, getAttribute(ref, "key"));
             }
             Object obj = new PersistentStub(storage, mapId(getIntAttribute(ref, "id")));
-            btree.insert(key, obj, false);
+                btree.insert(key, obj, false);
         }
         if (tkn != XMLScanner.XML_LTS 
             || scanner.scan() != XMLScanner.XML_IDENT

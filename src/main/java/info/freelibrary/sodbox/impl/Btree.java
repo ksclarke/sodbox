@@ -1,6 +1,5 @@
 package info.freelibrary.sodbox.impl;
-import info.freelibrary.sodbox.*;
-
+import  info.freelibrary.sodbox.*;
 import  java.util.*;
 import  java.lang.reflect.Array;
 
@@ -112,7 +111,7 @@ class Btree<T> extends PersistentCollection<T> implements Index<T> {
     Key checkKey(Key key) { 
         if (key != null) { 
             if (key.type != type) { 
-                throw new StorageError(StorageError.INCOMPATIBLE_KEY_TYPE, key.type + " != " + type);
+                throw new StorageError(StorageError.INCOMPATIBLE_KEY_TYPE);
             }
             if (type == ClassDescriptor.tpObject && key.ival == 0 && key.oval != null) { 
                 Object obj = key.oval;
@@ -166,11 +165,11 @@ class Btree<T> extends PersistentCollection<T> implements Index<T> {
     }
 
     public ArrayList<T> getList(Object from, Object till) {
-        return getList(getKeyFromObject(from), getKeyFromObject(till));
+        return getList(getKeyFromObject(type, from), getKeyFromObject(type, till));
     }
 
     public T get(Object key) { 
-        return get(getKeyFromObject(key));
+        return get(getKeyFromObject(type, key));
     }
 
     public Object[] get(Key from, Key till) {
@@ -179,7 +178,7 @@ class Btree<T> extends PersistentCollection<T> implements Index<T> {
     }
 
     public Object[] get(Object from, Object till) {
-        return get(getKeyFromObject(from), getKeyFromObject(till));
+        return get(getKeyFromObject(type, from), getKeyFromObject(type, till));
     }
 
     public boolean put(Key key, T obj) {
@@ -222,6 +221,10 @@ class Btree<T> extends PersistentCollection<T> implements Index<T> {
         remove(new BtreeKey(checkKey(key), getStorage().getOid(obj)));
     }
 
+    public boolean unlink(Key key, T obj) {
+        return removeIfExists(key, obj);
+    }
+    
     boolean removeIfExists(Key key, Object obj) {
         return removeIfExists(new BtreeKey(checkKey(key), getStorage().getOid(obj)));
     }
@@ -281,6 +284,43 @@ class Btree<T> extends PersistentCollection<T> implements Index<T> {
         return (T)db.lookupObject(rk.oldOid, null);
     }
         
+    static Key getKeyFromObject(int type, Object o) {
+        if (o == null) { 
+            return null;
+        }
+        switch (type) { 
+        case ClassDescriptor.tpBoolean:
+            return new Key(((Boolean)o).booleanValue());
+        case ClassDescriptor.tpByte:
+            return new Key(((Number)o).byteValue());
+        case ClassDescriptor.tpChar:
+            return new Key(((Character)o).charValue());
+        case ClassDescriptor.tpShort:
+            return new Key(((Number)o).shortValue());
+        case ClassDescriptor.tpInt:
+            return new Key(((Number)o).intValue());
+        case ClassDescriptor.tpLong:
+            return new Key(((Number)o).longValue());
+        case ClassDescriptor.tpFloat:
+            return new Key(((Number)o).floatValue());
+        case ClassDescriptor.tpDouble:
+            return new Key(((Number)o).doubleValue());
+        case ClassDescriptor.tpString:
+            return new Key((String)o);
+        case ClassDescriptor.tpDate:
+            return new Key((java.util.Date)o);
+        case ClassDescriptor.tpObject:
+            return new Key(o);
+        case ClassDescriptor.tpValue:
+            return new Key((IValue)o);
+        case ClassDescriptor.tpEnum:
+            return new Key((Enum)o);
+        case ClassDescriptor.tpArrayOfByte: 
+            return new Key((byte[])o);
+        default:
+            throw new StorageError(StorageError.UNSUPPORTED_INDEX_TYPE);
+        }
+    }
     static Key getKeyFromObject(Object o) {
         if (o == null) { 
             return null;
@@ -329,19 +369,19 @@ class Btree<T> extends PersistentCollection<T> implements Index<T> {
     }
 
     public boolean put(Object key, T obj) {
-        return put(getKeyFromObject(key), obj);
+        return put(getKeyFromObject(type, key), obj);
     }
 
     public T set(Object key, T obj) {
-        return set(getKeyFromObject(key), obj);
+        return set(getKeyFromObject(type, key), obj);
     }
 
     public void remove(Object key, T obj) {
-        remove(getKeyFromObject(key), obj);
+        remove(getKeyFromObject(type, key), obj);
     }
     
     public T removeKey(Object key) {
-        return remove(getKeyFromObject(key));
+        return remove(getKeyFromObject(type, key));
     }
 
     public T remove(String key) {
@@ -1297,13 +1337,13 @@ class Btree<T> extends PersistentCollection<T> implements Index<T> {
 
 
     public IterableIterator<T> iterator(Object from, Object till, int order) { 
-        return new BtreeSelectionIterator<T>(checkKey(getKeyFromObject(from)), 
-                                             checkKey(getKeyFromObject(till)), order);
+        return new BtreeSelectionIterator<T>(checkKey(getKeyFromObject(type, from)), 
+                                             checkKey(getKeyFromObject(type, till)), order);
     }
 
     public IterableIterator<Map.Entry<Object,T>> entryIterator(Object from, Object till, int order) { 
-        return new BtreeSelectionEntryIterator(checkKey(getKeyFromObject(from)), 
-                                               checkKey(getKeyFromObject(till)), order);
+        return new BtreeSelectionEntryIterator(checkKey(getKeyFromObject(type, from)), 
+                                               checkKey(getKeyFromObject(type, till)), order);
     }
 
     public int indexOf(Key key) { 

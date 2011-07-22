@@ -1,5 +1,5 @@
 package info.freelibrary.sodbox.impl;
-import info.freelibrary.sodbox.*;
+import  info.freelibrary.sodbox.*;
 
 import java.lang.reflect.*;
 import java.util.*;
@@ -121,7 +121,7 @@ class AltBtreeFieldIndex<T> extends AltBtree<T> implements FieldIndex<T> {
 
     public boolean addAll(Collection<? extends T> c) {
         FieldValue[] arr = new FieldValue[c.size()];
-	Iterator<? extends T> e = c.iterator();
+        Iterator<? extends T> e = c.iterator();
         try { 
             for (int i = 0; e.hasNext(); i++) {
                 T obj = e.next();
@@ -131,10 +131,10 @@ class AltBtreeFieldIndex<T> extends AltBtree<T> implements FieldIndex<T> {
             throw new StorageError(StorageError.ACCESS_VIOLATION, x);
         }
         Arrays.sort(arr);
-	for (int i = 0; i < arr.length; i++) {
+        for (int i = 0; i < arr.length; i++) {
             add((T)arr[i].obj);
         }
-	return arr.length > 0;
+        return arr.length > 0;
     }
 
     public boolean remove(Object obj) {

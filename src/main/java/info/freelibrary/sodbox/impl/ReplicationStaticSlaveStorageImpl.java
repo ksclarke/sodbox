@@ -8,7 +8,8 @@ import info.freelibrary.sodbox.*;
 
 public class ReplicationStaticSlaveStorageImpl extends ReplicationSlaveStorageImpl
 {
-    public ReplicationStaticSlaveStorageImpl(int port) { 
+    public ReplicationStaticSlaveStorageImpl(int port, String pageTimestampFilePath) { 
+        super(pageTimestampFilePath);
         this.port = port;
     }
 

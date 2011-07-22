@@ -1,5 +1,5 @@
 package info.freelibrary.sodbox.impl;
-import info.freelibrary.sodbox.*;
+import  info.freelibrary.sodbox.*;
 
 // Rc4Cipher - the RC4 encryption method
 //
@@ -36,7 +36,7 @@ public class Rc4File implements IFile
         if (pos > length) { 
             if (zeroPage == null) { 
                 zeroPage = new byte[Page.pageSize];
-                encrypt(zeroPage, 0, zeroPage, 0, Page.pageSize);
+                crypt(zeroPage, zeroPage);
             }
             do { 
                 file.write(length, zeroPage);
@@ -45,7 +45,7 @@ public class Rc4File implements IFile
         if (pos == length) { 
             length += Page.pageSize;
         }        
-        encrypt(buf, 0, cipherBuf, 0, buf.length);
+        crypt(buf, cipherBuf);
         file.write(pos, cipherBuf);
     }
 
@@ -53,7 +53,7 @@ public class Rc4File implements IFile
     { 
         if (pos < length) { 
             int rc = file.read(pos, buf);
-            decrypt(buf, 0, buf, 0, rc);
+            crypt(buf, buf);
             return rc;
         } 
         return 0;
@@ -75,48 +75,38 @@ public class Rc4File implements IFile
 
     private void setKey(byte[] key)
     {
+        byte[] state = new byte[256];
 	for (int counter = 0; counter < 256; ++counter) { 
-	    initState[counter] = (byte)counter;
+	    state[counter] = (byte)counter;
         }
 	int index1 = 0;
 	int index2 = 0;
 	for (int counter = 0; counter < 256; ++counter) {
-	    index2 = (key[index1] + initState[counter] + index2) & 0xff;
-	    byte temp = initState[counter];
-	    initState[counter] = initState[index2];
-	    initState[index2] = temp;
+	    index2 = (key[index1] + state[counter] + index2) & 0xff;
+	    byte temp = state[counter];
+	    state[counter] = state[index2];
+	    state[index2] = temp;
 	    index1 = (index1 + 1) % key.length;
         }
-    }
-
-    private final void encrypt(byte[] clearText, int clearOff, byte[] cipherText, int cipherOff, int len)
-    {
-        x = y = 0;
-        System.arraycopy(initState, 0, state, 0, state.length);
-	for (int i = 0; i < len; i++) {
-	    cipherText[cipherOff + i] =
-		(byte)(clearText[clearOff + i] ^ state[nextState()]);
+        pattern = new byte[Page.pageSize];
+        cipherBuf = new byte[Page.pageSize];
+        int x = 0;
+        int y = 0;
+        for (int i = 0; i < Page.pageSize; i++) {
+            x = (x + 1) & 0xff;
+            y = (y + state[x]) & 0xff;
+            byte temp = state[x];
+            state[x] = state[y];
+            state[y] = temp;
+            pattern[i] = state[(state[x] + state[y]) & 0xff];
         }
     }
 
-    private final void decrypt(byte[] cipherText, int cipherOff, byte[] clearText, int clearOff, int len)
+    private final void crypt(byte[] clearText, byte[] cipherText)
     {
-        x = y = 0;
-        System.arraycopy(initState, 0, state, 0, state.length);
-	for (int i = 0; i < len; i++) {
-	    clearText[clearOff + i] =
-		(byte)(cipherText[cipherOff + i] ^ state[nextState()]);
-	}
-    }
-
-    private final int nextState()
-    {
-	x = (x + 1) & 0xff;
-	y = (y + state[x]) & 0xff;
-	byte temp = state[x];
-	state[x] = state[y];
-	state[y] = temp;
-	return (state[x] + state[y]) & 0xff;
+	for (int i = 0; i < Page.pageSize; i++) {
+	    cipherText[i] = (byte)(clearText[i] ^ pattern[i]);
+        }
     }
 
     public void close() { 
@@ -145,10 +135,8 @@ public class Rc4File implements IFile
     }
 
     private IFile  file;
-    private byte[] cipherBuf = new byte[Page.pageSize];
-    private byte[] initState = new byte[256];
-    private byte[] state = new byte[256];
-    private int    x, y;
+    private byte[] cipherBuf;
+    private byte[] pattern;
     private long   length;
     private byte[] zeroPage;
 }

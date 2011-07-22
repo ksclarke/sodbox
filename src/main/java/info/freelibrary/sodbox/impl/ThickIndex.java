@@ -1,5 +1,6 @@
 package info.freelibrary.sodbox.impl;
-import info.freelibrary.sodbox.*;
+
+import  info.freelibrary.sodbox.*;
 
 import java.util.*;
 
@@ -15,9 +16,8 @@ class ThickIndex<T> extends PersistentCollection<T> implements Index<T> {
     }
     
     ThickIndex() {}
-
-    public T get(Key key) {
-        Object s = index.get(key);
+    
+    private final T getFromRelation(Object s) {
         if (s == null) { 
             return null;
         }
@@ -29,9 +29,13 @@ class ThickIndex<T> extends PersistentCollection<T> implements Index<T> {
         }
         throw new StorageError(StorageError.KEY_NOT_UNIQUE);
     }
+
+    public T get(Key key) {
+        return getFromRelation(index.get(key));
+    }
                   
     public T get(Object key) {
-        return get(Btree.getKeyFromObject(key));
+        return getFromRelation(index.get(key));
     }
 
     public ArrayList<T> getList(Key from, Key till) { 
@@ -39,7 +43,7 @@ class ThickIndex<T> extends PersistentCollection<T> implements Index<T> {
     }
 
     public ArrayList<T> getList(Object from, Object till) { 
-        return getList(Btree.getKeyFromObject(from), Btree.getKeyFromObject(till));
+        return extendList(index.getList(from, till));
     }
    
     public Object[] get(Key from, Key till) {
@@ -47,7 +51,7 @@ class ThickIndex<T> extends PersistentCollection<T> implements Index<T> {
     }
      
     public Object[] get(Object from, Object till) {
-        return get(Btree.getKeyFromObject(from), Btree.getKeyFromObject(till));
+        return extend(index.get(from, till));
     }
      
     private ArrayList<T> extendList(ArrayList s) { 
@@ -249,7 +253,7 @@ class ThickIndex<T> extends PersistentCollection<T> implements Index<T> {
     }
         
     public IterableIterator<T> iterator(Object from, Object till, int order) { 
-        return iterator(Btree.getKeyFromObject(from), Btree.getKeyFromObject(till), order);
+        return new ExtendIterator<T>(index.iterator(from, till, order));
     }
         
     public IterableIterator<Map.Entry<Object,T>> entryIterator(Key from, Key till, int order) { 
@@ -257,7 +261,7 @@ class ThickIndex<T> extends PersistentCollection<T> implements Index<T> {
     }
 
     public IterableIterator<Map.Entry<Object,T>> entryIterator(Object from, Object till, int order) { 
-        return entryIterator(Btree.getKeyFromObject(from), Btree.getKeyFromObject(till), order);
+        return new ExtendEntryIterator<T>(index.entryIterator(from, till, order));
     }
 
     public IterableIterator<T> prefixIterator(String prefix) { 
@@ -278,25 +282,39 @@ class ThickIndex<T> extends PersistentCollection<T> implements Index<T> {
 
     public boolean put(Key key, T obj) { 
         Object s = index.get(key);
+        Storage storage = getStorage();
+        int oid = storage.getOid(obj);
+        if (oid == 0) { 
+            oid = storage.makePersistent(obj);
+        }
         if (s == null) { 
-            Relation<T,ThickIndex> r = getStorage().<T,ThickIndex>createRelation(null);
+            Relation<T,ThickIndex> r = storage.<T,ThickIndex>createRelation(null);
             r.add(obj);
             index.put(key, r);
         } else if (s instanceof Relation) { 
-            Relation r = (Relation)s;
-            if (r.size() == BTREE_THRESHOLD) {
-                IPersistentSet<T> ps = getStorage().<T>createSet();
+            Relation rel = (Relation)s;
+            if (rel.size() == BTREE_THRESHOLD) {
+                IPersistentSet<T> ps = storage.<T>createBag();
                 for (int i = 0; i < BTREE_THRESHOLD; i++) { 
-                    ps.add((T)r.get(i));
+                    ps.add((T)rel.get(i));
                 }
-                ps.add(obj);
+                Assert.that(ps.add(obj));
                 index.set(key, ps);
-                r.deallocate();
+                rel.deallocate();
             } else { 
-                r.add(obj);
+                int l = 0, n = rel.size(), r = n;
+                while (l < r) { 
+                    int m = (l + r) >>> 1;
+                    if (storage.getOid(rel.getRaw(m)) <= oid) { 
+                        l = m + 1;
+                    } else { 
+                        r = m;
+                    }
+                }
+                rel.insert(r, obj);
             }
         } else { 
-            ((IPersistentSet<T>)s).add(obj);
+            Assert.that(((IPersistentSet<T>)s).add(obj));
         }
         nElems += 1;
         modify();
@@ -305,8 +323,13 @@ class ThickIndex<T> extends PersistentCollection<T> implements Index<T> {
 
     public T set(Key key, T obj) {
         Object s = index.get(key);
+        Storage storage = getStorage();
+        int oid = storage.getOid(obj);
+        if (oid == 0) { 
+            oid = storage.makePersistent(obj);
+        }
         if (s == null) { 
-            Relation<T,ThickIndex> r = getStorage().<T,ThickIndex>createRelation(null);
+            Relation<T,ThickIndex> r = storage.<T,ThickIndex>createRelation(null);
             r.add(obj);
             index.put(key, r);
             nElems += 1;
@@ -323,16 +346,30 @@ class ThickIndex<T> extends PersistentCollection<T> implements Index<T> {
         throw new StorageError(StorageError.KEY_NOT_UNIQUE);
     }
 
+    public boolean unlink(Key key, T obj) {
+        return removeIfExists(key, obj);
+    }
+    
     boolean removeIfExists(Key key, T obj) { 
         Object s = index.get(key);
         if (s instanceof Relation) { 
-            Relation r = (Relation)s;
-            int i = r.indexOf(obj);
-            if (i >= 0) { 
-                r.remove(i);
-                if (r.size() == 0) { 
-                    index.remove(key, r);
-                    r.deallocate();
+            Relation rel = (Relation)s;
+            Storage storage = getStorage();
+            int oid = storage.getOid(obj);
+            int l = 0, n = rel.size(), r = n;
+            while (l < r) { 
+                int m = (l + r) >>> 1;
+                if (storage.getOid(rel.getRaw(m)) < oid) { 
+                    l = m + 1;
+                } else { 
+                    r = m;
+                }
+            }
+            if (r < n && storage.getOid(rel.getRaw(r)) == oid) { 
+                rel.remove(r);
+                if (rel.size() == 0) { 
+                    index.remove(key, rel);
+                    rel.deallocate();
                 }
                 nElems -= 1;
                 modify();

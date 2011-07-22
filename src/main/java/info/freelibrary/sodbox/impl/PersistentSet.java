@@ -1,6 +1,5 @@
 package info.freelibrary.sodbox.impl;
-import info.freelibrary.sodbox.*;
-
+import  info.freelibrary.sodbox.*;
 import  java.util.*;
 
 class JoinSetIterator<T> extends IterableIterator<T> implements PersistentIterator 
@@ -51,10 +50,11 @@ class JoinSetIterator<T> extends IterableIterator<T> implements PersistentIterat
     }
 }           
 
-class PersistentSet<T> extends Btree<T> implements IPersistentSet<T> { 
-    PersistentSet() { 
+class PersistentSet<T> extends Btree<T> implements IPersistentSet<T> 
+{ 
+    PersistentSet(boolean unique) { 
         type = ClassDescriptor.tpObject;
-        unique = true;
+        this.unique = unique;
     }
 
     public boolean isEmpty() { 

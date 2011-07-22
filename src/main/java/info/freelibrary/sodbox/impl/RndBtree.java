@@ -1,6 +1,5 @@
 package info.freelibrary.sodbox.impl;
-import info.freelibrary.sodbox.*;
-
+import  info.freelibrary.sodbox.*;
 import  java.util.*;
 import  java.lang.reflect.Array;
 
@@ -580,7 +579,7 @@ class RndBtree<T> extends PersistentCollection<T> implements Index<T> {
         }
 
         int compare(Key key, int i) {
-        	return key.ival < data[i] ? -1 : key.ival == data[i] ? 0 : 1;
+            return key.ival < data[i] ? -1 : key.ival == data[i] ? 0 : 1;
         }
 
         void insert(BtreeKey key, int i) { 
@@ -1008,7 +1007,7 @@ class RndBtree<T> extends PersistentCollection<T> implements Index<T> {
     }
 
     public ArrayList<T> getList(Object from, Object till) {
-        return getList(Btree.getKeyFromObject(from), Btree.getKeyFromObject(till));
+        return getList(Btree.getKeyFromObject(type, from), Btree.getKeyFromObject(type, till));
     }
 
     public Object[] get(Key from, Key till) {
@@ -1017,7 +1016,7 @@ class RndBtree<T> extends PersistentCollection<T> implements Index<T> {
     }
 
     public Object[] get(Object from, Object till) {
-        return get(Btree.getKeyFromObject(from), Btree.getKeyFromObject(till));
+        return get(Btree.getKeyFromObject(type, from), Btree.getKeyFromObject(type, till));
     }
 
     public boolean put(Key key, T obj) {
@@ -1103,6 +1102,10 @@ class RndBtree<T> extends PersistentCollection<T> implements Index<T> {
         remove(new BtreeKey(checkKey(key), obj));
     }
     
+    public boolean unlink(Key key, T obj) {
+        return removeIfExists(key, obj);
+    }
+    
     boolean removeIfExists(Key key, Object obj) 
     {
         return removeIfExists(new BtreeKey(checkKey(key), obj));
@@ -1152,7 +1155,7 @@ class RndBtree<T> extends PersistentCollection<T> implements Index<T> {
         
         
     public T get(Object key) { 
-        return get(Btree.getKeyFromObject(key));
+        return get(Btree.getKeyFromObject(type, key));
     }
 
     public ArrayList<T> getPrefixList(String prefix) { 
@@ -1164,15 +1167,15 @@ class RndBtree<T> extends PersistentCollection<T> implements Index<T> {
     }
 
     public boolean put(Object key, T obj) {
-        return put(Btree.getKeyFromObject(key), obj);
+        return put(Btree.getKeyFromObject(type, key), obj);
     }
 
     public T set(Object key, T obj) {
-        return set(Btree.getKeyFromObject(key), obj);
+        return set(Btree.getKeyFromObject(type, key), obj);
     }
 
     public void remove(Object key, T obj) {
-        remove(Btree.getKeyFromObject(key), obj);
+        remove(Btree.getKeyFromObject(type, key), obj);
     }
     
     public T remove(String key) {
@@ -1180,7 +1183,7 @@ class RndBtree<T> extends PersistentCollection<T> implements Index<T> {
     }
 
     public T removeKey(Object key) {
-        return removeKey(Btree.getKeyFromObject(key));
+        return removeKey(Btree.getKeyFromObject(type, key));
     }
 
     public int size() {
@@ -1634,8 +1637,8 @@ class RndBtree<T> extends PersistentCollection<T> implements Index<T> {
     }
 
     public IterableIterator<T> iterator(Object from, Object till, int order) { 
-        return new BtreeSelectionIterator<T>(checkKey(Btree.getKeyFromObject(from)), 
-                                             checkKey(Btree.getKeyFromObject(till)), order);
+        return new BtreeSelectionIterator<T>(checkKey(Btree.getKeyFromObject(type, from)), 
+                                             checkKey(Btree.getKeyFromObject(type, till)), order);
     }
 
     public IterableIterator<T> prefixIterator(String prefix) {
@@ -1652,8 +1655,8 @@ class RndBtree<T> extends PersistentCollection<T> implements Index<T> {
     }
 
     public IterableIterator<Map.Entry<Object,T>> entryIterator(Object from, Object till, int order) { 
-        return new BtreeSelectionEntryIterator(checkKey(Btree.getKeyFromObject(from)), 
-                                               checkKey(Btree.getKeyFromObject(till)), order);
+        return new BtreeSelectionEntryIterator(checkKey(Btree.getKeyFromObject(type, from)), 
+                                               checkKey(Btree.getKeyFromObject(type, till)), order);
     }
 
     public T getAt(int i) {

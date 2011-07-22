@@ -1,12 +1,16 @@
 package info.freelibrary.sodbox.impl;
-import info.freelibrary.sodbox.*;
-
+import  info.freelibrary.sodbox.*;
 import  java.util.*;
 
 class AltPersistentSet<T> extends AltBtree<T> implements IPersistentSet<T> { 
     AltPersistentSet() { 
         type = ClassDescriptor.tpObject;
         unique = true;
+    }
+
+    AltPersistentSet(boolean unique) { 
+        type = ClassDescriptor.tpObject;
+        this.unique = unique;
     }
 
     public boolean isEmpty() { 
