@@ -484,11 +484,7 @@ public class XMLImporter {
                     throwException("Key type is not specified for index");
                 }
             } else { 
-                if (indexType.equals("info.freelibrary.sodbox.impl.BitIndexImpl")) { 
-                    btree = new BitIndexImpl();
-                } else { 
-                    btree = new Btree(mapType(type), unique);
-                }
+                btree = new Btree(mapType(type), unique);
             }
         }
         storage.assignOid(btree, oid, false);
@@ -515,18 +511,10 @@ public class XMLImporter {
                 }
                 key = createCompoundKey(types, values);
             } else { 
-                if (btree instanceof BitIndex) { 
-                    mask = getIntAttribute(ref, "key");
-                } else { 
-                    key = createKey(btree.type, getAttribute(ref, "key"));
-                }
+                key = createKey(btree.type, getAttribute(ref, "key"));
             }
             Object obj = new PersistentStub(storage, mapId(getIntAttribute(ref, "id")));
-            if (btree instanceof BitIndex) { 
-                ((BitIndex)btree).put(obj, mask);
-            } else { 
-                btree.insert(key, obj, false);
-            } 
+            btree.insert(key, obj, false);
         }
         if (tkn != XMLScanner.XML_LTS 
             || scanner.scan() != XMLScanner.XML_IDENT

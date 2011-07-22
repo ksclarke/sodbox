@@ -1773,15 +1773,6 @@ public class StorageImpl implements Storage {
 		return set;
 	}
 
-	public synchronized <T> BitIndex<T> createBitIndex() {
-		if (!opened) {
-			throw new StorageError(StorageError.STORAGE_NOT_OPENED);
-		}
-		BitIndex<T> index = new BitIndexImpl<T>();
-		index.assignOid(this, 0, false);
-		return index;
-	}
-
 	public synchronized <T> Index<T> createIndex(Class<?> keyType,
 			boolean unique) {
 		if (!opened) {

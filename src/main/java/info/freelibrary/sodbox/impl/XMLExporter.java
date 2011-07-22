@@ -40,8 +40,6 @@ public class XMLExporter {
                                 ClassDescriptor desc = storage.findClassDescriptor(typeOid);
                                 if (desc.cls == Btree.class) { 
                                     exportIndex(oid, obj, "info.freelibrary.sodbox.impl.Btree");
-                                } else if (desc.cls == BitIndexImpl.class) { 
-                                    exportIndex(oid, obj, "info.freelibrary.sodbox.impl.BitIndexImpl");
                                 } else if (desc.cls == PersistentSet.class) { 
                                     exportSet(oid, obj);
                                 } else if (desc.cls == BtreeFieldIndex.class) { 

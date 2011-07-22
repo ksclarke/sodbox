@@ -451,14 +451,6 @@ public interface Storage {
 	public <T> Index<T> createThickIndex(Class<?> type);
 
 	/**
-	 * Create new bit index. Bit index is used to select object with specified
-	 * set of (boolean) properties.
-	 * 
-	 * @return persistent object implementing bit index
-	 */
-	public <T> BitIndex<T> createBitIndex();
-
-	/**
 	 * Create new field index
 	 * 
 	 * @param type objects of which type (or derived from which type) will be

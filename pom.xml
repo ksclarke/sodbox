@@ -10,8 +10,8 @@
 	<description>Simple Object-Oriented Database for XML</description>
 	<licenses>
 		<license>
-			<name>GNU General Public License, Version 2</name>
-			<url>http://www.gnu.org/licenses/gpl-2.0.html</url>
+			<name>GNU General Public License, Version 3</name>
+			<url>http://www.gnu.org/licenses/gpl-3.0.html</url>
 		</license>
 	</licenses>
 	<build>
@@ -64,7 +64,7 @@
 		<dependency>
 			<groupId>info.freelibrary</groupId>
 			<artifactId>freelib-utils</artifactId>
-			<version>0.2.3-SNAPSHOT</version>
+			<version>0.2.4-SNAPSHOT</version>
 		</dependency>
 		<!-- LGPL v.2.1 licensed -->
 		<dependency>
