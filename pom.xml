@@ -5,7 +5,7 @@
 	<groupId>info.freelibrary</groupId>
 	<artifactId>sodbox</artifactId>
 	<!-- First two digits are Perst release from which this release was forked -->
-	<version>4.22.1-SNAPSHOT</version>
+	<version>4.28.1-SNAPSHOT</version>
 	<name>Sodbox</name>
 	<description>Simple Object-Oriented Database for XML</description>
 	<licenses>
