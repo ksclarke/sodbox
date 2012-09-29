@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<document>
+	<properties>
+		<author>Kevin S. Clarke</author>
+		<title>Sodbox</title>
+	</properties>
+	<meta name="keyword" content="java, xml, database"/>
+	<body>
+		<section name="Introduction">
+			<p>
+				A Simple Object-Oriented Database for XML.
+			</p>
+		</section>
+	</body>
+</document>
