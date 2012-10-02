@@ -15,6 +15,7 @@
 		<links>
 			<item name="Other FreeLibrary Projects" href="http://freelibrary.info/" />
 		</links>
+		<menu ref="modules" />
 		<menu ref="reports"/>
 	</body>
 	<skin>
