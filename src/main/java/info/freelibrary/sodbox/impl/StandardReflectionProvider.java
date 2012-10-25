@@ -18,7 +18,7 @@ public class StandardReflectionProvider implements ReflectionProvider {
     	Constructor constructor = cls.getDeclaredConstructor(defaultConstructorProfile);
     	
     	if (LOGGER.isDebugEnabled()) {
-    		LOGGER.debug(constructor.getClass().getName());
+    		LOGGER.debug("Getting default constructor for " + cls.getName());
     	}
 
         return constructor;
