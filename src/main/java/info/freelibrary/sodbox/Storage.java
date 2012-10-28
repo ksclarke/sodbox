@@ -10,7 +10,7 @@ import info.freelibrary.sodbox.impl.ThreadTransactionContext;
 public interface Storage { 
     /**
      * Constant specifying that page pool should be dynamically extended 
-     * to conatins all database file pages
+     * to contains all database file pages
      */
     public static final int INFINITE_PAGE_POOL = 0;
     /**
@@ -24,7 +24,7 @@ public interface Storage {
      * @param pagePoolSize size of page pool (in bytes). Page pool should contain
      * at least ten 4kb pages, so minimal page pool size should be at least 40Kb.
      * But larger page pool usually leads to better performance (unless it could not fit
-     * in memory and cause swapping). Value 0 of this paremeter corresponds to infinite
+     * in memory and cause swapping). Value 0 of this parameter corresponds to infinite
      * page pool (all pages are cashed in memory). It is especially useful for in-memory
      * database, when storage is created with NullFile.
      * 
@@ -36,7 +36,7 @@ public interface Storage {
      * @param file user specific implementation of IFile interface
      * @param pagePoolSize size of page pool (in bytes). Page pool should contain
      * at least ten 4kb pages, so minimal page pool size should be at least 40Kb.
-     * But larger page pool ussually leads to better performance (unless it could not fit
+     * But larger page pool usually leads to better performance (unless it could not fit
      * in memory and cause swapping).
      */
     public void open(IFile file, long pagePoolSize);
@@ -90,8 +90,8 @@ public interface Storage {
     
 
     /**
-     * Commit changes done by the last transaction. Transaction is started implcitlely with forst update
-     * opertation.
+     * Commit changes done by the last transaction. Transaction is started implicitly with first update
+     * operation.
      */
     public void commit();
 
@@ -123,7 +123,7 @@ public interface Storage {
     /**
      * Backup current state of database to the file with specified path
      * @param filePath path to the backup file
-     * @param cipherKey cipher key for the encryption oof the backup file, null to disable encryption
+     * @param cipherKey cipher key for the encryption of the backup file, null to disable encryption
      */
     public void backup(String filePath, String cipherKey) throws java.io.IOException;
 
@@ -131,11 +131,13 @@ public interface Storage {
      * Exclusive per-thread transaction: each thread access database in exclusive mode
      */
     public static final int EXCLUSIVE_TRANSACTION   = 0;
+
     /**
      * Alias for EXCLUSIVE_TRANSACTION. In case of multiclient access, 
      * any transaction modifying database should be exclusive.
      */
     public static final int READ_WRITE_TRANSACTION = EXCLUSIVE_TRANSACTION;
+
     /**
      * Cooperative mode; all threads share the same transaction. Commit will commit changes made
      * by all threads. To make this schema work correctly, it is necessary to ensure (using locking)
@@ -143,11 +145,13 @@ public interface Storage {
      * Also please notice that rollback will undo the work of all threads. 
      */
     public static final int COOPERATIVE_TRANSACTION = 1;
+
     /**
      * Alias for COOPERATIVE_TRANSACTION. In case of multiclient access, 
      * only read-only transactions can be executed in parallel.
      */
     public static final int READ_ONLY_TRANSACTION = COOPERATIVE_TRANSACTION;
+
     /**
      * Serializable per-thread transaction. Unlike exclusive mode, threads can concurrently access database, 
      * but effect will be the same as them work exclusively.
@@ -158,11 +162,10 @@ public interface Storage {
     public static final int SERIALIZABLE_TRANSACTION = 2;
 
     /**
-     * Read only transaction which can be started at replicastion slave node.
+     * Read only transaction which can be started at replication slave node.
      * It runs concurrently with receiving updates from master node.
      */
     public static final int REPLICATION_SLAVE_TRANSACTION = 3;
-
 
     /** 
      * Begin per-thread transaction. Three types of per-thread transactions are supported: 
@@ -183,7 +186,7 @@ public interface Storage {
      * containers (since them are based on B-Tree and B-Tree directly access database pages
      * and use <code>store()</code> method to assign OID to inserted object. 
      * You should use <code>SortedCollection</code> based on T-Tree instead or alternative
-     * B-Tree implemenataion (set "sodbox.alternative.btree" property).
+     * B-Tree implementation (set "sodbox.alternative.btree" property).
      * @param mode <code>EXCLUSIVE_TRANSACTION</code>, <code>COOPERATIVE_TRANSACTION</code>, 
      * <code>SERIALIZABLE_TRANSACTION</code> or <code>REPLICATION_SLAVE_TRANSACTION</code>
      */
@@ -193,7 +196,7 @@ public interface Storage {
      * End per-thread transaction started by beginThreadTransaction method.<br>
      * If transaction is <i>exclusive</i>, this method commits the transaction and
      * allows other thread to proceed.<br>
-     * If transaction is <i>serializable</i>, this method commits sll changes done by this thread
+     * If transaction is <i>serializable</i>, this method commits all changes done by this thread
      * and release all locks set by this thread.<br>     
      * If transaction is <i>cooperative</i>, this method decrement counter of cooperative
      * transactions and if it becomes zero - commit the work
@@ -214,15 +217,15 @@ public interface Storage {
      * @param maxDelay maximal delay in milliseconds of committing transaction.  Please notice, that Sodbox could 
      * not force other threads to commit their cooperative transactions when this timeout is expired. It will only
      * block new cooperative transactions to make it possible to current transaction to complete their work.
-     * If <code>maxDelay</code> is 0, current thread will be blocked until all other cooperative trasnaction are also finished
-     * and changhes will be committed to the database.
+     * If <code>maxDelay</code> is 0, current thread will be blocked until all other cooperative transaction are also finished
+     * and changes will be committed to the database.
      */
     public void endThreadTransaction(int maxDelay);
    
     /**
      * Check if nested thread transaction is active
      * @return true if code executing this method is inside per-thread transaction 
-     * (serializable, exclusive or coopertaive)
+     * (serializable, exclusive or cooperative)
      */
     public boolean isInsideThreadTransaction();
 
@@ -240,7 +243,7 @@ public interface Storage {
 
     /**
      * Commit serializable transaction. This call is equivalent to <code>endThreadTransaction</code>
-     * but it checks that serializable transaction was pereviously started using 
+     * but it checks that serializable transaction was previously started using 
      * beginSerializableTransaction() method
      * @exception StorageError(NOT_IN_TRANSACTION) if this method is invoked outside 
      * serializable transaction body
@@ -249,7 +252,7 @@ public interface Storage {
 
     /**
      * Rollback serializable transaction. This call is equivalent to <code>rollbackThreadTransaction</code>
-     * but it checks that serializable transaction was pereviously started using 
+     * but it checks that serializable transaction was previously started using 
      * beginSerializableTransaction() method
      * @exception StorageError(NOT_IN_TRANSACTION) if this method is invoked outside 
      * serializable transaction body
@@ -257,7 +260,7 @@ public interface Storage {
     public void rollbackSerializableTransaction();
 
     /**
-     * Create new peristent list. Implementation of this list is based on B-Tree so it can efficiently
+     * Create new persistent list. Implementation of this list is based on B-Tree so it can efficiently
      * handle large number of objects but in case of very small list memory overhead is too high.
      * @return persistent object implementing list
      */
@@ -285,13 +288,13 @@ public interface Storage {
     public <T> IPersistentList<T> createScalableList(int initialSize);
 
     /**
-     * Create hierarhical hash table. Levels of tree are added on demand.
+     * Create hierarchical hash table. Levels of tree are added on demand.
      * @return persistent hash table
      */
     public <K,V> IPersistentHash<K,V> createHash();
 
     /**
-     * Create hierarhical hash table. Levels of tree are added on demand.
+     * Create hierarchical hash table. Levels of tree are added on demand.
      * @return persistent hash table
      */
     public <K,V> IPersistentHash<K,V> createHash(int pageSize, int loadFactor);
@@ -317,14 +320,14 @@ public interface Storage {
     public <K extends Comparable, V> IPersistentMap<K,V> createMap(Class keyType, int initialSize);
 
     /**
-     * Create new peristent set. Implementation of this set is based on B-Tree so it can efficiently
+     * Create new persistent set. Implementation of this set is based on B-Tree so it can efficiently
      * handle large number of objects but in case of very small set memory overhead is too high.
      * @return persistent object implementing set
      */
     public <T> IPersistentSet<T> createSet();
 
     /**
-     * Create new peristent multisetset (allowing several occurrences of the same object). 
+     * Create new persistent multiset (allowing several occurrences of the same object). 
      * Implementation of this set is based on B-Tree so it can efficiently
      * handle large number of objects but in case of very small set memory overhead is too high.
      * @return persistent object implementing set
@@ -375,7 +378,7 @@ public interface Storage {
 
     /**
      * Create new multidimensional index
-     * @param comparator multidimensinal comparator
+     * @param comparator multidimensional comparator
      * @return multidimensional index
      */
     public <T> MultidimensionalIndex<T> createMultidimensionalIndex(MultidimensionalComparator<T> comparator);
@@ -437,7 +440,7 @@ public interface Storage {
     public <T> FieldIndex<T> createFieldIndex(Class type, String fieldName, boolean unique, boolean caseInsensitive, boolean thick);
 
     /**
-     * Create new mutlifield index
+     * Create new multifield index
      * @param type objects of which type (or derived from which type) will be included in the index
      * @param fieldNames names of the index fields. Fields with such name should be present in specified class <code>type</code>
      * @param unique whether index is unique (duplicate value of keys are not allowed)
@@ -448,7 +451,7 @@ public interface Storage {
     public <T> FieldIndex<T> createFieldIndex(Class type, String[] fieldNames, boolean unique);
 
     /**
-     * Create new mutlifield index
+     * Create new multifield index
      * @param type objects of which type (or derived from which type) will be included in the index
      * @param fieldNames names of the index fields. Fields with such name should be present in specified class <code>type</code>
      * @param unique whether index is unique (duplicate value of keys are not allowed)
@@ -504,7 +507,7 @@ public interface Storage {
     public <T> FieldIndex<T> createRandomAccessFieldIndex(Class type, String fieldName, boolean unique, boolean caseInsensitive);
 
     /**
-     * Create new mutlifield index optimized for access by element position.
+     * Create new multifield index optimized for access by element position.
      * @param type objects of which type (or derived from which type) will be included in the index
      * @param fieldNames names of the index fields. Fields with such name should be present in specified class <code>type</code>
      * @param unique whether index is unique (duplicate value of keys are not allowed)
@@ -515,7 +518,7 @@ public interface Storage {
     public <T> FieldIndex<T> createRandomAccessFieldIndex(Class type, String[] fieldNames, boolean unique);
 
     /**
-     * Create new mutlifield index optimized for access by element position.
+     * Create new multifield index optimized for access by element position.
      * @param type objects of which type (or derived from which type) will be included in the index
      * @param fieldNames names of the index fields. Fields with such name should be present in specified class <code>type</code>
      * @param unique whether index is unique (duplicate value of keys are not allowed)
@@ -553,7 +556,7 @@ public interface Storage {
     public <T> Link<T> createLink();
     
     /**
-     * Create one-to-many link with specified initialy alloced size.
+     * Create one-to-many link with specified initially allocated size.
      * @param initialSize initial size of array
      * @return new empty link, new members can be added to the link later.
      */
@@ -561,7 +564,7 @@ public interface Storage {
     
     /**
      * Create relation object. Unlike link which represent embedded relation and stored
-     * inside owner object, this Relation object is standalone persisitent object
+     * inside owner object, this Relation object is standalone persistent object
      * containing references to owner and members of the relation
      * @param owner owner of the relation
      * @return object representing empty relation (relation with specified owner and no members), 
@@ -577,7 +580,7 @@ public interface Storage {
     public Blob createBlob();
 
     /**
-     * Create new random access BLOB. Create file-like object providing efficient random poistion access.
+     * Create new random access BLOB. Create file-like object providing efficient random position access.
      * @return empty BLOB
      */
     public Blob createRandomAccessBlob();
@@ -594,7 +597,7 @@ public interface Storage {
      * specified range.
      * Usually the value of this parameter should be set as
      * (number of elements in block)*(tick interval)*2. 
-     * Coefficient 2 here is used to compencate possible holes in time series.
+     * Coefficient 2 here is used to compensate for possible holes in time series.
      * For example, if we collect stocks data, we will have data only for working hours.
      * If number of element in block is 100, time series period is 1 day, then
      * value of maxBlockTimeInterval can be set as 100*(24*60*60*1000)*2
@@ -637,7 +640,7 @@ public interface Storage {
     /**
      * Set threshold for initiation of garbage collection. By default garbage collection is disable (threshold is set to
      * Long.MAX_VALUE). If it is set to the value different from Long.MAX_VALUE, GC will be started each time when
-     * delta between total size of allocated and deallocated objects exceeds specified threashold OR
+     * delta between total size of allocated and deallocated objects exceeds specified threshold OR
      * after reaching end of allocation bitmap in allocator. 
      * @param allocatedDelta delta between total size of allocated and deallocated object since last GC 
      * or storage opening 
@@ -667,14 +670,14 @@ public interface Storage {
      * if object is deallocated, its OID can be reused. In this case
      * getObjectByOID will return reference to the new object with may be
      * different type.
-     * @param oid object oid
+     * @param oid object OID
      * @return reference to the object with specified OID
      */
     public Object getObjectByOID(int oid);
 
     /**
-     * Explicitely make object peristent. Usually objects are made persistent
-     * implicitlely using "persistency on reachability apporach", but this
+     * Explicitly make object persistent. Usually objects are made persistent
+     * implicitly using "persistency on reachability approach", but this
      * method allows to do it explicitly. If object is already persistent, execution of
      * this method has no effect.
      * @param obj object to be made persistent
@@ -687,7 +690,7 @@ public interface Storage {
      * Currently the following boolean properties are supported:
      * <TABLE><TR><TH>Property name</TH><TH>Parameter type</TH><TH>Default value</TH><TH>Description</TH></TR>
      * <TR><TD><code>sodbox.implicit.values</code></TD><TD>Boolean</TD><TD>false</TD>
-     * <TD>Treate any class not derived from IPersistent as <i>value</i>. 
+     * <TD>Treat any class not derived from IPersistent as <i>value</i>. 
      * This object will be embedded inside persistent object containing reference to this object.
      * If this object is referenced from N persistent object, N instances of this object
      * will be stored in the database and after loading there will be N instances in memory. 
@@ -711,7 +714,7 @@ public interface Storage {
      * <TD>Kind of object cache. The following values are supported:
      * "strong", "weak", "soft",  "pinned", "lru". <B>Strong</B> cache uses strong (normal) 
      * references to refer persistent objects. Thus none of loaded persistent objects
-     * can be deallocated by GC. <B>Weak</B> cache usea weak references and
+     * can be deallocated by GC. <B>Weak</B> cache use a weak references and
      * soft cache - <B>soft</B> references. The main difference between soft and weak references is
      * that garbage collector is not required to remove soft referenced objects immediately
      * when object is detected to be <i>soft referenced</i>, so it may improve caching of objects. 
@@ -760,13 +763,13 @@ public interface Storage {
      * stored in OS file buffers and sooner or later them will be written to the disk)
      * </TD></TR>
      * <TR><TD><code>sodbox.alternative.btree</code></TD><TD>Boolean</TD><TD>false</TD>
-     * <TD>Use aternative implementation of B-Tree (not using direct access to database
-     * file pages). This implementation should be used in case of serialized per thread transctions.
+     * <TD>Use alternative implementation of B-Tree (not using direct access to database
+     * file pages). This implementation should be used in case of serialized per thread transactions.
      * New implementation of B-Tree will be used instead of old implementation
      * if "sodbox.alternative.btree" property is set. New B-Tree has incompatible format with 
      * old B-Tree, so you could not use old database or XML export file with new indices. 
      * Alternative B-Tree is needed to provide serializable transaction (old one could not be used).
-     * Also it provides better performance (about 3 times comaring with old implementation) because
+     * Also it provides better performance (about 3 times compared with old implementation) because
      * of object caching. And B-Tree supports keys of user defined types. 
      * </TD></TR>
      * <TR><TD><code>sodbox.background.gc</code></TD><TD>Boolean</TD><TD>false</TD>
@@ -775,16 +778,16 @@ public interface Storage {
      * <TR><TD><code>sodbox.string.encoding</code></TD><TD>String</TD><TD>null</TD>
      * <TD>Specifies encoding of storing strings in the database. By default Sodbox stores 
      * strings as sequence of chars (two bytes per char). If all strings in application are in 
-     * the same language, then using encoding  can signifficantly reduce space needed
+     * the same language, then using encoding  can significantly reduce space needed
      * to store string (about two times). But please notice, that this option has influence
      * on all strings  stored in database. So if you already have some data in the storage
      * and then change encoding, then it will cause database crash.
      * </TD></TR>
      * <TR><TD><code>sodbox.replication.ack</code></TD><TD>Boolean</TD><TD>false</TD>
-     * <TD>Request acknowledgement from slave that it receives all data before transaction
+     * <TD>Request acknowledgment from slave that it receives all data before transaction
      * commit. If this option is not set, then replication master node just writes
      * data to the socket not warring whether it reaches slave node or not.
-     * When this option is set to true, master not will wait during each transaction commit acknowledgement
+     * When this option is set to true, master not will wait during each transaction commit acknowledgment
      * from slave node. Please notice that this option should be either set or not set both
      * at slave and master node. If it is set only on one of this nodes then behavior of
      * the system is unpredicted. This option can be used both in synchronous and asynchronous replication
@@ -798,7 +801,7 @@ public interface Storage {
      * try to restore current position and continue iteration
      * </TD></TR>
      * <TR><TD><code>sodbox.slave.connection.timeout</code></TD><TD>Integer</TD><TD>60</TD>
-     * <TD>Timeout in seconds during which mastr node will try to establish connection with slave node. 
+     * <TD>Timeout in seconds during which master node will try to establish connection with slave node. 
      * If connection can not be established within specified time, then master will not perform 
      * replication to this slave node
      * </TD></TR>
@@ -872,7 +875,7 @@ public interface Storage {
      * <TR><TD><code>sodbox.global.class.extent</code></TD><TD>bool</TD><TD>true</TD>
      * <TD>This parameter is used by Database class in "auto register table" mode. 
      * In this mode Sodbox automatically creates indices (class extents) for all derived classes of the inserted object 
-     * if there are no such class extents yet. It include class extent for Perstistent class allowing to enumerate all
+     * if there are no such class extents yet. It include class extent for Persistent class allowing to enumerate all
      * objects in the storage. If such list is not needed, then this option can be set to false to 
      * eliminate extra index maintenance overhead.
      * </TD></TR>
@@ -911,7 +914,7 @@ public interface Storage {
     public java.util.Properties getProperties();
 
     /**
-     * Merge results of several index searches. This method efficiently merge selections without loading objects themselve
+     * Merge results of several index searches. This method efficiently merge selections without loading objects themselves
      * @param selections selections to be merged
      * @return Iterator through merged result
      */
@@ -919,9 +922,9 @@ public interface Storage {
 
     
     /**
-     * Join results of several index searches. This method efficiently join selections without loading objects themselve
+     * Join results of several index searches. This method efficiently join selections without loading objects themselves
      * @param selections selections to be merged
-     * @return Iterator through joineded result
+     * @return Iterator through joined result
      */
     public Iterator join(Iterator[] selections);
  
@@ -951,7 +954,7 @@ public interface Storage {
      * garbage collector in this case.</p> 
      */
     public java.util.HashMap<Class,MemoryUsage> getMemoryDump();
-    
+ 
     /**
      * Get total size of all allocated objects in the database
      */
@@ -1034,7 +1037,7 @@ public interface Storage {
     public ThreadTransactionContext setTransactionContext(ThreadTransactionContext ctx);
 
     /**
-     * Set custom serializer used fot packing/unpacking fields of persistent objects which types implemplemet 
+     * Set custom serializer used for packing/unpacking fields of persistent objects which types implement 
      * CustomSerializable interface
      */
     public void setCustomSerializer(CustomSerializer serializer);
@@ -1051,7 +1054,7 @@ public interface Storage {
     /**
      * Get version of database format for this database. When new database is created it is
      * always assigned the current database format version
-     * @return databasse format version
+     * @return database format version
      */
     public int getDatabaseFormatVersion();
 
@@ -1075,7 +1078,7 @@ public interface Storage {
     public void load(Object obj);
 
     /**
-     * Deallocaste object
+     * Deallocate object
      * @param obj deallocated object
      */
     public void deallocate(Object obj);
@@ -1123,7 +1126,7 @@ public interface Storage {
     public static final int IBM_JAVA5_COMPATIBILITY_MODE = 1;
 
     /**
-     * Do not store information about class loaders when serialising objects with custime class loaders
+     * Do not store information about class loaders when serializing objects with custom class loaders
      */
     public static final int CLASS_LOADER_SERIALIZATION_COMPATIBILITY_MODE = 2;
 }
