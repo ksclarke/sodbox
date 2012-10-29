@@ -8,10 +8,10 @@ package info.freelibrary.sodbox;
  * <code>java.lang.Class</code> class.
  */
 public class MemoryUsage {
+
 	/**
-	 * Class of persistent object or Storage for database internal data
+	 * Class of persistent object or Storage for database internal data.
 	 */
-	@SuppressWarnings("unchecked")
 	public Class myClass;
 
 	/**
@@ -20,7 +20,7 @@ public class MemoryUsage {
 	public int nInstances;
 
 	/**
-	 * Total size of all reachable instances
+	 * Total size of all reachable instances.
 	 */
 	public long totalSize;
 
@@ -29,15 +29,15 @@ public class MemoryUsage {
 	 * objects using quantums, for example object with size 25 bytes will use 32
 	 * bytes in the storage. In item associated with Storage class this field
 	 * contains size of all allocated space in the database (marked as used in
-	 * bitmap)
+	 * bitmap).
 	 */
 	public long allocatedSize;
 
 	/**
 	 * MemoryUsage constructor
 	 */
-	@SuppressWarnings("unchecked")
 	public MemoryUsage(Class aClass) {
 		myClass = aClass;
 	}
+
 }

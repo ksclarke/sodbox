@@ -1,28 +1,29 @@
 package info.freelibrary.sodbox;
 
 /**
- * Base class for persistent comparator used in SortedCollection class
+ * Base class for persistent comparator used in SortedCollection class.
  */
-
 public abstract class PersistentComparator<T> extends Persistent {
 
 	/**
-	 * Compare two members of collection
+	 * Compare two members of collection.
 	 * 
-	 * @param m1 first members
-	 * @param m2 second members
-	 * @return negative number if m1 &lt; m2, zero if m1 == m2 and positive
-	 *         number if m1 &gt; m2
+	 * @param aMember1 A first member
+	 * @param aMember2 A second member
+	 * @return Negative number if aMember1 &lt; aMember2, zero if aMember1 ==
+	 *         aMember2 and positive number if aMember1 &gt; aMember2
 	 */
-	public abstract int compareMembers(T m1, T m2);
+	public abstract int compareMembers(T aMember1, T aMember2);
 
 	/**
-	 * Compare member with specified search key
+	 * Compare member with specified search key.
 	 * 
-	 * @param mbr collection member
+	 * @param aMember collection member
 	 * @param key search key
-	 * @return negative number if mbr &lt; key, zero if mbr == key and positive
-	 *         number if mbr &gt; key
+	 * @return negative number if <code>aMember</code> &lt; key, zero if
+	 *         <code>aMember</code> == key and positive number if
+	 *         <code>aMember</code> &gt; key
 	 */
-	public abstract int compareMemberWithKey(T mbr, Object key);
+	public abstract int compareMemberWithKey(T aMember, Object key);
+
 }

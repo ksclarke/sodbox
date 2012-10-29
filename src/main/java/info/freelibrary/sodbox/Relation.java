@@ -1,15 +1,14 @@
 package info.freelibrary.sodbox;
 
 /**
- * Class representing relation between owner and members
+ * Class representing relation between owner and members.
  */
 public abstract class Relation<M, O> extends Persistent implements Link<M> {
 
 	private O owner;
-	
-	protected Relation() {
-	}
-	
+
+	protected Relation() {}
+
 	/**
 	 * Relation constructor. Creates empty relation with specified owner and no
 	 * members. Members can be added to the relation later.
@@ -19,9 +18,9 @@ public abstract class Relation<M, O> extends Persistent implements Link<M> {
 	public Relation(O owner) {
 		this.owner = owner;
 	}
-	
+
 	/**
-	 * Get relation owner
+	 * Get relation owner.
 	 * 
 	 * @return owner of the relation
 	 */
@@ -30,7 +29,7 @@ public abstract class Relation<M, O> extends Persistent implements Link<M> {
 	}
 
 	/**
-	 * Set relation owner
+	 * Set relation owner.
 	 * 
 	 * @param owner new owner of the relation
 	 */
@@ -38,4 +37,5 @@ public abstract class Relation<M, O> extends Persistent implements Link<M> {
 		this.owner = owner;
 		modify();
 	}
+
 }

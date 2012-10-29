@@ -7,7 +7,7 @@ import java.util.Iterator;
  * Collection of version of versioned object. Versioned object should be access
  * through version history object. Instead of storing direct reference to
  * Version in some component of some other persistent object, it is necessary to
- * store reference to it's VersionHistory.
+ * store reference to it's <code>VersionHistory</code>.
  */
 public class VersionHistory<V extends Version> extends PersistentResource {
 
@@ -15,7 +15,7 @@ public class VersionHistory<V extends Version> extends PersistentResource {
 	V current;
 
 	/**
-	 * Create new version history
+	 * Create new version history.
 	 * 
 	 * @param root root version
 	 */
@@ -29,17 +29,17 @@ public class VersionHistory<V extends Version> extends PersistentResource {
 
 	/**
 	 * Get current version in version history. Current version can be explicitly
-	 * set by setVersion or result of last checkOut is used as current version
+	 * set by setVersion or result of last checkOut is used as current version.
 	 */
 	public synchronized V getCurrent() {
 		return current;
 	}
 
 	/**
-	 * Set new current version in version history
+	 * Set new current version in version history.
 	 * 
 	 * @param version new current version in version history (it must belong to
-	 *            version history)
+	 *        version history)
 	 */
 	public synchronized void setCurrent(V version) {
 		current = version;
@@ -48,7 +48,7 @@ public class VersionHistory<V extends Version> extends PersistentResource {
 
 	/**
 	 * Checkout current version: create successor of the current version. This
-	 * version has to be checked-in in order to be placed in version history
+	 * version has to be checked-in in order to be placed in version history.
 	 * 
 	 * @return checked-out version
 	 */
@@ -59,7 +59,7 @@ public class VersionHistory<V extends Version> extends PersistentResource {
 	}
 
 	/**
-	 * Get root version
+	 * Get root version.
 	 * 
 	 * @return root version in this version history
 	 */
@@ -68,10 +68,10 @@ public class VersionHistory<V extends Version> extends PersistentResource {
 	}
 
 	/**
-	 * Get latest version before specified date
+	 * Get latest version before specified date.
 	 * 
 	 * @param timestamp deadline, if <code>null</code> then the latest version
-	 *            in version history will be returned
+	 *        in version history will be returned
 	 * @return version with the largest timestamp less than or equal to
 	 *         specified <code>timestamp</code>
 	 */
@@ -98,10 +98,10 @@ public class VersionHistory<V extends Version> extends PersistentResource {
 	}
 
 	/**
-	 * Get earliest version after specified date
+	 * Get earliest version after specified date.
 	 * 
 	 * @param timestamp deadline, if <code>null</code> then root version will be
-	 *            returned
+	 *        returned
 	 * @return version with the smallest timestamp greater than or equal to
 	 *         specified <code>timestamp</code>
 	 */
@@ -129,7 +129,7 @@ public class VersionHistory<V extends Version> extends PersistentResource {
 
 	/**
 	 * Get version with specified label. If there are more than one version
-	 * marked with this label, then the latest one will be returned
+	 * marked with this label, then the latest one will be returned.
 	 * 
 	 * @param label version label
 	 * @return latest version with specified label
@@ -165,7 +165,7 @@ public class VersionHistory<V extends Version> extends PersistentResource {
 	}
 
 	/**
-	 * Get all versions in version history
+	 * Get all versions in version history.
 	 * 
 	 * @return array of versions sorted by date
 	 */
@@ -175,7 +175,7 @@ public class VersionHistory<V extends Version> extends PersistentResource {
 
 	/**
 	 * Get iterator through all version in version history Iteration is started
-	 * from the root version and performed in direction of increaing version
+	 * from the root version and performed in direction of increasing version
 	 * timestamp This iterator supports remove() method.
 	 * 
 	 * @return version iterator
@@ -183,4 +183,5 @@ public class VersionHistory<V extends Version> extends PersistentResource {
 	public synchronized Iterator<V> iterator() {
 		return versions.iterator();
 	}
+
 }

@@ -65,4 +65,5 @@ public class ThreadSafeIterator<T> extends IterableIterator<T> {
 		myCollection.unlock();
 		next = null;
 	}
+
 }

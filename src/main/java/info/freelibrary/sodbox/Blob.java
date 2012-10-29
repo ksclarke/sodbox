@@ -1,7 +1,7 @@
 package info.freelibrary.sodbox;
 
 /**
- * Interface to store/fetch large binary objects
+ * Interface to store/fetch large binary objects.
  */
 public interface Blob extends IPersistent, IResource {
 
@@ -9,10 +9,10 @@ public interface Blob extends IPersistent, IResource {
 	int DOUBLE_SEGMENT_SIZE = 2;
 	int TRUNCATE_LAST_SEGMENT = 4;
 	int APPEND = 8;
-	
+
 	/**
 	 * Get input stream. InputStream.availabe method can be used to get BLOB
-	 * size
+	 * size.
 	 * 
 	 * @return input stream with BLOB data
 	 */
@@ -29,27 +29,27 @@ public interface Blob extends IPersistent, IResource {
 	 * Get output stream to append data to the BLOB.
 	 * 
 	 * @param multisession whether BLOB allows further appends of data or
-	 *            closing this output streat means that BLOB will not be changed
-	 *            any more.
+	 *        closing this output stream means that BLOB will not be changed any
+	 *        more
 	 * @return output stream
 	 */
 	RandomAccessOutputStream getOutputStream(boolean multisession);
 
 	/**
-	 * Get output stream with specified current postion in BLOB.
+	 * Get output stream with specified current position in BLOB.
 	 * 
 	 * @param position current position in BLOB, if less than zero, than data
-	 *            will be appended to the BLOB
+	 *        will be appended to the BLOB
 	 * @param multisession whether BLOB allows further appends of data or
-	 *            closing this output streat means that BLOB will not be changed
-	 *            any more.
+	 *        closing this output stream means that BLOB will not be changed any
+	 *        more
 	 * @return output stream
 	 */
 	RandomAccessOutputStream getOutputStream(long position, boolean multisession);
 
 	/**
 	 * Get input stream. InputStream.availabe method can be used to get BLOB
-	 * size
+	 * size.
 	 * 
 	 * @param flags bit mask of BLOB flags: ENABLE_SEGMENT_CACHING
 	 * @return input stream with BLOB data
@@ -60,7 +60,7 @@ public interface Blob extends IPersistent, IResource {
 	 * Get output stream to append data to the BLOB.
 	 * 
 	 * @param flags bit mask of BLOB flags: ENABLE_SEGMENT_CACHING,
-	 *            DOUBLE_SEGMENT_SIZE, TRUNCATE_LAST_SEGMENT, APPEND
+	 *        DOUBLE_SEGMENT_SIZE, TRUNCATE_LAST_SEGMENT, APPEND
 	 * @return output stream
 	 */
 	RandomAccessOutputStream getOutputStream(int flags);

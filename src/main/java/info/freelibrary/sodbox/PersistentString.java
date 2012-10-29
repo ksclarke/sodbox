@@ -4,16 +4,16 @@ package info.freelibrary.sodbox;
  * Class encapsulating native Java string. java.lang.String is not persistent
  * object so it can not be stored in Sodbox as independent persistent object.
  * But sometimes it is needed. This class sole this problem providing implicit
- * conversion operator from java.lang.String to PerisstentString. Also
- * PersistentString class is mutable, allowing to change it's values.
+ * conversion operator from java.lang.String to <code>PersistentString</code>.
+ * Also <code>PersistentString</code> class is mutable, allowing to change it's
+ * values.
  */
 public class PersistentString extends PersistentResource {
 
-
 	private String myString;
-	
+
 	/**
-	 * Constructor of persistent string
+	 * Constructor of persistent string.
 	 * 
 	 * @param aString A Java string
 	 */
@@ -22,11 +22,10 @@ public class PersistentString extends PersistentResource {
 	}
 
 	@SuppressWarnings("unused")
-	private PersistentString() {
-	}
+	private PersistentString() {}
 
 	/**
-	 * Get Java string
+	 * Get Java string.
 	 * 
 	 * @return Java string
 	 */
@@ -35,7 +34,8 @@ public class PersistentString extends PersistentResource {
 	}
 
 	/**
-	 * Append string to the current string value of PersistentString
+	 * Append string to the current string value of
+	 * <code>PersistentString</code>.
 	 * 
 	 * @param tail appended string
 	 */
@@ -45,7 +45,7 @@ public class PersistentString extends PersistentResource {
 	}
 
 	/**
-	 * Assign new string value to the PersistentString
+	 * Assign new string value to the <code>PersistentString</code>.
 	 * 
 	 * @param aString new string value
 	 */
@@ -55,11 +55,12 @@ public class PersistentString extends PersistentResource {
 	}
 
 	/**
-	 * Get current string value
+	 * Get current string value.
 	 * 
 	 * @return Java string
 	 */
 	public String get() {
 		return myString;
 	}
+
 }

@@ -9,6 +9,7 @@ package info.freelibrary.sodbox;
  * @see info.freelibrary.sodbox.AssertionFailed
  */
 public class Assert {
+
 	/**
 	 * Check specified condition and raise <code>AssertionFailed</code>
 	 * exception if it is not true.
@@ -47,4 +48,5 @@ public class Assert {
 	public static final void failed(String description) {
 		throw new AssertionFailed(description);
 	}
+
 }

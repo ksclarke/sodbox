@@ -12,12 +12,13 @@ import java.lang.reflect.Field;
  * object type.
  */
 public interface FieldIndex<T> extends GenericIndex<T> {
+
 	/**
 	 * Put new object in the index.
 	 * 
 	 * @param obj object to be inserted in index. Object should contain indexed
-	 *            field. Object can be not yet persistent, in this case its
-	 *            forced to become persistent by assigning OID to it.
+	 *        field. Object can be not yet persistent, in this case its forced
+	 *        to become persistent by assigning OID to it.
 	 * @return <code>true</code> if object is successfully inserted in the
 	 *         index, <code>false</code> if index was declared as unique and
 	 *         there is already object with such value of the key in the index.
@@ -30,8 +31,8 @@ public interface FieldIndex<T> extends GenericIndex<T> {
 	 * removed from the index and new value associated with this key.
 	 * 
 	 * @param obj object to be inserted in index. Object should contain indexed
-	 *            field. Object can be not yet persistent, in this case its
-	 *            forced to become persistent by assigning OID to it.
+	 *        field. Object can be not yet persistent, in this case its forced
+	 *        to become persistent by assigning OID to it.
 	 * @return object previously associated with this key, <code>null</code> if
 	 *         there was no such object
 	 */
@@ -42,38 +43,38 @@ public interface FieldIndex<T> extends GenericIndex<T> {
 	 * insert object in the index.
 	 * 
 	 * @param obj object to be inserted in index. Object should contain indexed
-	 *            field of integer (<code>int</code> or <code>long</code>) type.
-	 *            This field is assigned unique value (which will not be reused
-	 *            while this index exists) and object is marked as modified.
-	 *            Object can be not yet persistent, in this case its forced to
-	 *            become persistent by assigning OID to it.
+	 *        field of integer (<code>int</code> or <code>long</code>) type.
+	 *        This field is assigned unique value (which will not be reused
+	 *        while this index exists) and object is marked as modified. Object
+	 *        can be not yet persistent, in this case its forced to become
+	 *        persistent by assigning OID to it.
 	 * @exception StorageError(StorageError.INCOMPATIBLE_KEY_TYPE) when indexed
-	 *                field has type other than <code>int</code> or
-	 *                <code>long</code>
+	 *            field has type other than <code>int</code> or
+	 *            <code>long</code>
 	 */
 	public void append(T obj);
 
 	/**
-	 * Remove object with specified key from the unique index
+	 * Remove object with specified key from the unique index.
 	 * 
 	 * @param key value of removed key
 	 * @return removed object
 	 * @exception StorageError(StorageError.KEY_NOT_FOUND) exception if there is
-	 *                no such key in the index, or
-	 *                StorageError(StorageError.KEY_NOT_UNIQUE) if index is not
-	 *                unique.
+	 *            no such key in the index, or
+	 *            StorageError(StorageError.KEY_NOT_UNIQUE) if index is not
+	 *            unique.
 	 */
 	public T remove(Key key);
 
 	/**
-	 * Remove object with specified key from the unique index
+	 * Remove object with specified key from the unique index.
 	 * 
 	 * @param key value of removed key
 	 * @return removed object
 	 * @exception StorageError(StorageError.KEY_NOT_FOUND) exception if there is
-	 *                no such key in the index, or
-	 *                StorageError(StorageError.KEY_NOT_UNIQUE) if index is not
-	 *                unique.
+	 *            no such key in the index, or
+	 *            StorageError(StorageError.KEY_NOT_UNIQUE) if index is not
+	 *            unique.
 	 */
 	public T removeKey(Object key);
 
@@ -81,31 +82,31 @@ public interface FieldIndex<T> extends GenericIndex<T> {
 	 * Check if index contains specified object instance.
 	 * 
 	 * @param obj object to be searched in the index. Object should contain
-	 *            indexed field.
+	 *        indexed field.
 	 * @return <code>true</code> if object is present in the index,
 	 *         <code>false</code> otherwise
 	 */
 	public boolean containsObject(T obj);
 
 	/**
-	 * Get class object objects which can be inserted in this index
+	 * Get class object objects which can be inserted in this index.
 	 * 
 	 * @return class specified in Storage.createFielIndex method
 	 */
-	@SuppressWarnings("unchecked")
 	public Class getIndexedClass();
 
 	/**
-	 * Get fields used as a key
+	 * Get fields used as a key.
 	 * 
 	 * @return array of index key fields
 	 */
 	public Field[] getKeyFields();
 
 	/**
-	 * Check if field index is case insensitive
+	 * Check if field index is case insensitive.
 	 * 
 	 * @return true if index ignore case of string keys
 	 */
 	boolean isCaseInsensitive();
+
 }

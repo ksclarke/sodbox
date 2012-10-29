@@ -14,23 +14,24 @@ import java.util.RandomAccess;
  * persistent class created by Storage.createRelation method.
  */
 public interface Link<T> extends List<T>, RandomAccess {
+
 	/**
-	 * Set number of the linked objects
+	 * Set number of the linked objects.
 	 * 
 	 * @param newSize new number of linked objects (if it is greater than
-	 *            original number, than extra elements will be set to null)
+	 *        original number, than extra elements will be set to null)
 	 */
 	public void setSize(int newSize);
 
 	/**
-	 * Returns <tt>true</tt> if there are no related object
+	 * Returns <tt>true</tt> if there are no related object.
 	 * 
 	 * @return <tt>true</tt> if there are no related object
 	 */
 	boolean isEmpty();
 
 	/**
-	 * Get related object by index
+	 * Get related object by index.
 	 * 
 	 * @param i index of the object in the relation
 	 * @return referenced object
@@ -40,7 +41,7 @@ public interface Link<T> extends List<T>, RandomAccess {
 	/**
 	 * Get related object by index without loading it. Returned object can be
 	 * used only to get it OID or to compare with other objects using
-	 * <code>equals</code> method
+	 * <code>equals</code> method.
 	 * 
 	 * @param i index of the object in the relation
 	 * @return stub representing referenced object
@@ -48,7 +49,7 @@ public interface Link<T> extends List<T>, RandomAccess {
 	public Object getRaw(int i);
 
 	/**
-	 * Replace i-th element of the relation
+	 * Replace i-th element of the relation.
 	 * 
 	 * @param i index in the relation
 	 * @param obj object to be included in the relation
@@ -60,7 +61,7 @@ public interface Link<T> extends List<T>, RandomAccess {
 	 * Assign value to i-th element of the relation. Unlike Link.set methods
 	 * this method doesn't return previous value of the element and so is faster
 	 * if previous element value is not needed (it has not to be fetched from
-	 * the database)
+	 * the database).
 	 * 
 	 * @param i index in the relation
 	 * @param obj object to be included in the relation
@@ -70,14 +71,14 @@ public interface Link<T> extends List<T>, RandomAccess {
 	/**
 	 * Remove object with specified index from the relation Unlike Link.remove
 	 * method this method doesn't return removed element and so is faster if it
-	 * is not needed (it has not to be fetched from the database)
+	 * is not needed (it has not to be fetched from the database).
 	 * 
 	 * @param i index in the relation
 	 */
 	public void removeObject(int i);
 
 	/**
-	 * Insert new object in the relation
+	 * Insert new object in the relation.
 	 * 
 	 * @param i insert position, should be in [0,size()]
 	 * @param obj object inserted in the relation
@@ -85,24 +86,24 @@ public interface Link<T> extends List<T>, RandomAccess {
 	public void insert(int i, T obj);
 
 	/**
-	 * Add all elements of the array to the relation
+	 * Add all elements of the array to the relation.
 	 * 
 	 * @param arr array of objects which should be added to the relation
 	 */
 	public void addAll(T[] arr);
 
 	/**
-	 * Add specified elements of the array to the relation
+	 * Add specified elements of the array to the relation.
 	 * 
 	 * @param arr array of objects which should be added to the relation
 	 * @param from index of the first element in the array to be added to the
-	 *            relation
+	 *        relation
 	 * @param length number of elements in the array to be added in the relation
 	 */
 	public void addAll(T[] arr, int from, int length);
 
 	/**
-	 * Add all object members of the other relation to this relation
+	 * Add all object members of the other relation to this relation.
 	 * 
 	 * @param link another relation
 	 */
@@ -122,15 +123,13 @@ public interface Link<T> extends List<T>, RandomAccess {
 	 * is that of the specified array. If the index fits in the specified array,
 	 * it is returned therein. Otherwise, a new array is allocated with the
 	 * runtime type of the specified array and the size of this index.
-	 * <p>
 	 * 
 	 * If this index fits in the specified array with room to spare (i.e., the
 	 * array has more elements than this index), the element in the array
 	 * immediately following the end of the index is set to <tt>null</tt>. This
 	 * is useful in determining the length of this index <i>only</i> if the
 	 * caller knows that this index does not contain any <tt>null</tt>
-	 * elements.)
-	 * <p>
+	 * elements).
 	 * 
 	 * @return array of object with relation members
 	 */
@@ -138,7 +137,7 @@ public interface Link<T> extends List<T>, RandomAccess {
 	public <T> T[] toArray(T[] arr);
 
 	/**
-	 * Checks if relation contains specified object instance
+	 * Checks if relation contains specified object instance.
 	 * 
 	 * @param obj specified object
 	 * @return <code>true</code> if object is present in the collection,
@@ -147,19 +146,19 @@ public interface Link<T> extends List<T>, RandomAccess {
 	public boolean containsObject(T obj);
 
 	/**
-	 * Check if i-th element of Link is the same as specified obj
+	 * Check if i-th element of Link is the same as specified object.
 	 * 
 	 * @param i element index
-	 * @param obj object to compare with
+	 * @param aObject object to compare with
 	 * @return <code>true</code> if i-th element of Link reference the same
-	 *         object as "obj"
+	 *         object as aObject
 	 */
-	public boolean containsElement(int i, T obj);
+	public boolean containsElement(int i, T aObject);
 
 	/**
 	 * Get index of the specified object instance in the relation. This method
 	 * use comparison by object identity (instead of equals() method) and is
-	 * significantly faster than List.indexOf() method
+	 * significantly faster than List.indexOf() method.
 	 * 
 	 * @param obj specified object instance
 	 * @return zero based index of the object or -1 if object is not in the
@@ -170,7 +169,7 @@ public interface Link<T> extends List<T>, RandomAccess {
 	/**
 	 * Get index of the specified object instance in the relation This method
 	 * use comparison by object identity (instead of equals() method) and is
-	 * significantly faster than List.indexOf() method
+	 * significantly faster than List.indexOf() method.
 	 * 
 	 * @param obj specified object instance
 	 * @return zero based index of the object or -1 if object is not in the
@@ -179,7 +178,7 @@ public interface Link<T> extends List<T>, RandomAccess {
 	public int lastIndexOfObject(Object obj);
 
 	/**
-	 * Remove all members from the relation
+	 * Remove all members from the relation.
 	 */
 	public void clear();
 
@@ -202,7 +201,7 @@ public interface Link<T> extends List<T>, RandomAccess {
 	 * Replace references to elements with direct references. It will improve
 	 * speed of manipulations with links, but it can cause recursive loading in
 	 * memory large number of objects and as a result - memory overflow, because
-	 * garbage collector will not be able to collect them
+	 * garbage collector will not be able to collect them.
 	 */
 	public void pin();
 
@@ -218,4 +217,5 @@ public interface Link<T> extends List<T>, RandomAccess {
 	 * unpredictable behavior of the program.
 	 */
 	public void deallocateMembers();
+
 }

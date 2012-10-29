@@ -2,9 +2,8 @@ package info.freelibrary.sodbox;
 
 /**
  * Base class for multidimensional persistent comparator used in
- * multidimensional index
+ * multidimensional index.
  */
-
 public abstract class MultidimensionalComparator<T> extends Persistent {
 
 	public static final int LEFT_UNDEFINED = -2;
@@ -15,7 +14,7 @@ public abstract class MultidimensionalComparator<T> extends Persistent {
 	public static final int NE = 3;
 
 	/**
-	 * Compare i-th component of two objects
+	 * Compare i-th component of two objects.
 	 * 
 	 * @param m1 first object
 	 * @param m2 second object
@@ -29,7 +28,7 @@ public abstract class MultidimensionalComparator<T> extends Persistent {
 	public abstract int compare(T m1, T m2, int i);
 
 	/**
-	 * Get number of dimensions
+	 * Get number of dimensions.
 	 * 
 	 * @return number of dimensions
 	 */
@@ -37,7 +36,7 @@ public abstract class MultidimensionalComparator<T> extends Persistent {
 
 	/**
 	 * Create clone of the specified object containing a copy of the specified
-	 * field
+	 * field.
 	 * 
 	 * @param obj original object
 	 * @param i component index
@@ -49,6 +48,6 @@ public abstract class MultidimensionalComparator<T> extends Persistent {
 		super(storage);
 	}
 
-	protected MultidimensionalComparator() {
-	}
+	protected MultidimensionalComparator() {}
+
 }

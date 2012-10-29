@@ -1,8 +1,10 @@
 package info.freelibrary.sodbox;
 
-import java.io.*;
-import java.nio.*;
-import java.nio.channels.*;
+import java.io.IOException;
+import java.io.RandomAccessFile;
+import java.nio.MappedByteBuffer;
+import java.nio.channels.FileLock;
+import java.nio.channels.FileChannel;
 
 /**
  * Class using NIO mapping file on virtual mapping. Using this class instead
@@ -122,4 +124,5 @@ public class MappedFile implements IFile {
 			throw new StorageError(StorageError.FILE_ACCESS_ERROR, x);
 		}
 	}
+
 }

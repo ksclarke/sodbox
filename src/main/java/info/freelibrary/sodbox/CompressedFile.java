@@ -62,18 +62,15 @@ public class CompressedFile implements IFile {
 		}
 	}
 
-	public void sync() {
-	}
+	public void sync() {}
 
 	public boolean tryLock(boolean shared) {
 		return true;
 	}
 
-	public void lock(boolean shared) {
-	}
+	public void lock(boolean shared) {}
 
-	public void unlock() {
-	}
+	public void unlock() {}
 
 	public void close() {
 		try {
@@ -93,7 +90,7 @@ public class CompressedFile implements IFile {
 	 * Constructor of compressed file
 	 * 
 	 * @param path path to the archive previously prepared by CompressDatabase
-	 *            utility
+	 *        utility
 	 */
 	public CompressedFile(String path) {
 		try {
@@ -113,4 +110,5 @@ public class CompressedFile implements IFile {
 			throw new StorageError(StorageError.FILE_ACCESS_ERROR);
 		}
 	}
+
 }

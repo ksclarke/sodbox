@@ -9,17 +9,19 @@ package info.freelibrary.sodbox;
  * provide you own implementation of embedded links.
  */
 public interface EmbeddedLink<T> extends Link<T> {
+
 	/**
-	 * Set container object for this embedded link
+	 * Set container object for this embedded link.
 	 * 
 	 * @param obj container object
 	 */
 	void setOwner(Object obj);
 
 	/**
-	 * Get container object for this embedded link
+	 * Get container object for this embedded link.
 	 * 
 	 * @return container object
 	 */
 	Object getOwner();
+
 }

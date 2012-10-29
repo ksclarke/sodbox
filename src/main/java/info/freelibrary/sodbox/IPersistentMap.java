@@ -3,11 +3,11 @@ package info.freelibrary.sodbox;
 import java.util.SortedMap;
 
 /**
- * Interface of persistent map
+ * Interface of persistent map.
  */
-@SuppressWarnings("unchecked")
 public interface IPersistentMap<K extends Comparable, V> extends
 		SortedMap<K, V>, IPersistent, IResource {
+
 	/**
 	 * Get entry for the specified key. This method can be used to obtains both
 	 * key and value. It is needed when key is persistent object.
@@ -17,4 +17,5 @@ public interface IPersistentMap<K extends Comparable, V> extends
 	 *         the map
 	 */
 	Entry<K, V> getEntry(Object key);
+
 }

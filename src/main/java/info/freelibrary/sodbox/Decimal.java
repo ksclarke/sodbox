@@ -8,9 +8,7 @@ package info.freelibrary.sodbox;
  * number having the same precision and width.
  */
 public class Decimal extends Number implements Comparable<Decimal>, IValue {
-	/**
-	 * 
-	 */
+
 	private static final long serialVersionUID = -975937002307937042L;
 
 	private long value;
@@ -88,7 +86,7 @@ public class Decimal extends Number implements Comparable<Decimal>, IValue {
 	 * 
 	 * @param value scaled value of the number, i.e. 123456 for 1234.56
 	 * @param nIntegerDigits maximal number of digits in integer part of the
-	 *            number
+	 *        number
 	 * @param nFractionDigits number of digits in fractional part of the number
 	 */
 	public Decimal(long value, int nIntegerDigits, int nFractionDigits) {
@@ -106,7 +104,7 @@ public class Decimal extends Number implements Comparable<Decimal>, IValue {
 	 * 
 	 * @param value floating point value
 	 * @param nIntegerDigits maximal number of digits in integer part of the
-	 *            number
+	 *        number
 	 * @param nFractionDigits number of digits in fractional part of the number
 	 */
 	public Decimal(double value, int nIntegerDigits, int nFractionDigits) {
@@ -120,7 +118,7 @@ public class Decimal extends Number implements Comparable<Decimal>, IValue {
 	 * 
 	 * @param value string representation of the number
 	 * @param nIntegerDigits maximal number of digits in integer part of the
-	 *            number
+	 *        number
 	 * @param nFractionDigits number of digits in fractional part of the number
 	 */
 	public Decimal(String value, int nIntegerDigits, int nFractionDigits) {
@@ -168,7 +166,7 @@ public class Decimal extends Number implements Comparable<Decimal>, IValue {
 	 * Constructor of decimal number from string representation. Maximal number
 	 * of digits in integer and fractional part of the number are calculated
 	 * based on the given string value, i.e. for string "00123.45" it will be 5
-	 * and 2 correspondently
+	 * and 2.
 	 * 
 	 * @param value string representation of the number
 	 */
@@ -225,7 +223,7 @@ public class Decimal extends Number implements Comparable<Decimal>, IValue {
 
 	/**
 	 * Create decimal with the same formating as the target object and specified
-	 * integer value
+	 * integer value.
 	 * 
 	 * @param value integer value
 	 * @return created decimal number with the same format as target object
@@ -241,7 +239,7 @@ public class Decimal extends Number implements Comparable<Decimal>, IValue {
 
 	/**
 	 * Create decimal with the same formating as the target object and specified
-	 * floating point value
+	 * floating point value.
 	 * 
 	 * @param value floating point value
 	 * @return created decimal number with the same format as target object
@@ -253,7 +251,7 @@ public class Decimal extends Number implements Comparable<Decimal>, IValue {
 
 	/**
 	 * Create decimal with the same formating as the target object and specified
-	 * string value
+	 * string value.
 	 * 
 	 * @param value string value
 	 * @return created decimal number with the same format as target object
@@ -262,8 +260,7 @@ public class Decimal extends Number implements Comparable<Decimal>, IValue {
 		return new Decimal(value, getIntegerDigits(), getFractionDigits());
 	}
 
-	private Decimal() {
-	}
+	private Decimal() {}
 
 	/**
 	 * Add two decimal numbers. The values should have the same with and
@@ -391,20 +388,19 @@ public class Decimal extends Number implements Comparable<Decimal>, IValue {
 	}
 
 	/**
-	 * Returns the closest integer to the decimal value
+	 * Returns the closest integer to the decimal value.
 	 * 
 	 * @return the closest integer to the decimal value
 	 */
 	public long round() {
 		calculateScale();
 		return (value < 0 ? ((value >> 8) - scale / 2 + 1)
-				: ((value >> 8) + scale / 2))
-				/ scale;
+				: ((value >> 8) + scale / 2)) / scale;
 	}
 
 	/**
 	 * Returns the largest (closest to positive infinity) integer value that is
-	 * less than or equal to this decimal value
+	 * less than or equal to this decimal value.
 	 * 
 	 * @return the largest (closest to positive infinity) integer value that is
 	 *         less than or equal to this decimal value
@@ -416,7 +412,7 @@ public class Decimal extends Number implements Comparable<Decimal>, IValue {
 
 	/**
 	 * Returns the smallest (closest to negative infinity) integer value that is
-	 * greater than or equal to this decimal value
+	 * greater than or equal to this decimal value.
 	 * 
 	 * @return the smallest (closest to negative infinity) integer value that is
 	 *         greater than or equal to this decimal value
@@ -479,7 +475,7 @@ public class Decimal extends Number implements Comparable<Decimal>, IValue {
 	}
 
 	/**
-	 * Get readable representation of decimal number
+	 * Get readable representation of decimal number.
 	 */
 	public String toString() {
 		calculateScale();
@@ -490,7 +486,7 @@ public class Decimal extends Number implements Comparable<Decimal>, IValue {
 	}
 
 	/**
-	 * Get readable representation of decimal number using specified filler
+	 * Get readable representation of decimal number using specified filler.
 	 * 
 	 * @param filler character for padding integer part of the string
 	 */
@@ -505,9 +501,9 @@ public class Decimal extends Number implements Comparable<Decimal>, IValue {
 	/**
 	 * Get string representation of the given decimal number which been compared
 	 * with another such string representation of decimal number will produce
-	 * the same comparison result as of original decimal numbers
+	 * the same comparison result as of original decimal numbers.
 	 * 
-	 * @return string which cn be used in comparison insteadof decimal value
+	 * @return string which can be used in comparison instead of decimal value
 	 */
 	public String toLexicographicString() {
 		calculateScale();
@@ -517,4 +513,5 @@ public class Decimal extends Number implements Comparable<Decimal>, IValue {
 				+ pad(((value >> 8) + maxValue) % scale, getFractionDigits(),
 						'0');
 	}
+
 }

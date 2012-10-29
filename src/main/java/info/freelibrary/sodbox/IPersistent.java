@@ -1,24 +1,25 @@
 package info.freelibrary.sodbox;
 
 /**
- * Interface of all persistent capable objects
+ * Interface of all persistent capable objects.
  */
 public interface IPersistent extends ILoadable, IStoreable,
 		java.io.Externalizable {
+
 	/**
-	 * Load object from the database (if needed)
+	 * Load object from the database (if needed).
 	 */
 	public void load();
 
 	/**
-	 * Check if object is stub and has to be loaded from the database
+	 * Check if object is stub and has to be loaded from the database.
 	 * 
 	 * @return <code>true</code> if object has to be loaded from the database
 	 */
 	public boolean isRaw();
 
 	/**
-	 * Check if object was modified within current transaction
+	 * Check if object was modified within current transaction.
 	 * 
 	 * @return <code>true</code> if object is persistent and was modified within
 	 *         current transaction
@@ -26,14 +27,14 @@ public interface IPersistent extends ILoadable, IStoreable,
 	public boolean isModified();
 
 	/**
-	 * Check if object is deleted by Java GC from process memory
+	 * Check if object is deleted by Java GC from process memory.
 	 * 
 	 * @return <code>true</code> if object is deleted by GC
 	 */
 	public boolean isDeleted();
 
 	/**
-	 * Check if object is persistent
+	 * Check if object is persistent.
 	 * 
 	 * @return <code>true</code> if object has assigned OID
 	 */
@@ -42,14 +43,14 @@ public interface IPersistent extends ILoadable, IStoreable,
 	/**
 	 * Explicitly make object persistent. Usually objects are made persistent
 	 * implicitly using "persistence through reachability approach", but this
-	 * method allows to do it explicitly
+	 * method allows to do it explicitly.
 	 * 
 	 * @param storage storage in which object should be stored
 	 */
 	public void makePersistent(Storage storage);
 
 	/**
-	 * Save object in the database
+	 * Save object in the database.
 	 */
 	public void store();
 
@@ -60,19 +61,19 @@ public interface IPersistent extends ILoadable, IStoreable,
 	public void modify();
 
 	/**
-	 * Load object from the database (if needed) and mark it as modified
+	 * Load object from the database (if needed) and mark it as modified.
 	 */
 	public void loadAndModify();
 
 	/**
-	 * Get object identifier (OID)
+	 * Get object identifier (OID).
 	 * 
 	 * @return OID (0 if object is not persistent yet)
 	 */
 	public int getOid();
 
 	/**
-	 * Deallocate persistent object from the database
+	 * Deallocate persistent object from the database.
 	 */
 	public void deallocate();
 
@@ -82,8 +83,8 @@ public interface IPersistent extends ILoadable, IStoreable,
 	 * this method returns <code>true</code> making all cluster of referenced
 	 * objects loaded together. To avoid main memory overflow you should stop
 	 * recursive loading of all objects from the database to main memory by
-	 * redefining this method in some classes and returing <code>false</code> in
-	 * it. In this case object has to be loaded explicitely using
+	 * redefining this method in some classes and returning <code>false</code>
+	 * in it. In this case object has to be loaded explicitly using
 	 * Persistent.load method.
 	 * 
 	 * @return <code>true</code> if object is automatically loaded
@@ -91,7 +92,7 @@ public interface IPersistent extends ILoadable, IStoreable,
 	public boolean recursiveLoading();
 
 	/**
-	 * Get storage in which this object is stored
+	 * Get storage in which this object is stored.
 	 * 
 	 * @return storage containing this object (null if object is not persistent
 	 *         yet)
@@ -107,7 +108,7 @@ public interface IPersistent extends ILoadable, IStoreable,
 
 	/**
 	 * Assign OID to the object. This method is used by storage class and you
-	 * should not invoke it directly
+	 * should not invoke it directly.
 	 * 
 	 * @param storage associated storage
 	 * @param oid object identifier
@@ -118,4 +119,5 @@ public interface IPersistent extends ILoadable, IStoreable,
 	 * Method used to remove association of object with storage.
 	 */
 	public void unassignOid();
+
 }

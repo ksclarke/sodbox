@@ -21,12 +21,12 @@ public interface SortedCollection<T> extends IPersistent, IResource,
 	 * Get member with specified key.
 	 * 
 	 * @param key specified key. It should match with type of the index and
-	 *            should be inclusive.
-	 * @return object with this value of the key or <code>null</code> if key
-	 *         not found
+	 *        should be inclusive.
+	 * @return object with this value of the key or <code>null</code> if key not
+	 *         found
 	 * @exception StorageError(StorageError.KEY_NOT_UNIQUE) exception if there
-	 *                are more than one objects in the collection with specified
-	 *                value of the key.
+	 *            are more than one objects in the collection with specified
+	 *            value of the key.
 	 */
 	public T get(Object key);
 
@@ -37,10 +37,10 @@ public interface SortedCollection<T> extends IPersistent, IResource,
 	 * collection.
 	 * 
 	 * @param from inclusive low boundary. If <code>null</code> then low
-	 *            boundary is not specified.
+	 *        boundary is not specified.
 	 * @param till inclusive high boundary. If <code>null</code> then high
-	 *            boundary is not specified. High boundary can be inclusive or
-	 *            exclusive.
+	 *        boundary is not specified. High boundary can be inclusive or
+	 *        exclusive.
 	 * @return array of objects which keys belongs to the specified interval,
 	 *         ordered by key value
 	 */
@@ -53,13 +53,13 @@ public interface SortedCollection<T> extends IPersistent, IResource,
 	 * collection.
 	 * 
 	 * @param from inclusive low boundary. If <code>null</code> then low
-	 *            boundary is not specified.
+	 *        boundary is not specified.
 	 * @param fromInclusive specifies whether from boundary is inclusive or
-	 *            exclusive
+	 *        exclusive
 	 * @param till inclusive high boundary. If <code>null</code> then high
-	 *            boundary is not specified.
+	 *        boundary is not specified.
 	 * @param tillInclusive specifies whether till boundary is inclusive or
-	 *            exclusive
+	 *        exclusive
 	 * @return array of objects which keys belongs to the specified interval,
 	 *         ordered by key value
 	 */
@@ -73,9 +73,9 @@ public interface SortedCollection<T> extends IPersistent, IResource,
 	 * collection.
 	 * 
 	 * @param from inclusive low boundary. If <code>null</code> then low
-	 *            boundary is not specified.
+	 *        boundary is not specified.
 	 * @param till inclusive high boundary. If <code>null</code> then high
-	 *            boundary is not specified.
+	 *        boundary is not specified.
 	 * @return array of objects which keys belongs to the specified interval,
 	 *         ordered by key value
 	 */
@@ -88,13 +88,13 @@ public interface SortedCollection<T> extends IPersistent, IResource,
 	 * collection.
 	 * 
 	 * @param from inclusive low boundary. If <code>null</code> then low
-	 *            boundary is not specified.
+	 *        boundary is not specified.
 	 * @param fromInclusive specifies whether from boundary is inclusive or
-	 *            exclusive
+	 *        exclusive
 	 * @param till inclusive high boundary. If <code>null</code> then high
-	 *            boundary is not specified.
+	 *        boundary is not specified.
 	 * @param tillInclusive specifies whether till boundary is inclusive or
-	 *            exclusive
+	 *        exclusive
 	 * @return array of objects which keys belongs to the specified interval,
 	 *         ordered by key value
 	 */
@@ -102,7 +102,7 @@ public interface SortedCollection<T> extends IPersistent, IResource,
 			Object till, boolean tillInclusive);
 
 	/**
-	 * Add new member to collection
+	 * Add new member to collection.
 	 * 
 	 * @param obj new member
 	 * @return <code>true</code> if object is successfully added in the index,
@@ -112,7 +112,7 @@ public interface SortedCollection<T> extends IPersistent, IResource,
 	public boolean add(T obj);
 
 	/**
-	 * Check if collections contains specified object instance
+	 * Check if collections contains specified object instance.
 	 * 
 	 * @param obj object to be searched in the collection
 	 * @return <code>true</code> if specified member belongs to the collection
@@ -120,7 +120,7 @@ public interface SortedCollection<T> extends IPersistent, IResource,
 	public boolean containsObject(T obj);
 
 	/**
-	 * Check if collections contains object with specified key
+	 * Check if collections contains object with specified key.
 	 * 
 	 * @param key searched key
 	 * @return <code>true</code> if collection contains object with specified
@@ -145,9 +145,9 @@ public interface SortedCollection<T> extends IPersistent, IResource,
 	 * iteration has no influence on iterator.
 	 * 
 	 * @param from inclusive low boundary. If <code>null</code> then low
-	 *            boundary is not specified.
+	 *        boundary is not specified.
 	 * @param till inclusive high boundary. If <code>null</code> then high
-	 *            boundary is not specified.
+	 *        boundary is not specified.
 	 * @return selection iterator
 	 */
 	public IterableIterator<T> iterator(Object from, Object till);
@@ -159,22 +159,23 @@ public interface SortedCollection<T> extends IPersistent, IResource,
 	 * iteration has no influence on iterator.
 	 * 
 	 * @param from inclusive low boundary. If <code>null</code> then low
-	 *            boundary is not specified.
+	 *        boundary is not specified.
 	 * @param fromInclusive specifies whether from boundary is inclusive or
-	 *            exclusive
+	 *        exclusive
 	 * @param till inclusive high boundary. If <code>null</code> then high
-	 *            boundary is not specified.
+	 *        boundary is not specified.
 	 * @param tillInclusive specifies whether till boundary is inclusive or
-	 *            exclusive
+	 *        exclusive
 	 * @return selection iterator
 	 */
 	public IterableIterator<T> iterator(Object from, boolean fromInclusive,
 			Object till, boolean tillInclusive);
 
 	/**
-	 * Get comparator used in this collection
+	 * Get comparator used in this collection.
 	 * 
 	 * @return collection comparator
 	 */
 	public PersistentComparator<T> getComparator();
+
 }

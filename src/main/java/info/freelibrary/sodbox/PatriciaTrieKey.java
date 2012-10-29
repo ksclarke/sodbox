@@ -4,18 +4,18 @@ import java.net.InetAddress;
 
 /**
  * Convert different type of keys to 64-bit long value used in PATRICIA trie
- * (Practical Algorithm To Retrieve Information Coded In Alphanumeric)
+ * (Practical Algorithm To Retrieve Information Coded In Alphanumeric).
  */
 public class PatriciaTrieKey {
 
 	/**
 	 * Bit mask representing bit vector. The last digit of the key is the right
-	 * most bit of the mask
+	 * most bit of the mask.
 	 */
 	public final long mask;
 
 	/**
-	 * Length of bit vector (can not be larger than 64)
+	 * Length of bit vector (can not be larger than 64).
 	 */
 	public final int length;
 
@@ -58,7 +58,7 @@ public class PatriciaTrieKey {
 	public static PatriciaTrieKey fromDecimalDigits(String digits) {
 		long mask = 0;
 		int n = digits.length();
-		
+
 		Assert.that(n <= 16);
 
 		for (int i = 0; i < n; i++) {
@@ -80,7 +80,7 @@ public class PatriciaTrieKey {
 
 		for (int i = 0; i < n; i++) {
 			char ch = str.charAt(i);
-			
+
 			mask = (mask << 7) | (ch & 0x7F);
 		}
 
@@ -95,7 +95,7 @@ public class PatriciaTrieKey {
 
 		for (int i = 0; i < n; i++) {
 			char ch = str.charAt(i);
-			
+
 			mask = (mask << 8) | (ch & 0xFF);
 		}
 
@@ -114,4 +114,5 @@ public class PatriciaTrieKey {
 
 		return new PatriciaTrieKey(mask, n * 8);
 	}
+
 }

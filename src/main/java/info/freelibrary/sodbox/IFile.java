@@ -3,12 +3,13 @@ package info.freelibrary.sodbox;
 /**
  * Interface of file. Programmer can provide its own implementation of this
  * interface, adding such features as support of flash cards, encrypted
- * files,... Implementation of this interface should throw StorageError
- * exception in case of failure
+ * files....  Implementation of this interface should throw StorageError
+ * exception in case of failure.
  */
 public interface IFile {
+
 	/**
-	 * Write data to the file
+	 * Write data to the file.
 	 * 
 	 * @param pos offset in the file
 	 * @param buf array with data to be writer (size is always equal to database
@@ -17,7 +18,7 @@ public interface IFile {
 	void write(long pos, byte[] buf);
 
 	/**
-	 * Read data from the file
+	 * Read data from the file.
 	 * 
 	 * @param pos offset in the file
 	 * @param buf array to receive read data (size is always equal to database
@@ -27,12 +28,12 @@ public interface IFile {
 	int read(long pos, byte[] buf);
 
 	/**
-	 * Flush all fields changes to the disk
+	 * Flush all fields changes to the disk.
 	 */
 	void sync();
 
 	/**
-	 * Try lock file
+	 * Try lock file.
 	 * 
 	 * @param shared if lock is shared
 	 * @return <code>true</code> if file was successfully locked or locking in
@@ -42,24 +43,25 @@ public interface IFile {
 	boolean tryLock(boolean shared);
 
 	/**
-	 * Lock file
+	 * Lock file.
 	 * 
 	 * @param shared if lock is shared
 	 */
 	void lock(boolean shared);
 
 	/**
-	 * Unlock file
+	 * Unlock file.
 	 */
 	void unlock();
 
 	/**
-	 * Close file
+	 * Close file.
 	 */
 	void close();
 
 	/**
-	 * Length of the file
+	 * Length of the file.
 	 */
 	long length();
+
 }

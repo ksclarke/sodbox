@@ -3,10 +3,11 @@ package info.freelibrary.sodbox;
 import java.util.Map;
 
 /**
- * Interface of persistent hash table
+ * Interface of persistent hash table.
  */
 public interface IPersistentHash<K, V> extends Map<K, V>, IPersistent,
 		IResource {
+
 	/**
 	 * Get entry for the specified key. This method can be used to obtains both
 	 * key and value. It is needed when key is persistent object.
@@ -16,4 +17,5 @@ public interface IPersistentHash<K, V> extends Map<K, V>, IPersistent,
 	 *         the map
 	 */
 	Entry<K, V> getEntry(Object key);
+
 }

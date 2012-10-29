@@ -9,25 +9,21 @@ import java.lang.reflect.Field;
  * Class use to project selected objects using relation field. For all selected
  * objects (specified by array or iterator), value of specified field (of
  * IPersistent, array of IPersistent, Link or Relation type) is inspected and
- * all referenced object for projection (duplicate values are eliminated)
+ * all referenced object for projection (duplicate values are eliminated).
  */
 public class Projection<From, To> extends HashSet<To> {
 
-	private Field field;
-	
-	/**
-	 * 
-	 */
 	private static final long serialVersionUID = -745192931423112566L;
+
+	private Field field;
 
 	/**
 	 * Constructor of projection specified by class and field name of projected
-	 * objects
+	 * objects.
 	 * 
 	 * @param type base class for selected objects
 	 * @param fieldName field name used to perform projection
 	 */
-	@SuppressWarnings("unchecked")
 	public Projection(Class type, String fieldName) {
 		setProjectionField(type, fieldName);
 	}
@@ -36,18 +32,16 @@ public class Projection<From, To> extends HashSet<To> {
 	 * Default constructor of projection. This constructor should be used only
 	 * when you are going to derive your class from Projection and redefine map
 	 * method in it or specify type and fieldName later using setProjectionField
-	 * method
+	 * method.
 	 */
-	public Projection() {
-	}
+	public Projection() {}
 
 	/**
-	 * Specify class of the projected objects and projection field name
+	 * Specify class of the projected objects and projection field name.
 	 * 
 	 * @param type base class for selected objects
 	 * @param fieldName field name used to perform projection
 	 */
-	@SuppressWarnings("unchecked")
 	public void setProjectionField(Class type, String fieldName) {
 		try {
 			field = type.getDeclaredField(fieldName);
@@ -59,7 +53,7 @@ public class Projection<From, To> extends HashSet<To> {
 	}
 
 	/**
-	 * Project specified selection
+	 * Project specified selection.
 	 * 
 	 * @param selection array with selected object
 	 */
@@ -70,7 +64,7 @@ public class Projection<From, To> extends HashSet<To> {
 	}
 
 	/**
-	 * Project specified object
+	 * Project specified object.
 	 * 
 	 * @param obj selected object
 	 */
@@ -79,7 +73,7 @@ public class Projection<From, To> extends HashSet<To> {
 	}
 
 	/**
-	 * Project specified selection
+	 * Project specified selection.
 	 * 
 	 * @param selection iterator specifying selected objects
 	 */
@@ -90,7 +84,7 @@ public class Projection<From, To> extends HashSet<To> {
 	}
 
 	/**
-	 * Project specified selection
+	 * Project specified selection.
 	 * 
 	 * @param c selection iterator specifying selected objects
 	 */
@@ -109,14 +103,14 @@ public class Projection<From, To> extends HashSet<To> {
 	}
 
 	/**
-	 * Reset projection - clear result of preceding project and join operations
+	 * Reset projection - clear result of preceding project and join operations.
 	 */
 	public void reset() {
 		clear();
 	}
 
 	/**
-	 * Add object to the set
+	 * Add object to the set.
 	 * 
 	 * @param obj object to be added
 	 */
@@ -129,19 +123,19 @@ public class Projection<From, To> extends HashSet<To> {
 	}
 
 	/**
-	 * Get related objects for the object obj. It is possible to redefine this
-	 * method in derived classes to provide application specific mapping
+	 * Get related objects for the object aObject. It is possible to redefine
+	 * this method in derived classes to provide application specific mapping.
 	 * 
-	 * @param obj object from the selection
+	 * @param aObject A object from the selection
 	 */
 	@SuppressWarnings("unchecked")
-	protected void map(From obj) {
+	protected void map(From aObject) {
 		if (field == null) {
-			add((To) obj);
+			add((To) aObject);
 		}
 		else {
 			try {
-				Object o = field.get(obj);
+				Object o = field.get(aObject);
 
 				if (o instanceof Link) {
 					Object[] arr = ((Link) o).toArray();
@@ -166,4 +160,5 @@ public class Projection<From, To> extends HashSet<To> {
 			}
 		}
 	}
+
 }

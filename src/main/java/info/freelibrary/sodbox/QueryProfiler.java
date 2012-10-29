@@ -9,6 +9,7 @@ import java.util.Formatter;
  * listener.
  */
 public class QueryProfiler extends StorageListener {
+
 	public static class QueryInfo implements Comparable<QueryInfo> {
 		public String query;
 		public long totalTime;
@@ -53,33 +54,31 @@ public class QueryProfiler extends StorageListener {
 	}
 
 	/**
-	 * Dump queries execution profile to the specified destination
+	 * Dump queries execution profile to the specified destination.
 	 * 
 	 * @param appendable destination where profile should be dumped (it can be
-	 *            StringBuilder, PrintStream,...)
+	 *        StringBuilder, PrintStream...)
 	 */
 	public void dump(Appendable appendable) {
 		QueryInfo[] results = getProfile();
-		Formatter formatter = new Formatter(appendable);
-		formatter
-				.format("S     Total      Count Maximum Average Percent Query\n");
+		Formatter f = new Formatter(appendable);
+		f.format("S     Total      Count Maximum Average Percent Query\n");
 		long total = 0;
-		
+
 		for (QueryInfo info : results) {
 			total += info.totalTime;
 		}
-		
+
 		String format = "%c%10d %10d %7d %7d %6d%% %s\n";
 
 		for (QueryInfo info : results) {
-			formatter.format(format, info.sequentialSearch ? '!' : ' ',
-					info.totalTime, info.count, info.maxTime,
-					(info.count != 0 ? info.totalTime / info.count : 0L),
-					(total != 0 ? info.totalTime * 100 / total : 0L),
-					info.query);
+			f.format(format, info.sequentialSearch ? '!' : ' ', info.totalTime,
+					info.count, info.maxTime, (info.count != 0 ? info.totalTime
+							/ info.count : 0L), (total != 0 ? info.totalTime
+							* 100 / total : 0L), info.query);
 		}
 
-		formatter.flush();
+		f.flush();
 	}
 
 	/**
@@ -93,4 +92,5 @@ public class QueryProfiler extends StorageListener {
 
 		return a;
 	}
+
 }

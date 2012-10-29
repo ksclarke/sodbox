@@ -18,7 +18,7 @@ public class SmallMap<K, V> extends PersistentResource implements Map<K, V> {
 	transient volatile Set<K> keySet;
 	transient volatile Collection<V> values;
 	transient volatile Set<Map.Entry<K, V>> entrySet;
-	
+
 	private Pair<K, V>[] pairs;
 
 	@SuppressWarnings("unchecked")
@@ -237,8 +237,7 @@ public class SmallMap<K, V> extends PersistentResource implements Map<K, V> {
 		K key;
 		V value;
 
-		Pair() {
-		}
+		Pair() {}
 
 		Pair(K k, V v) {
 			value = v;
@@ -418,4 +417,5 @@ public class SmallMap<K, V> extends PersistentResource implements Map<K, V> {
 			sb.append(", ");
 		}
 	}
+
 }

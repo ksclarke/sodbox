@@ -35,6 +35,7 @@ public interface TimeSeries<T extends TimeSeries.Tick> extends IPersistent,
 		 * @return timestamp in milliseconds
 		 */
 		long getTime();
+
 	}
 
 	/**
@@ -59,6 +60,7 @@ public interface TimeSeries<T extends TimeSeries.Tick> extends IPersistent,
 		 *         contain reference to Tick object.
 		 */
 		public abstract Tick[] getTicks();
+
 	}
 
 	/**
@@ -90,9 +92,9 @@ public interface TimeSeries<T extends TimeSeries.Tick> extends IPersistent,
 	 * to modify time series during iteration.
 	 * 
 	 * @param from inclusive time of the begging of interval, if null then take
-	 *            all elements from the beginning of time series
+	 *        all elements from the beginning of time series
 	 * @param till inclusive time of the ending of interval, if null then take
-	 *            all elements till the end of time series
+	 *        all elements till the end of time series
 	 * @return forward iterator within specified range.
 	 */
 	IterableIterator<T> iterator(Date from, Date till);
@@ -113,46 +115,45 @@ public interface TimeSeries<T extends TimeSeries.Tick> extends IPersistent,
 	 * to modify time series during iteration.
 	 * 
 	 * @param from inclusive time of the begging of interval, if null then take
-	 *            all elements from the beginning of time series
+	 *        all elements from the beginning of time series
 	 * @param till inclusive time of the ending of interval, if null then take
-	 *            all elements till the end of time series
+	 *        all elements till the end of time series
 	 * @param ascent direction of iteration
 	 * @return iterator within specified range in specified direction
 	 */
 	IterableIterator<T> iterator(Date from, Date till, boolean ascent);
 
 	/**
-	 * Get timestamp of first time series element
+	 * Get timestamp of first time series element.
 	 * 
 	 * @return time of time series start
 	 */
 	Date getFirstTime();
 
 	/**
-	 * Get timestamp of last time series element
+	 * Get timestamp of last time series element.
 	 * 
 	 * @return time of time series end
 	 */
 	Date getLastTime();
 
 	/**
-	 * Get number of elements in time series
+	 * Get number of elements in time series.
 	 * 
 	 * @return number of elements in time series
 	 */
 	long countTicks();
 
 	/**
-	 * Get tick for specified data
+	 * Get tick for specified data.
 	 * 
 	 * @param timestamp time series element timestamp return time series element
-	 *            for the specified timestamp or null if no such element was
-	 *            found
+	 *        for the specified timestamp or null if no such element was found
 	 */
 	T getTick(Date timestamp);
 
 	/**
-	 * Check if data is available in time series for the specified time
+	 * Check if data is available in time series for the specified time.
 	 * 
 	 * @param timestamp time series element timestamp
 	 * @return <code>true</code> if there is element in time series with such
@@ -161,13 +162,14 @@ public interface TimeSeries<T extends TimeSeries.Tick> extends IPersistent,
 	boolean has(Date timestamp);
 
 	/**
-	 * Remove TimeSeries elements belonging to the specified range
+	 * Remove TimeSeries elements belonging to the specified range.
 	 * 
 	 * @param from inclusive time of the begging of interval, if null then
-	 *            remove all elements from the beginning of time series
+	 *        remove all elements from the beginning of time series
 	 * @param till inclusive time of the ending of interval, if null then remove
-	 *            all elements till the end of time series
+	 *        all elements till the end of time series
 	 * @return number of removed elements
 	 */
 	int remove(Date from, Date till);
+
 }

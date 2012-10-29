@@ -7,14 +7,13 @@ import java.util.NoSuchElementException;
 /**
  * Double linked list.
  */
-
 public class L2List extends L2ListElem {
 
 	private int nElems;
 	private int updateCounter;
 
 	/**
-	 * Get list head element
+	 * Get list head element.
 	 * 
 	 * @return list head element or null if list is empty
 	 */
@@ -23,7 +22,7 @@ public class L2List extends L2ListElem {
 	}
 
 	/**
-	 * Get list tail element
+	 * Get list tail element.
 	 * 
 	 * @return list tail element or null if list is empty
 	 */
@@ -52,7 +51,7 @@ public class L2List extends L2ListElem {
 	}
 
 	/**
-	 * Insert element at the beginning of the list
+	 * Insert element at the beginning of the list.
 	 */
 	public synchronized void prepend(L2ListElem elem) {
 		modify();
@@ -67,7 +66,7 @@ public class L2List extends L2ListElem {
 	}
 
 	/**
-	 * Insert element at the end of the list
+	 * Insert element at the end of the list.
 	 */
 	public synchronized void append(L2ListElem elem) {
 		modify();
@@ -82,7 +81,7 @@ public class L2List extends L2ListElem {
 	}
 
 	/**
-	 * Remove element from the list
+	 * Remove element from the list.
 	 */
 	public synchronized void remove(L2ListElem elem) {
 		modify();
@@ -95,7 +94,7 @@ public class L2List extends L2ListElem {
 	}
 
 	/**
-	 * Check if list is empty
+	 * Check if list is empty.
 	 * 
 	 * @return <code>true</code> if list is empty
 	 */
@@ -104,7 +103,7 @@ public class L2List extends L2ListElem {
 	}
 
 	/**
-	 * Add object to the list
+	 * Add object to the list.
 	 * 
 	 * @param obj object added to the list
 	 * @return always returns <code>true</code>
@@ -115,7 +114,7 @@ public class L2List extends L2ListElem {
 	}
 
 	/**
-	 * Remove object from the list
+	 * Remove object from the list.
 	 * 
 	 * @param o object to be removed from the list
 	 * @return always returns <code>true</code>
@@ -126,7 +125,7 @@ public class L2List extends L2ListElem {
 	}
 
 	/**
-	 * Get size of the list
+	 * Get size of the list.
 	 * 
 	 * @return number of elements in the list
 	 */
@@ -135,7 +134,7 @@ public class L2List extends L2ListElem {
 	}
 
 	/**
-	 * Check if object is in collection
+	 * Check if object is in collection.
 	 * 
 	 * @param o object to be searched in the collection
 	 * @return <code>true</code> if there is an object in the collection which
@@ -164,9 +163,9 @@ public class L2List extends L2ListElem {
 			if (!hasNext()) {
 				throw new NoSuchElementException();
 			}
-			
+
 			curr = curr.next;
-			
+
 			return curr;
 		}
 
@@ -174,9 +173,9 @@ public class L2List extends L2ListElem {
 			if (!hasNext()) {
 				return 0;
 			}
-			
+
 			curr = curr.next;
-			
+
 			return curr.getOid();
 		}
 
@@ -184,7 +183,7 @@ public class L2List extends L2ListElem {
 			if (counter != updateCounter) {
 				throw new IllegalStateException();
 			}
-			
+
 			return curr.next != L2List.this;
 		}
 
@@ -192,9 +191,9 @@ public class L2List extends L2ListElem {
 			if (counter != updateCounter || curr == L2List.this) {
 				throw new IllegalStateException();
 			}
-			
+
 			L2List.this.remove(curr);
-			
+
 			counter = updateCounter;
 			curr = curr.prev;
 		}
@@ -202,7 +201,7 @@ public class L2List extends L2ListElem {
 
 	/**
 	 * Get list iterator. This iterator supports remove() method put concurrent
-	 * modifications of thje list during iteration are not possible.
+	 * modifications of the list during iteration are not possible.
 	 * 
 	 * @return list iterator
 	 */
@@ -211,7 +210,7 @@ public class L2List extends L2ListElem {
 	}
 
 	/**
-	 * Get array of the list elements
+	 * Get array of the list elements.
 	 * 
 	 * @return array with list elements
 	 */
@@ -232,7 +231,6 @@ public class L2List extends L2ListElem {
 	 * specified array. If the list fits in the specified array, it is returned
 	 * therein. Otherwise, a new array is allocated with the runtime type of the
 	 * specified array and the size of this list.
-	 * <p>
 	 * 
 	 * If the list fits in the specified array with room to spare (i.e., the
 	 * array has more elements than the list), the element in the array
@@ -241,11 +239,11 @@ public class L2List extends L2ListElem {
 	 * caller knows that the list does not contain any <tt>null</tt> elements.
 	 * 
 	 * @param a the array into which the elements of the list are to be stored,
-	 *            if it is big enough; otherwise, a new array of the same
-	 *            runtime type is allocated for this purpose.
+	 *        if it is big enough; otherwise, a new array of the same runtime
+	 *        type is allocated for this purpose.
 	 * @return an array containing the elements of the list.
-	 * @throws ArrayStoreException if the runtime type of a is not a supertype
-	 *             of the runtime type of every element in this list.
+	 * @throws ArrayStoreException if the runtime type of a is not a super type
+	 *         of the runtime type of every element in this list.
 	 */
 	public synchronized Object[] toArray(Object a[]) {
 		int size = nElems;
@@ -271,7 +269,6 @@ public class L2List extends L2ListElem {
 	/**
 	 * Returns <tt>true</tt> if this collection contains all of the elements in
 	 * the specified collection.
-	 * <p>
 	 * 
 	 * This implementation iterates over the specified collection, checking each
 	 * element returned by the iterator in turn to see if it's contained in this
@@ -303,12 +300,10 @@ public class L2List extends L2ListElem {
 	 * specified collection is modified while the operation is in progress.
 	 * (This implies that the behavior of this call is undefined if the
 	 * specified collection is this collection, and this collection is
-	 * nonempty.)
-	 * <p>
+	 * nonempty).
 	 * 
 	 * This implementation iterates over the specified collection, and adds each
 	 * object returned by the iterator to this collection, in turn.
-	 * <p>
 	 * 
 	 * Note that this implementation will throw an
 	 * <tt>UnsupportedOperationException</tt> unless <tt>add</tt> is overridden
@@ -317,7 +312,7 @@ public class L2List extends L2ListElem {
 	 * @param c collection whose elements are to be added to this collection.
 	 * @return <tt>true</tt> if this collection changed as a result of the call.
 	 * @throws UnsupportedOperationException if this collection does not support
-	 *             the <tt>addAll</tt> method.
+	 *         the <tt>addAll</tt> method.
 	 * @throws NullPointerException if the specified collection is null.
 	 * 
 	 * @see #add(Object)
@@ -335,13 +330,11 @@ public class L2List extends L2ListElem {
 	/**
 	 * Removes from this collection all of its elements that are contained in
 	 * the specified collection (optional operation).
-	 * <p>
 	 * 
 	 * This implementation iterates over this collection, checking each element
 	 * returned by the iterator in turn to see if it's contained in the
 	 * specified collection. If it's so contained, it's removed from this
 	 * collection with the iterator's <tt>remove</tt> method.
-	 * <p>
 	 * 
 	 * Note that this implementation will throw an
 	 * <tt>UnsupportedOperationException</tt> if the iterator returned by the
@@ -352,7 +345,7 @@ public class L2List extends L2ListElem {
 	 * @param c elements to be removed from this collection.
 	 * @return <tt>true</tt> if this collection changed as a result of the call.
 	 * @throws UnsupportedOperationException if the <tt>removeAll</tt> method is
-	 *             not supported by this collection.
+	 *         not supported by this collection.
 	 * @throws NullPointerException if the specified collection is null.
 	 * 
 	 * @see #remove(Object)
@@ -377,13 +370,11 @@ public class L2List extends L2ListElem {
 	 * specified collection (optional operation). In other words, removes from
 	 * this collection all of its elements that are not contained in the
 	 * specified collection.
-	 * <p>
 	 * 
 	 * This implementation iterates over this collection, checking each element
 	 * returned by the iterator in turn to see if it's contained in the
 	 * specified collection. If it's not so contained, it's removed from this
 	 * collection with the iterator's <tt>remove</tt> method.
-	 * <p>
 	 * 
 	 * Note that this implementation will throw an
 	 * <tt>UnsupportedOperationException</tt> if the iterator returned by the
@@ -394,7 +385,7 @@ public class L2List extends L2ListElem {
 	 * @param c elements to be retained in this collection.
 	 * @return <tt>true</tt> if this collection changed as a result of the call.
 	 * @throws UnsupportedOperationException if the <tt>retainAll</tt> method is
-	 *             not supported by this Collection.
+	 *         not supported by this Collection.
 	 * @throws NullPointerException if the specified collection is null.
 	 * 
 	 * @see #remove(Object)
@@ -403,7 +394,7 @@ public class L2List extends L2ListElem {
 	public synchronized boolean retainAll(Collection<?> c) {
 		boolean modified = false;
 		Iterator<?> e = iterator();
-		
+
 		while (e.hasNext()) {
 			if (!c.contains(e.next())) {
 				e.remove();
@@ -413,4 +404,5 @@ public class L2List extends L2ListElem {
 
 		return modified;
 	}
+
 }

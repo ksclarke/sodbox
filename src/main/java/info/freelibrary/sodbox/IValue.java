@@ -7,5 +7,4 @@ package info.freelibrary.sodbox;
  * programmer should call <code>store</code> method of persistent class
  * containing this value.
  */
-public interface IValue {
-}
+public interface IValue {}

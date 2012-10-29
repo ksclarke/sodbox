@@ -11,13 +11,12 @@ public class Rectangle implements IValue, Cloneable {
 	private int right;
 
 	/**
-	 * Default constructor for Sodbox
+	 * Default constructor for <code>Rectangle</code>.
 	 */
-	public Rectangle() {
-	}
-	
+	public Rectangle() {}
+
 	/**
-	 * Create copy of the rectangle
+	 * Create copy of the rectangle.
 	 */
 	public Rectangle(Rectangle r) {
 		this.top = r.top;
@@ -25,44 +24,44 @@ public class Rectangle implements IValue, Cloneable {
 		this.bottom = r.bottom;
 		this.right = r.right;
 	}
-	
+
 	/**
-	 * Smallest Y coordinate of the rectangle
+	 * Smallest Y coordinate of the rectangle.
 	 */
 	public final int getTop() {
 		return top;
 	}
 
 	/**
-	 * Smallest X coordinate of the rectangle
+	 * Smallest X coordinate of the rectangle.
 	 */
 	public final int getLeft() {
 		return left;
 	}
 
 	/**
-	 * Greatest Y coordinate of the rectangle
+	 * Greatest Y coordinate of the rectangle.
 	 */
 	public final int getBottom() {
 		return bottom;
 	}
 
 	/**
-	 * Greatest X coordinate of the rectangle
+	 * Greatest X coordinate of the rectangle.
 	 */
 	public final int getRight() {
 		return right;
 	}
 
 	/**
-	 * Rectangle area
+	 * Rectangle's area.
 	 */
 	public final long area() {
 		return (long) (bottom - top) * (right - left);
 	}
 
 	/**
-	 * Area of covered rectangle for two specified rectangles
+	 * Area of covered rectangle for two specified rectangles.
 	 */
 	public static long joinArea(Rectangle a, Rectangle b) {
 		int left = (a.left < b.left) ? a.left : b.left;
@@ -74,7 +73,7 @@ public class Rectangle implements IValue, Cloneable {
 	}
 
 	/**
-	 * Calculate distance from the specified point to the rectangle
+	 * Calculate distance from the specified point to the rectangle.
 	 */
 	public double distance(int x, int y) {
 		if (x >= left && x <= right) {
@@ -106,7 +105,7 @@ public class Rectangle implements IValue, Cloneable {
 	}
 
 	/**
-	 * Clone rectangle
+	 * Clone the rectangle.
 	 */
 	public Object clone() {
 		try {
@@ -126,7 +125,7 @@ public class Rectangle implements IValue, Cloneable {
 	}
 
 	/**
-	 * Construct rectangle with specified coordinates
+	 * Construct rectangle with specified coordinates.
 	 */
 	public Rectangle(int top, int left, int bottom, int right) {
 		Assert.that(top <= bottom && left <= right);
@@ -177,7 +176,7 @@ public class Rectangle implements IValue, Cloneable {
 	}
 
 	/**
-	 * Checks if this rectangle intersects with specified rectangle
+	 * Checks if this rectangle intersects with specified rectangle.
 	 */
 	public final boolean intersects(Rectangle r) {
 		return left <= r.right && top <= r.bottom && right >= r.left
@@ -185,7 +184,7 @@ public class Rectangle implements IValue, Cloneable {
 	}
 
 	/**
-	 * Checks if this rectangle contains the specified rectangle
+	 * Checks if this rectangle contains the specified rectangle.
 	 */
 	public final boolean contains(Rectangle r) {
 		return left <= r.left && top <= r.top && right >= r.right
@@ -193,7 +192,7 @@ public class Rectangle implements IValue, Cloneable {
 	}
 
 	/**
-	 * Check if two rectangles are equal
+	 * Check if two rectangles are equal.
 	 */
 	public boolean equals(Object o) {
 		if (o instanceof Rectangle) {
@@ -207,7 +206,7 @@ public class Rectangle implements IValue, Cloneable {
 	}
 
 	/**
-	 * Hash code consists of all rectangle coordinates
+	 * Hash code consists of all rectangle coordinates.
 	 */
 	public int hashCode() {
 		return top ^ (bottom << 1) ^ (left << 2) ^ (right << 3);
@@ -217,4 +216,5 @@ public class Rectangle implements IValue, Cloneable {
 		return "top=" + top + ", left=" + left + ", bottom=" + bottom
 				+ ", right=" + right;
 	}
+
 }

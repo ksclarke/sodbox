@@ -1,13 +1,10 @@
 package info.freelibrary.sodbox;
 
 /**
- * Exception thrown during import of data from XML file in database
+ * Exception thrown during import of data from XML file in database.
  */
 public class XMLImportException extends Exception {
 
-	/**
-	 * 
-	 */
 	private static final long serialVersionUID = -1747040844641874359L;
 
 	private int myLine;
@@ -33,4 +30,5 @@ public class XMLImportException extends Exception {
 	public int getColumn() {
 		return myColumn;
 	}
+
 }

@@ -13,6 +13,7 @@ import java.util.zip.ZipEntry;
  * <code>Storage.open</code> method
  */
 public class CompressDatabase {
+
 	/**
 	 * This utility accepts one argument: path to database file. It creates new
 	 * file at the same location and with the same name but with with ".dbz"
@@ -50,8 +51,8 @@ public class CompressDatabase {
 
 			if (offs > 0) {
 				String name = "000000000000" + pos;
-				ZipEntry entry = new ZipEntry(name
-						.substring(name.length() - 12));
+				ZipEntry entry = new ZipEntry(
+						name.substring(name.length() - 12));
 				entry.setSize(offs);
 				zout.putNextEntry(entry);
 				zout.write(segment, 0, offs);
@@ -63,7 +64,9 @@ public class CompressDatabase {
 
 		zout.finish();
 		zout.close();
+		in.close();
 
 		System.out.println("File " + zip + " is written");
 	}
+
 }

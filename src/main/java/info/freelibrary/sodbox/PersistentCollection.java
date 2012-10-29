@@ -10,8 +10,7 @@ public abstract class PersistentCollection<T> extends PersistentResource
 	/**
 	 * Default constructor
 	 */
-	public PersistentCollection() {
-	}
+	public PersistentCollection() {}
 
 	/**
 	 * Constructor of the collection associated with the specified storage
@@ -25,7 +24,6 @@ public abstract class PersistentCollection<T> extends PersistentResource
 	/**
 	 * Returns <tt>true</tt> if this collection contains all of the elements in
 	 * the specified collection.
-	 * <p>
 	 * 
 	 * This implementation iterates over the specified collection, checking each
 	 * element returned by the iterator in turn to see if it's contained in this
@@ -57,12 +55,10 @@ public abstract class PersistentCollection<T> extends PersistentResource
 	 * specified collection is modified while the operation is in progress.
 	 * (This implies that the behavior of this call is undefined if the
 	 * specified collection is this collection, and this collection is
-	 * nonempty.)
-	 * <p>
+	 * nonempty).
 	 * 
 	 * This implementation iterates over the specified collection, and adds each
 	 * object returned by the iterator to this collection, in turn.
-	 * <p>
 	 * 
 	 * Note that this implementation will throw an
 	 * <tt>UnsupportedOperationException</tt> unless <tt>add</tt> is overridden
@@ -71,7 +67,7 @@ public abstract class PersistentCollection<T> extends PersistentResource
 	 * @param c collection whose elements are to be added to this collection.
 	 * @return <tt>true</tt> if this collection changed as a result of the call.
 	 * @throws UnsupportedOperationException if this collection does not support
-	 *             the <tt>addAll</tt> method.
+	 *         the <tt>addAll</tt> method.
 	 * @throws NullPointerException if the specified collection is null.
 	 * 
 	 * @see #add(Object)
@@ -92,13 +88,11 @@ public abstract class PersistentCollection<T> extends PersistentResource
 	/**
 	 * Removes from this collection all of its elements that are contained in
 	 * the specified collection (optional operation).
-	 * <p>
 	 * 
 	 * This implementation iterates over this collection, checking each element
 	 * returned by the iterator in turn to see if it's contained in the
 	 * specified collection. If it's so contained, it's removed from this
 	 * collection with the iterator's <tt>remove</tt> method.
-	 * <p>
 	 * 
 	 * Note that this implementation will throw an
 	 * <tt>UnsupportedOperationException</tt> if the iterator returned by the
@@ -109,7 +103,7 @@ public abstract class PersistentCollection<T> extends PersistentResource
 	 * @param c elements to be removed from this collection.
 	 * @return <tt>true</tt> if this collection changed as a result of the call.
 	 * @throws UnsupportedOperationException if the <tt>removeAll</tt> method is
-	 *             not supported by this collection.
+	 *         not supported by this collection.
 	 * @throws NullPointerException if the specified collection is null.
 	 * 
 	 * @see #remove(Object)
@@ -131,13 +125,11 @@ public abstract class PersistentCollection<T> extends PersistentResource
 	 * specified collection (optional operation). In other words, removes from
 	 * this collection all of its elements that are not contained in the
 	 * specified collection.
-	 * <p>
 	 * 
 	 * This implementation iterates over this collection, checking each element
 	 * returned by the iterator in turn to see if it's contained in the
 	 * specified collection. If it's not so contained, it's removed from this
 	 * collection with the iterator's <tt>remove</tt> method.
-	 * <p>
 	 * 
 	 * Note that this implementation will throw an
 	 * <tt>UnsupportedOperationException</tt> if the iterator returned by the
@@ -148,7 +140,7 @@ public abstract class PersistentCollection<T> extends PersistentResource
 	 * @param c elements to be retained in this collection.
 	 * @return <tt>true</tt> if this collection changed as a result of the call.
 	 * @throws UnsupportedOperationException if the <tt>retainAll</tt> method is
-	 *             not supported by this Collection.
+	 *         not supported by this Collection.
 	 * @throws NullPointerException if the specified collection is null.
 	 * 
 	 * @see #remove(Object)
@@ -180,7 +172,6 @@ public abstract class PersistentCollection<T> extends PersistentResource
 	 * More formally, returns <tt>true</tt> if and only if this collection
 	 * contains at least one element <tt>e</tt> such that
 	 * <tt>(o==null ? e==null : o.equals(e))</tt>.
-	 * <p>
 	 * 
 	 * This implementation iterates over the elements in the collection,
 	 * checking each element in turn for equality with the specified element.
@@ -216,12 +207,10 @@ public abstract class PersistentCollection<T> extends PersistentResource
 	 * o.equals(e))</tt>, if the collection contains one or more such elements.
 	 * Returns <tt>true</tt> if the collection contained the specified element
 	 * (or equivalently, if the collection changed as a result of the call).
-	 * <p>
 	 * 
 	 * This implementation iterates over the collection looking for the
 	 * specified element. If it finds the element, it removes the element from
 	 * the collection using the iterator's remove method.
-	 * <p>
 	 * 
 	 * Note that this implementation throws an
 	 * <tt>UnsupportedOperationException</tt> if the iterator returned by this
@@ -231,7 +220,7 @@ public abstract class PersistentCollection<T> extends PersistentResource
 	 * @param o element to be removed from this collection, if present.
 	 * @return <tt>true</tt> if the collection contained the specified element.
 	 * @throws UnsupportedOperationException if the <tt>remove</tt> method is
-	 *             not supported by this collection.
+	 *         not supported by this collection.
 	 */
 	public boolean remove(Object o) {
 		Iterator<T> e = iterator();
@@ -269,7 +258,6 @@ public abstract class PersistentCollection<T> extends PersistentResource
 	 * type of elements that may be added. Collection classes should clearly
 	 * specify in their documentation any restrictions on what elements may be
 	 * added.
-	 * <p>
 	 * 
 	 * This implementation always throws an
 	 * <tt>UnsupportedOperationException</tt>.
@@ -278,17 +266,17 @@ public abstract class PersistentCollection<T> extends PersistentResource
 	 * @return <tt>true</tt> if the collection changed as a result of the call.
 	 * 
 	 * @throws UnsupportedOperationException if the <tt>add</tt> method is not
-	 *             supported by this collection.
+	 *         supported by this collection.
 	 * 
 	 * @throws NullPointerException if this collection does not permit
-	 *             <tt>null</tt> elements, and the specified element is
-	 *             <tt>null</tt>.
+	 *         <tt>null</tt> elements, and the specified element is
+	 *         <tt>null</tt>.
 	 * 
 	 * @throws ClassCastException if the class of the specified element prevents
-	 *             it from being added to this collection.
+	 *         it from being added to this collection.
 	 * 
 	 * @throws IllegalArgumentException if some aspect of this element prevents
-	 *             it from being added to this collection.
+	 *         it from being added to this collection.
 	 */
 	public boolean add(T o) {
 		throw new UnsupportedOperationException();
@@ -296,7 +284,6 @@ public abstract class PersistentCollection<T> extends PersistentResource
 
 	/**
 	 * Returns <tt>true</tt> if this collection contains no elements.
-	 * <p>
 	 * 
 	 * This implementation returns <tt>size() == 0</tt>.
 	 * 
@@ -315,4 +302,5 @@ public abstract class PersistentCollection<T> extends PersistentResource
 
 		clear();
 	}
+
 }

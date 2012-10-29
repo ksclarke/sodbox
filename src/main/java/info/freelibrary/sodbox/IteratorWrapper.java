@@ -21,4 +21,5 @@ public class IteratorWrapper<T> extends IterableIterator<T> {
 	public void remove() {
 		myIterator.remove();
 	}
+
 }

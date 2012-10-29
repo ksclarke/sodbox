@@ -14,18 +14,17 @@ public class Version extends PersistentResource {
 	private Date date;
 	private String id;
 	VersionHistory<Version> history;
-	
+
 	/**
 	 * Default constructor. Not directly accessible.
 	 */
 	@SuppressWarnings("unused")
-	private Version() {
-	}
-	
+	private Version() {}
+
 	/**
 	 * Constructor of root version. All other versions should be created using
 	 * <code>Version.newVersion</code> or <code>VersionHistory.checkout</code>
-	 * methods
+	 * methods.
 	 */
 	protected Version(Storage storage) {
 		super(storage);
@@ -36,16 +35,16 @@ public class Version extends PersistentResource {
 		date = new Date();
 		id = "1";
 	}
-	
+
 	/**
-	 * Get version history containing this versioned object
+	 * Get version history containing this versioned object.
 	 */
 	public synchronized VersionHistory<Version> getVersionHistory() {
 		return history;
 	}
 
 	/**
-	 * Get predecessors of this version
+	 * Get predecessors of this version.
 	 * 
 	 * @return array of predecessor versions
 	 */
@@ -54,7 +53,7 @@ public class Version extends PersistentResource {
 	}
 
 	/**
-	 * Get successors of this version
+	 * Get successors of this version.
 	 * 
 	 * @return array of predecessor versions
 	 */
@@ -63,7 +62,7 @@ public class Version extends PersistentResource {
 	}
 
 	/**
-	 * Check if version is checked-in
+	 * Check if version is checked-in.
 	 * 
 	 * @return <code>true</code> if version belongs to version history
 	 */
@@ -72,7 +71,7 @@ public class Version extends PersistentResource {
 	}
 
 	/**
-	 * Check if version is checked-out
+	 * Check if version is checked-out.
 	 * 
 	 * @return <code>true</code> if version is just created and not checked-in
 	 *         yet (and so belongs to version history)
@@ -108,7 +107,7 @@ public class Version extends PersistentResource {
 	/**
 	 * Check-in new version. This method inserts in version history version
 	 * created by <code>Version.newVersion</code> or
-	 * <code>VersionHistory.checkout</code> method
+	 * <code>VersionHistory.checkout</code> method.
 	 */
 	public void checkin() {
 		synchronized (history) {
@@ -135,7 +134,7 @@ public class Version extends PersistentResource {
 	/**
 	 * Make specified version predecessor of this version. This method can be
 	 * used to perform merge of two versions (merging of version data should be
-	 * done by application itself)
+	 * done by application itself).
 	 * 
 	 * @param predecessor version to merged with
 	 */
@@ -152,7 +151,7 @@ public class Version extends PersistentResource {
 	}
 
 	/**
-	 * Get date of version creation
+	 * Get date of version creation.
 	 * 
 	 * @return date when this version was created
 	 */
@@ -161,7 +160,7 @@ public class Version extends PersistentResource {
 	}
 
 	/**
-	 * Get labels associated with this version
+	 * Get labels associated with this version.
 	 * 
 	 * @return array of labels assigned to this version
 	 */
@@ -170,7 +169,7 @@ public class Version extends PersistentResource {
 	}
 
 	/**
-	 * Add new label to this version
+	 * Add new label to this version.
 	 * 
 	 * @param label label to be associated with this version
 	 */
@@ -185,7 +184,7 @@ public class Version extends PersistentResource {
 	}
 
 	/**
-	 * Check if version has specified label
+	 * Check if version has specified label.
 	 * 
 	 * @param label version label
 	 */
@@ -200,7 +199,7 @@ public class Version extends PersistentResource {
 	}
 
 	/**
-	 * Get identifier of the version
+	 * Get identifier of the version.
 	 * 
 	 * @return version identifier automatically assigned by system
 	 */
@@ -212,8 +211,7 @@ public class Version extends PersistentResource {
 		int suffixPos = id.lastIndexOf('.');
 		int suffix = Integer.parseInt(id.substring(suffixPos + 1));
 		String nextId = suffixPos < 0 ? Integer.toString(suffix + 1) : id
-				.substring(0, suffixPos)
-				+ Integer.toString(suffix + 1);
+				.substring(0, suffixPos) + Integer.toString(suffix + 1);
 
 		if (successors.size() != 0) {
 			nextId += '.' + successors.size() + ".1";
@@ -221,4 +219,5 @@ public class Version extends PersistentResource {
 
 		return nextId;
 	}
+
 }

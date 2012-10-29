@@ -16,10 +16,12 @@ package info.freelibrary.sodbox;
  * class will cause an error.
  */
 public interface INamedClassLoader {
+
 	/**
 	 * Get name of this class loader.
 	 * 
 	 * @return class loader name (any sequence of character except ':')
 	 */
 	public String getName();
+
 }
