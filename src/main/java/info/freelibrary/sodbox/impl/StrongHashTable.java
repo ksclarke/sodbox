@@ -11,7 +11,7 @@ public class StrongHashTable implements OidHashTable {
 
     static final int MODIFIED_BUFFER_SIZE = 1024;
     Object[] modified;
-    int nModified;
+    long nModified;
 
     public StrongHashTable(StorageImpl db, int initialCapacity) {
         this.db = db;
@@ -96,12 +96,12 @@ public class StrongHashTable implements OidHashTable {
     }
 
     public synchronized void flush() {
-        int n;
+        long n;
         do { 
             n = nModified;
             if (nModified < MODIFIED_BUFFER_SIZE) { 
                 Object[] mod = modified;
-                for (int i = nModified; --i >= 0;) { 
+                for (int i = (int)nModified; --i >= 0;) { 
                     Object obj = mod[i];
                     if (db.isModified(obj)) { 
                         db.store(obj);
@@ -169,7 +169,7 @@ public class StrongHashTable implements OidHashTable {
 
     public synchronized void setDirty(Object obj) {
         if (nModified < MODIFIED_BUFFER_SIZE) { 
-            modified[nModified] = obj;
+            modified[(int)nModified] = obj;
         }
         nModified += 1;
     } 

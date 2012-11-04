@@ -8,7 +8,7 @@ public class PinWeakHashTable implements OidHashTable {
     static final float loadFactor = 0.75f;
     int count;
     int threshold;
-    int nModified;
+    long nModified;
     boolean disableRehash;
     StorageImpl db;
 
@@ -101,7 +101,7 @@ public class PinWeakHashTable implements OidHashTable {
 
     public synchronized void flush() {
         disableRehash = true;
-        int n;
+        long n;
         do { 
             n = nModified;
             for (int i = 0; i < table.length; i++) { 

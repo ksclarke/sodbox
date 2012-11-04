@@ -104,7 +104,7 @@ public class Rc4File implements IFile
 
     private final void crypt(byte[] clearText, byte[] cipherText)
     {
-	for (int i = 0; i < Page.pageSize; i++) {
+	for (int i = 0; i < clearText.length; i++) {
 	    cipherText[i] = (byte)(clearText[i] ^ pattern[i]);
         }
     }

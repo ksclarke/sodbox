@@ -11,7 +11,7 @@ public class LruObjectCache implements OidHashTable {
     int threshold;
     int pinLimit;
     int nPinned;
-    int nModified;
+    long nModified;
     Entry pinList;
     boolean disableRehash;
     StorageImpl db;
@@ -133,7 +133,7 @@ public class LruObjectCache implements OidHashTable {
         while (true) { 
           cs:synchronized(this) { 
                 disableRehash = true;
-                int n;
+                long n;
                 do {
                     n = nModified;                    
                     for (int i = 0; i < table.length; i++) { 

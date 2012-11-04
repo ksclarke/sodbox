@@ -21,10 +21,7 @@ public class ReplicationDynamicSlaveStorageImpl extends ReplicationSlaveStorageI
         super.open(file, pagePoolSize);
     }
 
-    Socket getSocket() throws IOException { 
-        if (opened) {
-            throw new StorageError(StorageError.CONNECTION_FAILURE);
-        }
+    Socket getSocket() throws IOException {
         return new Socket(host, port);
     }
 

@@ -443,7 +443,7 @@ public class StorageImpl implements Storage {
 			if (allocatedDelta > gcThreshold && !insideCloneBitmap) {
 				gc0();
 			}
-	
+
 			int objBitSize = (int) (size >> dbAllocationQuantumBits);
 			Assert.that(objBitSize == (size >> dbAllocationQuantumBits));
 			long pos;
@@ -1492,6 +1492,10 @@ public class StorageImpl implements Storage {
 					throw new StorageError(StorageError.STORAGE_NOT_OPENED);
 				}
 
+				if (!modified) {
+					return;
+				}
+
 				objectCache.flush();
 
 				if (customAllocatorList != null) {
@@ -1507,10 +1511,6 @@ public class StorageImpl implements Storage {
 
 						alloc.commit();
 					}
-				}
-
-				if (!modified) {
-					return;
 				}
 
 				commit0();
@@ -3625,6 +3625,8 @@ public class StorageImpl implements Storage {
 	public/* protected */synchronized void modifyObject(Object obj) {
 		synchronized (objectCache) {
 			if (!isModified(obj)) {
+				modified = true;
+
 				if (useSerializableTransactions) {
 					ThreadTransactionContext ctx = getTransactionContext();
 
@@ -3969,33 +3971,36 @@ public class StorageImpl implements Storage {
 			desc = findClassDescriptor(typeOid);
 		}
 
-		if (obj == null) {
-			obj = desc.customSerializable ? serializer.create(desc.cls) : desc
-					.newInstance();
-			objectCache.put(oid, obj);
-		}
+		// synchronized (objectCache)
+		{
+			if (obj == null) {
+				obj = desc.customSerializable ? serializer.create(desc.cls)
+						: desc.newInstance();
+				objectCache.put(oid, obj);
+			}
 
-		assignOid(obj, oid, false);
+			assignOid(obj, oid, false);
 
-		try {
-			if (obj instanceof SelfSerializable) {
-				((SelfSerializable) obj).unpack(new ByteArrayObjectInputStream(
-						body, ObjectHeader.sizeof, obj, recursiveLoading(obj),
-						false));
+			try {
+				if (obj instanceof SelfSerializable) {
+					((SelfSerializable) obj)
+							.unpack(new ByteArrayObjectInputStream(body,
+									ObjectHeader.sizeof, obj,
+									recursiveLoading(obj), false));
+				}
+				else if (desc.customSerializable) {
+					serializer.unpack(obj, new ByteArrayObjectInputStream(body,
+							ObjectHeader.sizeof, obj, recursiveLoading(obj),
+							false));
+				}
+				else {
+					unpackObject(obj, desc, recursiveLoading(obj), body,
+							ObjectHeader.sizeof, obj);
+				}
 			}
-			else if (desc.customSerializable) {
-				serializer
-						.unpack(obj, new ByteArrayObjectInputStream(body,
-								ObjectHeader.sizeof, obj,
-								recursiveLoading(obj), false));
+			catch (Exception x) {
+				throw new StorageError(StorageError.ACCESS_VIOLATION, x);
 			}
-			else {
-				unpackObject(obj, desc, recursiveLoading(obj), body,
-						ObjectHeader.sizeof, obj);
-			}
-		}
-		catch (Exception x) {
-			throw new StorageError(StorageError.ACCESS_VIOLATION, x);
 		}
 
 		if (obj instanceof ILoadable) {
@@ -4021,7 +4026,7 @@ public class StorageImpl implements Storage {
 			if (oid != 0) {
 				return lookupObject(oid, obj.getClass());
 			}
-	
+
 			return obj;
 		}
 
@@ -4325,8 +4330,16 @@ public class StorageImpl implements Storage {
 				int len = Bytes.unpack4(body, offs);
 				int typeOid = Bytes.unpack4(body, offs + 4);
 				obj.offs = offs + 8;
-				ClassDescriptor desc = findClassDescriptor(typeOid);
-				Class elemType = desc.cls;
+				Class elemType;
+
+				if (typeOid == -1) {
+					elemType = Comparable.class;
+				}
+				else {
+					ClassDescriptor desc = findClassDescriptor(typeOid);
+					elemType = desc.cls;
+				}
+				
 				Object arr = Array.newInstance(elemType, len);
 
 				for (int j = 0; j < len; j++) {
@@ -5358,8 +5371,14 @@ public class StorageImpl implements Storage {
 					offs = buf.packI4(offs, -1 - ClassDescriptor.tpArrayOfRaw);
 					int len = Array.getLength(obj);
 					offs = buf.packI4(offs, len);
-					ClassDescriptor desc = getClassDescriptor(elemType);
-					offs = buf.packI4(offs, desc.getOid());
+					
+					if (elemType.equals(Comparable.class)) {
+						offs = buf.packI4(offs, -1);
+					}
+					else {
+						ClassDescriptor desc = getClassDescriptor(elemType);
+						offs = buf.packI4(offs, desc.getOid());
+					}
 
 					for (int i = 0; i < len; i++) {
 						offs = swizzle(buf, offs, Array.get(obj, i));
