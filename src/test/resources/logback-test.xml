@@ -6,7 +6,10 @@
     </layout>
   </appender>
   
-  <logger name="info.freelibrary.sodbox" level="ERROR"/>
+  <logger name="info.freelibrary.sodbox" level="DEBUG"/>
+ 
+  <logger name="info.freelibrary.sodbox.xml.DatabaseTest" level="DEBUG"/>
+  
   <logger name="org.mortbay.log" level="ERROR"/> 
   <logger name="info.freelibrary.util" level="ERROR"/> 
   

@@ -140,9 +140,16 @@ public final class ClassDescriptor extends Persistent {
 
     static final Class[] sodboxConstructorProfile = new Class[]{ClassDescriptor.class};
 
-    static ReflectionProvider getReflectionProvider() { 
-        if (reflectionProvider == null) { 
-            reflectionProvider = new StandardReflectionProvider();
+    static ReflectionProvider getReflectionProvider() {
+        if (reflectionProvider == null) {
+        	try {
+        		Class.forName("sun.misc.Unsafe");
+        		String cls = "info.freelibrary.sodbox.impl.SunReflectionProvider";
+        		reflectionProvider = (ReflectionProvider) Class.forName(cls).newInstance();
+        	}
+        	catch (Throwable details) {
+        		reflectionProvider = new StandardReflectionProvider();
+        	}
         }
         return reflectionProvider;
     }

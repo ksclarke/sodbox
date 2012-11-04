@@ -57,6 +57,8 @@ class PersistentSet<T> extends Btree<T> implements IPersistentSet<T>
         this.unique = unique;
     }
 
+    PersistentSet() {}
+    
     public boolean isEmpty() { 
         return nElems == 0;
     }

@@ -43,6 +43,7 @@ public class StorageError extends RuntimeException {
 	public static final int READ_ONLY_DATABASE = 34;
 	public static final int NOT_IN_TRANSACTION = 35;
 	public static final int WRONG_CIPHER_KEY = 36;
+	public static final int STORAGE_CANNOT_BE_CREATED = 37;
 
 	private static final String[] messageText = { "", "Storage not opened",
 			"Storage already opened", "File access error", "Key not unique",
@@ -64,7 +65,7 @@ public class StorageError extends RuntimeException {
 			"Index key is null", "Invalid operation",
 			"Database is opened in read-only mode",
 			"Not within serializable transaction context",
-			"Wrong cipher key for the encrypted database" };
+			"Wrong cipher key for the encrypted database", "Storage cannot be created" };
 
 	private int errorCode;
 	private Exception origEx;
@@ -77,7 +78,7 @@ public class StorageError extends RuntimeException {
 	}
 
 	/**
-	 * Get original exception if StorageError excepotion was thrown as the
+	 * Get original exception if StorageError exception was thrown as the
 	 * result of catching some other exception within Storage implementation.
 	 * StorageError is used as wrapper of other exceptions to avoid cascade
 	 * propagation of throws and try/catch constructions.
