@@ -1,3 +1,4 @@
+
 package info.freelibrary.sodbox;
 
 /**
@@ -5,13 +6,13 @@ package info.freelibrary.sodbox;
  */
 public class AssertionFailed extends Error {
 
-	private static final long serialVersionUID = 1826376129352570814L;
+    private static final long serialVersionUID = 1826376129352570814L;
 
-	public AssertionFailed() {
-		super("Assertion failed");
-	}
+    public AssertionFailed() {
+        super("Assertion failed");
+    }
 
-	public AssertionFailed(String description) {
-		super("Assertion '" + description + "' failed");
-	}
+    public AssertionFailed(final String description) {
+        super("Assertion '" + description + "' failed");
+    }
 }

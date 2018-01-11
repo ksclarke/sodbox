@@ -1,3 +1,4 @@
+
 package info.freelibrary.sodbox;
 
 /**
@@ -5,11 +6,11 @@ package info.freelibrary.sodbox;
  */
 public interface ReplicationMasterStorage extends Storage {
 
-	/**
-	 * Get number of currently available slave nodes.
-	 * 
-	 * @return number of online replication slaves
-	 */
-	public int getNumberOfAvailableHosts();
+    /**
+     * Get number of currently available slave nodes.
+     *
+     * @return number of online replication slaves
+     */
+    public int getNumberOfAvailableHosts();
 
 }

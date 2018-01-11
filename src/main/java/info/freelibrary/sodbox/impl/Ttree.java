@@ -1,307 +1,327 @@
+
 package info.freelibrary.sodbox.impl;
 
-import info.freelibrary.sodbox.*;
-
 import java.lang.reflect.Array;
-import java.util.*;
+import java.util.ArrayList;
+import java.util.Iterator;
+import java.util.NoSuchElementException;
 
-public class Ttree<T> extends PersistentCollection<T> implements
-		SortedCollection<T> {
-	private PersistentComparator<T> comparator;
-	private boolean unique;
-	private TtreePage root;
-	private int nMembers;
+import info.freelibrary.sodbox.IterableIterator;
+import info.freelibrary.sodbox.PersistentCollection;
+import info.freelibrary.sodbox.PersistentComparator;
+import info.freelibrary.sodbox.PersistentIterator;
+import info.freelibrary.sodbox.SortedCollection;
+import info.freelibrary.sodbox.Storage;
+import info.freelibrary.sodbox.StorageError;
 
-	private Ttree() {}
+public class Ttree<T> extends PersistentCollection<T> implements SortedCollection<T> {
 
-	Ttree(Storage db, PersistentComparator<T> comparator, boolean unique) {
-		super(db);
-		this.comparator = comparator;
-		this.unique = unique;
-	}
+    class TtreeIterator<T> extends IterableIterator<T> implements PersistentIterator {
 
-	/**
-	 * Get comparator used in this collection
-	 * 
-	 * @return collection comparator
-	 */
-	public PersistentComparator<T> getComparator() {
-		return comparator;
-	}
+        boolean removed;
 
-	public boolean recursiveLoading() {
-		return false;
-	}
+        ArrayList list;
 
-	public T get(Object key) {
-		if (root != null) {
-			ArrayList list = new ArrayList();
+        int i;
 
-			root.find(comparator, key, 1, key, 1, list);
+        TtreeIterator(final ArrayList list) {
+            this.list = list;
+            i = -1;
+        }
 
-			if (list.size() > 1) {
-				throw new StorageError(StorageError.KEY_NOT_UNIQUE);
-			}
-			else if (list.size() == 0) {
-				return null;
-			}
-			else {
-				return (T) list.get(0);
-			}
-		}
+        @Override
+        public boolean hasNext() {
+            return i + 1 < list.size();
+        }
 
-		return null;
-	}
+        @Override
+        public T next() {
+            if (i + 1 >= list.size()) {
+                throw new NoSuchElementException();
+            }
 
-	public ArrayList<T> getList(Object from, Object till) {
-		ArrayList list = new ArrayList();
-		if (root != null) {
-			root.find(comparator, from, 1, till, 1, list);
-		}
-		return list;
-	}
+            removed = false;
 
-	public ArrayList<T> getList(Object from, boolean fromInclusive,
-			Object till, boolean tillInclusive) {
-		ArrayList list = new ArrayList();
-		if (root != null) {
-			root.find(comparator, from, fromInclusive ? 1 : 0, till,
-					tillInclusive ? 1 : 0, list);
-		}
-		return list;
-	}
+            return (T) list.get(++i);
+        }
 
-	public Object[] get(Object from, Object till) {
-		return getList(from, till).toArray();
-	}
+        @Override
+        public int nextOid() {
+            if (i + 1 >= list.size()) {
+                return 0;
+            }
 
-	public Object[] get(Object from, boolean fromInclusive, Object till,
-			boolean tillInclusive) {
-		return getList(from, fromInclusive, till, tillInclusive).toArray();
-	}
+            removed = false;
 
-	/**
-	 * Add new member to collection
-	 * 
-	 * @param obj new member
-	 * @return <code>true</code> if object is successfully added in the index,
-	 *         <code>false</code> if collection was declared as unique and there
-	 *         is already member with such value of the key in the collection.
-	 */
-	public boolean add(T obj) {
-		TtreePage newRoot;
+            return getStorage().getOid(list.get(++i));
+        }
 
-		if (root == null) {
-			newRoot = new TtreePage(getStorage(), obj);
-		}
-		else {
-			TtreePage.PageReference ref = new TtreePage.PageReference(root);
+        @Override
+        public void remove() {
+            if (removed || i < 0 || i >= list.size()) {
+                throw new IllegalStateException();
+            }
 
-			if (root.insert(comparator, obj, unique, ref) == TtreePage.NOT_UNIQUE) {
-				return false;
-			}
+            Ttree.this.remove(list.get(i));
 
-			newRoot = ref.pg;
-		}
+            list.remove(i--);
+            removed = true;
+        }
+    }
 
-		root = newRoot;
-		nMembers += 1;
-		modify();
+    /**
+     * Get all objects in the index as array ordered by index key.
+     *
+     * @return array of objects in the index ordered by key value
+     */
+    static final Object[] emptySelection = new Object[0];
 
-		return true;
-	}
+    private PersistentComparator<T> comparator;
 
-	/**
-	 * Check if collection contains a specified member.
-	 * 
-	 * @return <code>true</code> if specified member belongs to the collection
-	 */
-	public boolean containsObject(T member) {
-		return (root != null && member != null) ? root.containsObject(
-				comparator, member) : false;
-	}
+    private boolean unique;
 
-	public boolean contains(Object member) {
-		return (root != null && member != null) ? root.contains(comparator,
-				member) : false;
-	}
+    private TtreePage root;
 
-	public boolean containsKey(Object key) {
-		return (root != null && key != null) ? root
-				.containsKey(comparator, key) : false;
-	}
+    private int nMembers;
 
-	/**
-	 * Remove member from collection
-	 * 
-	 * @param obj member to be removed
-	 * @return <code>true</code> in case of success, <code>false</code> if there
-	 *         is no such key in the collection
-	 */
-	public boolean remove(Object obj) {
-		if (root != null) {
-			TtreePage.PageReference ref = new TtreePage.PageReference(root);
+    Ttree(final Storage db, final PersistentComparator<T> comparator, final boolean unique) {
+        super(db);
+        this.comparator = comparator;
+        this.unique = unique;
+    }
 
-			if (root.remove(comparator, obj, ref) != TtreePage.NOT_FOUND) {
-				root = ref.pg;
-				nMembers -= 1;
-				modify();
-				return true;
-			}
-		}
+    /**
+     * Add new member to collection
+     *
+     * @param obj new member
+     * @return <code>true</code> if object is successfully added in the index, <code>false</code> if collection was
+     *         declared as unique and there is already member with such value of the key in the collection.
+     */
+    @Override
+    public boolean add(final T obj) {
+        TtreePage newRoot;
 
-		return false;
-	}
+        if (root == null) {
+            newRoot = new TtreePage(getStorage(), obj);
+        } else {
+            final TtreePage.PageReference ref = new TtreePage.PageReference(root);
 
-	/**
-	 * Get number of objects in the collection
-	 * 
-	 * @return number of objects in the collection
-	 */
-	public int size() {
-		return nMembers;
-	}
+            if (root.insert(comparator, obj, unique, ref) == TtreePage.NOT_UNIQUE) {
+                return false;
+            }
 
-	/**
-	 * Remove all objects from the collection
-	 */
-	public void clear() {
-		if (root != null) {
-			root.prune();
-			root = null;
-			nMembers = 0;
-			modify();
-		}
-	}
+            newRoot = ref.pg;
+        }
 
-	/**
-	 * T-Tree destructor
-	 */
-	public void deallocate() {
-		if (root != null) {
-			root.prune();
-		}
+        root = newRoot;
+        nMembers += 1;
+        modify();
 
-		super.deallocate();
-	}
+        return true;
+    }
 
-	/**
-	 * Get all objects in the index as array ordered by index key.
-	 * 
-	 * @return array of objects in the index ordered by key value
-	 */
-	static final Object[] emptySelection = new Object[0];
+    /**
+     * Remove all objects from the collection
+     */
+    @Override
+    public void clear() {
+        if (root != null) {
+            root.prune();
+            root = null;
+            nMembers = 0;
+            modify();
+        }
+    }
 
-	public Object[] toArray() {
-		if (root == null) {
-			return emptySelection;
-		}
+    @Override
+    public boolean contains(final Object member) {
+        return root != null && member != null ? root.contains(comparator, member) : false;
+    }
 
-		Object[] arr = new Object[nMembers];
-		root.toArray(arr, 0);
-		return arr;
-	}
+    @Override
+    public boolean containsKey(final Object key) {
+        return root != null && key != null ? root.containsKey(comparator, key) : false;
+    }
 
-	/**
-	 * Get all objects in the index as array ordered by index key. The runtime
-	 * type of the returned array is that of the specified array. If the index
-	 * fits in the specified array, it is returned therein. Otherwise, a new
-	 * array is allocated with the runtime type of the specified array and the
-	 * size of this index.
-	 * <p>
-	 * 
-	 * If this index fits in the specified array with room to spare (i.e., the
-	 * array has more elements than this index), the element in the array
-	 * immediately following the end of the index is set to <tt>null</tt>. This
-	 * is useful in determining the length of this index <i>only</i> if the
-	 * caller knows that this index does not contain any <tt>null</tt>
-	 * elements.)
-	 * <p>
-	 * 
-	 * @return array of objects in the index ordered by key value
-	 */
-	public <E> E[] toArray(E[] arr) {
-		if (arr.length < nMembers) {
-			arr = (E[]) Array.newInstance(arr.getClass().getComponentType(),
-					nMembers);
-		}
+    /**
+     * Check if collection contains a specified member.
+     *
+     * @return <code>true</code> if specified member belongs to the collection
+     */
+    @Override
+    public boolean containsObject(final T member) {
+        return root != null && member != null ? root.containsObject(comparator, member) : false;
+    }
 
-		if (root != null) {
-			root.toArray(arr, 0);
-		}
+    /**
+     * T-Tree destructor
+     */
+    @Override
+    public void deallocate() {
+        if (root != null) {
+            root.prune();
+        }
 
-		if (arr.length > nMembers) {
-			arr[nMembers] = null;
-		}
+        super.deallocate();
+    }
 
-		return arr;
-	}
+    @Override
+    public T get(final Object key) {
+        if (root != null) {
+            final ArrayList list = new ArrayList();
 
-	class TtreeIterator<T> extends IterableIterator<T> implements
-			PersistentIterator {
-		boolean removed;
-		ArrayList list;
-		int i;
+            root.find(comparator, key, 1, key, 1, list);
 
-		TtreeIterator(ArrayList list) {
-			this.list = list;
-			i = -1;
-		}
+            if (list.size() > 1) {
+                throw new StorageError(StorageError.KEY_NOT_UNIQUE);
+            } else if (list.size() == 0) {
+                return null;
+            } else {
+                return (T) list.get(0);
+            }
+        }
 
-		public T next() {
-			if (i + 1 >= list.size()) {
-				throw new NoSuchElementException();
-			}
+        return null;
+    }
 
-			removed = false;
+    @Override
+    public Object[] get(final Object from, final boolean fromInclusive, final Object till,
+            final boolean tillInclusive) {
+        return getList(from, fromInclusive, till, tillInclusive).toArray();
+    }
 
-			return (T) list.get(++i);
-		}
+    @Override
+    public Object[] get(final Object from, final Object till) {
+        return getList(from, till).toArray();
+    }
 
-		public int nextOid() {
-			if (i + 1 >= list.size()) {
-				return 0;
-			}
+    /**
+     * Get comparator used in this collection
+     *
+     * @return collection comparator
+     */
+    @Override
+    public PersistentComparator<T> getComparator() {
+        return comparator;
+    }
 
-			removed = false;
+    @Override
+    public ArrayList<T> getList(final Object from, final boolean fromInclusive, final Object till,
+            final boolean tillInclusive) {
+        final ArrayList list = new ArrayList();
+        if (root != null) {
+            root.find(comparator, from, fromInclusive ? 1 : 0, till, tillInclusive ? 1 : 0, list);
+        }
+        return list;
+    }
 
-			return getStorage().getOid(list.get(++i));
-		}
+    @Override
+    public ArrayList<T> getList(final Object from, final Object till) {
+        final ArrayList list = new ArrayList();
+        if (root != null) {
+            root.find(comparator, from, 1, till, 1, list);
+        }
+        return list;
+    }
 
-		public void remove() {
-			if (removed || i < 0 || i >= list.size()) {
-				throw new IllegalStateException();
-			}
+    @Override
+    public Iterator<T> iterator() {
+        return iterator(null, null);
+    }
 
-			Ttree.this.remove(list.get(i));
+    @Override
+    public IterableIterator<T> iterator(final Object from, final boolean fromInclusive, final Object till,
+            final boolean tillInclusive) {
+        final ArrayList list = new ArrayList();
 
-			list.remove(i--);
-			removed = true;
-		}
+        if (root != null) {
+            root.find(comparator, from, fromInclusive ? 1 : 0, till, tillInclusive ? 1 : 0, list);
+        }
 
-		public boolean hasNext() {
-			return i + 1 < list.size();
-		}
-	}
+        return new TtreeIterator(list);
+    }
 
-	public Iterator<T> iterator() {
-		return iterator(null, null);
-	}
+    @Override
+    public IterableIterator<T> iterator(final Object from, final Object till) {
+        return iterator(from, true, till, true);
+    }
 
-	public IterableIterator<T> iterator(Object from, Object till) {
-		return iterator(from, true, till, true);
-	}
+    @Override
+    public boolean recursiveLoading() {
+        return false;
+    }
 
-	public IterableIterator<T> iterator(Object from, boolean fromInclusive,
-			Object till, boolean tillInclusive) {
-		ArrayList list = new ArrayList();
+    /**
+     * Remove member from collection
+     *
+     * @param obj member to be removed
+     * @return <code>true</code> in case of success, <code>false</code> if there is no such key in the collection
+     */
+    @Override
+    public boolean remove(final Object obj) {
+        if (root != null) {
+            final TtreePage.PageReference ref = new TtreePage.PageReference(root);
 
-		if (root != null) {
-			root.find(comparator, from, fromInclusive ? 1 : 0, till,
-					tillInclusive ? 1 : 0, list);
-		}
+            if (root.remove(comparator, obj, ref) != TtreePage.NOT_FOUND) {
+                root = ref.pg;
+                nMembers -= 1;
+                modify();
+                return true;
+            }
+        }
 
-		return new TtreeIterator(list);
-	}
+        return false;
+    }
+
+    /**
+     * Get number of objects in the collection
+     *
+     * @return number of objects in the collection
+     */
+    @Override
+    public int size() {
+        return nMembers;
+    }
+
+    @Override
+    public Object[] toArray() {
+        if (root == null) {
+            return emptySelection;
+        }
+
+        final Object[] arr = new Object[nMembers];
+        root.toArray(arr, 0);
+        return arr;
+    }
+
+    /**
+     * Get all objects in the index as array ordered by index key. The runtime type of the returned array is that of
+     * the specified array. If the index fits in the specified array, it is returned therein. Otherwise, a new array
+     * is allocated with the runtime type of the specified array and the size of this index.
+     * <p>
+     * If this index fits in the specified array with room to spare (i.e., the array has more elements than this
+     * index), the element in the array immediately following the end of the index is set to <tt>null</tt>. This is
+     * useful in determining the length of this index <i>only</i> if the caller knows that this index does not contain
+     * any <tt>null</tt> elements.)
+     * <p>
+     *
+     * @return array of objects in the index ordered by key value
+     */
+    @Override
+    public <E> E[] toArray(E[] arr) {
+        if (arr.length < nMembers) {
+            arr = (E[]) Array.newInstance(arr.getClass().getComponentType(), nMembers);
+        }
+
+        if (root != null) {
+            root.toArray(arr, 0);
+        }
+
+        if (arr.length > nMembers) {
+            arr[nMembers] = null;
+        }
+
+        return arr;
+    }
 
 }

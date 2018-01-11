@@ -1,421 +1,469 @@
+
 package info.freelibrary.sodbox;
 
-import java.util.Map;
-import java.util.Set;
-import java.util.Iterator;
-import java.util.Collection;
-import java.util.AbstractSet;
 import java.util.AbstractCollection;
+import java.util.AbstractSet;
+import java.util.Collection;
+import java.util.Iterator;
+import java.util.Map;
 import java.util.NoSuchElementException;
+import java.util.Set;
 
 /**
- * This class provide small embedded map (collection of &lt;key,value&gt;
- * pairs). Pairs are stored in the array in the order of their insertion.
- * Consequently operations with this map has linear complexity.
+ * This class provide small embedded map (collection of &lt;key,value&gt; pairs). Pairs are stored in the array in the
+ * order of their insertion. Consequently operations with this map has linear complexity.
  */
 public class SmallMap<K, V> extends PersistentResource implements Map<K, V> {
 
-	transient volatile Set<K> keySet;
-	transient volatile Collection<V> values;
-	transient volatile Set<Map.Entry<K, V>> entrySet;
-
-	private Pair<K, V>[] pairs;
-
-	@SuppressWarnings("unchecked")
-	public SmallMap() {
-		pairs = new Pair[0];
-	}
-
-	public int size() {
-		return pairs.length;
-	}
-
-	public boolean isEmpty() {
-		return pairs.length == 0;
-	}
-
-	public boolean containsKey(Object key) {
-		return getEntry(key) != null;
-	}
-
-	public boolean containsValue(Object value) {
-		for (int i = 0; i < pairs.length; i++) {
-			if (pairs[i].value == value
-					|| (value != null && value.equals(pairs[i].value))) {
-				return true;
-			}
-		}
-
-		return false;
-	}
-
-	public V get(Object key) {
-		Entry<K, V> entry = getEntry(key);
-
-		return entry != null ? entry.getValue() : null;
-	}
-
-	public Entry<K, V> getEntry(Object key) {
-		for (int i = 0; i < pairs.length; i++) {
-			if (pairs[i].key.equals(key)) {
-				return pairs[i];
-			}
-		}
-
-		return null;
-	}
-
-	@SuppressWarnings("unchecked")
-	public V put(K key, V value) {
-		int n = pairs.length;
-
-		if (key == null) {
-			throw new IllegalArgumentException("Key is null");
-		}
-
-		for (int i = 0; i < n; i++) {
-			if (key.equals(pairs[i].key)) {
-				V oldValue = pairs[i].value;
-
-				pairs[i].value = value;
-				modify();
-
-				return oldValue;
-			}
-		}
-
-		Pair<K, V>[] newPairs = new Pair[n + 1];
-
-		System.arraycopy(pairs, 0, newPairs, 0, n);
-		newPairs[n] = new Pair<K, V>(key, value);
-		pairs = newPairs;
-		modify();
-
-		return null;
-	}
-
-	public V remove(Object key) {
-		Entry<K, V> e = removeEntry(key);
-
-		return (e == null ? null : e.getValue());
-	}
-
-	@SuppressWarnings("unchecked")
-	public Entry<K, V> removeAt(int i) {
-		Pair<K, V> pair = pairs[i];
-		Pair<K, V>[] newPairs = new Pair[pairs.length - 1];
-
-		System.arraycopy(pairs, 0, newPairs, 0, i);
-		System.arraycopy(pairs, i + 1, newPairs, i, pairs.length - i - 1);
-		pairs = newPairs;
-		modify();
-
-		return pair;
-	}
-
-	final Entry<K, V> removeEntry(Object key) {
-		for (int i = 0; i < pairs.length; i++) {
-			if (key.equals(pairs[i].key)) {
-				return removeAt(i);
-			}
-		}
-
-		return null;
-	}
-
-	public void putAll(Map<? extends K, ? extends V> m) {
-		for (Iterator<? extends Map.Entry<? extends K, ? extends V>> i = m
-				.entrySet().iterator(); i.hasNext();) {
-			Map.Entry<? extends K, ? extends V> e = i.next();
-			put(e.getKey(), e.getValue());
-		}
-	}
-
-	@SuppressWarnings("unchecked")
-	public void clear() {
-		pairs = new Pair[0];
-		modify();
-	}
-
-	public Set<K> keySet() {
-		Set<K> ks = keySet;
+    private abstract class ArrayIterator<E> implements Iterator<E> {
+
+        int current;
 
-		return (ks != null ? ks : (keySet = new KeySet()));
-	}
-
-	private final class KeySet extends AbstractSet<K> {
-		public Iterator<K> iterator() {
-			return new KeyIterator();
-		}
-
-		public int size() {
-			return pairs.length;
-		}
-
-		public boolean contains(Object o) {
-			return containsKey(o);
-		}
-
-		public boolean remove(Object o) {
-			return SmallMap.this.removeEntry(o) != null;
-		}
-
-		public void clear() {
-			SmallMap.this.clear();
-		}
-	}
-
-	public Collection<V> values() {
-		Collection<V> vs = values;
-
-		return (vs != null ? vs : (values = new Values()));
-	}
-
-	private final class Values extends AbstractCollection<V> {
-		public Iterator<V> iterator() {
-			return new ValueIterator();
-		}
-
-		public int size() {
-			return pairs.length;
-		}
-
-		public boolean contains(Object o) {
-			return containsValue(o);
-		}
-
-		public void clear() {
-			SmallMap.this.clear();
-		}
-	}
-
-	public Set<Map.Entry<K, V>> entrySet() {
-		Set<Map.Entry<K, V>> es = entrySet;
-
-		return es != null ? es : (entrySet = new EntrySet());
-	}
-
-	private final class EntrySet extends AbstractSet<Map.Entry<K, V>> {
-		public Iterator<Map.Entry<K, V>> iterator() {
-			return new EntryIterator();
-		}
-
-		@SuppressWarnings("unchecked")
-		public boolean contains(Object o) {
-			if (!(o instanceof Map.Entry<?, ?>)) {
-				return false;
-			}
-
-			Map.Entry<K, V> e = (Map.Entry<K, V>) o;
-			Entry<K, V> candidate = getEntry(e.getKey());
-
-			return candidate != null && candidate.equals(e);
-		}
-
-		public boolean remove(Object o) {
-			Entry<K, V> pair = getEntry(o);
-
-			if (pair != null && pair.equals(o)) {
-				removeEntry(o);
-
-				return true;
-			}
-
-			return false;
-		}
-
-		public int size() {
-			return pairs.length;
-		}
-
-		public void clear() {
-			SmallMap.this.clear();
-		}
-	}
-
-	static class Pair<K, V> implements Map.Entry<K, V>, IValue {
-		K key;
-		V value;
-
-		Pair() {}
-
-		Pair(K k, V v) {
-			value = v;
-			key = k;
-		}
-
-		public final K getKey() {
-			return key;
-		}
-
-		public final V getValue() {
-			return value;
-		}
-
-		/**
-		 * In case of updating pair value using this method it is necessary to
-		 * explicitly call modify() method for the parent SmallMap object
-		 */
-		public final V setValue(V newValue) {
-			V oldValue = value;
-
-			value = newValue;
-
-			return oldValue;
-		}
-
-		@SuppressWarnings("unchecked")
-		public final boolean equals(Object o) {
-			if (!(o instanceof Map.Entry<?, ?>)) {
-				return false;
-			}
-
-			Map.Entry<K, V> e = (Map.Entry<K, V>) o;
-			Object k1 = getKey();
-			Object k2 = e.getKey();
-
-			if (k1 == k2 || (k1 != null && k1.equals(k2))) {
-				Object v1 = getValue();
-				Object v2 = e.getValue();
-
-				if (v1 == v2 || (v1 != null && v1.equals(v2))) {
-					return true;
-				}
-			}
-
-			return false;
-		}
-
-		public final int hashCode() {
-			return key.hashCode() ^ (value == null ? 0 : value.hashCode());
-		}
-
-		public final String toString() {
-			return getKey() + "=" + getValue();
-		}
-	}
-
-	private abstract class ArrayIterator<E> implements Iterator<E> {
-		int current;
-
-		ArrayIterator() {
-			current = -1;
-		}
-
-		public final boolean hasNext() {
-			return current + 1 < pairs.length;
-		}
-
-		final Entry<K, V> nextEntry() {
-			if (current + 1 >= pairs.length) {
-				throw new NoSuchElementException();
-			}
-
-			return pairs[++current];
-		}
-
-		public void remove() {
-			if (current < 0 || current >= pairs.length) {
-				throw new IllegalStateException();
-			}
-
-			SmallMap.this.removeAt(current--);
-		}
-	}
-
-	private final class ValueIterator extends ArrayIterator<V> {
-		public V next() {
-			return nextEntry().getValue();
-		}
-	}
-
-	private final class KeyIterator extends ArrayIterator<K> {
-		public K next() {
-			return nextEntry().getKey();
-		}
-	}
-
-	private final class EntryIterator extends ArrayIterator<Map.Entry<K, V>> {
-		public Map.Entry<K, V> next() {
-			return nextEntry();
-		}
-	}
-
-	@SuppressWarnings("unchecked")
-	public boolean equals(Object o) {
-		if (o == this) {
-			return true;
-		}
-
-		if (!(o instanceof Map)) {
-			return false;
-		}
-
-		Map<K, V> m = (Map<K, V>) o;
-
-		if (m.size() != size()) {
-			return false;
-		}
-
-		Iterator<Entry<K, V>> i = entrySet().iterator();
-
-		while (i.hasNext()) {
-			Entry<K, V> e = i.next();
-			K key = e.getKey();
-			V value = e.getValue();
-
-			if (value == null) {
-				if (!(m.get(key) == null && m.containsKey(key))) {
-					return false;
-				}
-			}
-			else {
-				if (!value.equals(m.get(key))) {
-					return false;
-				}
-			}
-		}
-
-		return true;
-	}
-
-	public int hashCode() {
-		int h = 0;
-		Iterator<Entry<K, V>> i = entrySet().iterator();
-
-		while (i.hasNext()) {
-			h += i.next().hashCode();
-		}
-
-		return h;
-	}
-
-	public String toString() {
-		Iterator<Entry<K, V>> i = entrySet().iterator();
-
-		if (!i.hasNext()) {
-			return "{}";
-		}
-
-		StringBuilder sb = new StringBuilder();
-
-		sb.append('{');
-
-		while (true) {
-			Entry<K, V> e = i.next();
-			K key = e.getKey();
-			V value = e.getValue();
-
-			sb.append(key == this ? "(this Map)" : key);
-			sb.append('=');
-			sb.append(value == this ? "(this Map)" : value);
-
-			if (!i.hasNext()) {
-				return sb.append('}').toString();
-			}
-
-			sb.append(", ");
-		}
-	}
+        ArrayIterator() {
+            current = -1;
+        }
+
+        @Override
+        public final boolean hasNext() {
+            return current + 1 < pairs.length;
+        }
+
+        final Entry<K, V> nextEntry() {
+            if (current + 1 >= pairs.length) {
+                throw new NoSuchElementException();
+            }
+
+            return pairs[++current];
+        }
+
+        @Override
+        public void remove() {
+            if (current < 0 || current >= pairs.length) {
+                throw new IllegalStateException();
+            }
+
+            SmallMap.this.removeAt(current--);
+        }
+    }
+
+    private final class EntryIterator extends ArrayIterator<Map.Entry<K, V>> {
+
+        @Override
+        public Map.Entry<K, V> next() {
+            return nextEntry();
+        }
+    }
+
+    private final class EntrySet extends AbstractSet<Map.Entry<K, V>> {
+
+        @Override
+        public void clear() {
+            SmallMap.this.clear();
+        }
+
+        @Override
+        @SuppressWarnings("unchecked")
+        public boolean contains(final Object o) {
+            if (!(o instanceof Map.Entry<?, ?>)) {
+                return false;
+            }
+
+            final Map.Entry<K, V> e = (Map.Entry<K, V>) o;
+            final Entry<K, V> candidate = getEntry(e.getKey());
+
+            return candidate != null && candidate.equals(e);
+        }
+
+        @Override
+        public Iterator<Map.Entry<K, V>> iterator() {
+            return new EntryIterator();
+        }
+
+        @Override
+        public boolean remove(final Object o) {
+            final Entry<K, V> pair = getEntry(o);
+
+            if (pair != null && pair.equals(o)) {
+                removeEntry(o);
+
+                return true;
+            }
+
+            return false;
+        }
+
+        @Override
+        public int size() {
+            return pairs.length;
+        }
+    }
+
+    private final class KeyIterator extends ArrayIterator<K> {
+
+        @Override
+        public K next() {
+            return nextEntry().getKey();
+        }
+    }
+
+    private final class KeySet extends AbstractSet<K> {
+
+        @Override
+        public void clear() {
+            SmallMap.this.clear();
+        }
+
+        @Override
+        public boolean contains(final Object o) {
+            return containsKey(o);
+        }
+
+        @Override
+        public Iterator<K> iterator() {
+            return new KeyIterator();
+        }
+
+        @Override
+        public boolean remove(final Object o) {
+            return SmallMap.this.removeEntry(o) != null;
+        }
+
+        @Override
+        public int size() {
+            return pairs.length;
+        }
+    }
+
+    static class Pair<K, V> implements Map.Entry<K, V>, IValue {
+
+        K key;
+
+        V value;
+
+        Pair() {
+        }
+
+        Pair(final K k, final V v) {
+            value = v;
+            key = k;
+        }
+
+        @Override
+        @SuppressWarnings("unchecked")
+        public final boolean equals(final Object o) {
+            if (!(o instanceof Map.Entry<?, ?>)) {
+                return false;
+            }
+
+            final Map.Entry<K, V> e = (Map.Entry<K, V>) o;
+            final Object k1 = getKey();
+            final Object k2 = e.getKey();
+
+            if (k1 == k2 || k1 != null && k1.equals(k2)) {
+                final Object v1 = getValue();
+                final Object v2 = e.getValue();
+
+                if (v1 == v2 || v1 != null && v1.equals(v2)) {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        @Override
+        public final K getKey() {
+            return key;
+        }
+
+        @Override
+        public final V getValue() {
+            return value;
+        }
+
+        @Override
+        public final int hashCode() {
+            return key.hashCode() ^ (value == null ? 0 : value.hashCode());
+        }
+
+        /**
+         * In case of updating pair value using this method it is necessary to explicitly call modify() method for the
+         * parent SmallMap object
+         */
+        @Override
+        public final V setValue(final V newValue) {
+            final V oldValue = value;
+
+            value = newValue;
+
+            return oldValue;
+        }
+
+        @Override
+        public final String toString() {
+            return getKey() + "=" + getValue();
+        }
+    }
+
+    private final class ValueIterator extends ArrayIterator<V> {
+
+        @Override
+        public V next() {
+            return nextEntry().getValue();
+        }
+    }
+
+    private final class Values extends AbstractCollection<V> {
+
+        @Override
+        public void clear() {
+            SmallMap.this.clear();
+        }
+
+        @Override
+        public boolean contains(final Object o) {
+            return containsValue(o);
+        }
+
+        @Override
+        public Iterator<V> iterator() {
+            return new ValueIterator();
+        }
+
+        @Override
+        public int size() {
+            return pairs.length;
+        }
+    }
+
+    transient volatile Set<K> keySet;
+
+    transient volatile Collection<V> values;
+
+    transient volatile Set<Map.Entry<K, V>> entrySet;
+
+    private Pair<K, V>[] pairs;
+
+    @SuppressWarnings("unchecked")
+    public SmallMap() {
+        pairs = new Pair[0];
+    }
+
+    @Override
+    @SuppressWarnings("unchecked")
+    public void clear() {
+        pairs = new Pair[0];
+        modify();
+    }
+
+    @Override
+    public boolean containsKey(final Object key) {
+        return getEntry(key) != null;
+    }
+
+    @Override
+    public boolean containsValue(final Object value) {
+        for (final Pair<K, V> pair : pairs) {
+            if (pair.value == value || value != null && value.equals(pair.value)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    @Override
+    public Set<Map.Entry<K, V>> entrySet() {
+        final Set<Map.Entry<K, V>> es = entrySet;
+
+        return es != null ? es : (entrySet = new EntrySet());
+    }
+
+    @Override
+    @SuppressWarnings("unchecked")
+    public boolean equals(final Object o) {
+        if (o == this) {
+            return true;
+        }
+
+        if (!(o instanceof Map)) {
+            return false;
+        }
+
+        final Map<K, V> m = (Map<K, V>) o;
+
+        if (m.size() != size()) {
+            return false;
+        }
+
+        final Iterator<Entry<K, V>> i = entrySet().iterator();
+
+        while (i.hasNext()) {
+            final Entry<K, V> e = i.next();
+            final K key = e.getKey();
+            final V value = e.getValue();
+
+            if (value == null) {
+                if (!(m.get(key) == null && m.containsKey(key))) {
+                    return false;
+                }
+            } else {
+                if (!value.equals(m.get(key))) {
+                    return false;
+                }
+            }
+        }
+
+        return true;
+    }
+
+    @Override
+    public V get(final Object key) {
+        final Entry<K, V> entry = getEntry(key);
+
+        return entry != null ? entry.getValue() : null;
+    }
+
+    public Entry<K, V> getEntry(final Object key) {
+        for (final Pair<K, V> pair : pairs) {
+            if (pair.key.equals(key)) {
+                return pair;
+            }
+        }
+
+        return null;
+    }
+
+    @Override
+    public int hashCode() {
+        int h = 0;
+        final Iterator<Entry<K, V>> i = entrySet().iterator();
+
+        while (i.hasNext()) {
+            h += i.next().hashCode();
+        }
+
+        return h;
+    }
+
+    @Override
+    public boolean isEmpty() {
+        return pairs.length == 0;
+    }
+
+    @Override
+    public Set<K> keySet() {
+        final Set<K> ks = keySet;
+
+        return ks != null ? ks : (keySet = new KeySet());
+    }
+
+    @Override
+    @SuppressWarnings("unchecked")
+    public V put(final K key, final V value) {
+        final int n = pairs.length;
+
+        if (key == null) {
+            throw new IllegalArgumentException("Key is null");
+        }
+
+        for (int i = 0; i < n; i++) {
+            if (key.equals(pairs[i].key)) {
+                final V oldValue = pairs[i].value;
+
+                pairs[i].value = value;
+                modify();
+
+                return oldValue;
+            }
+        }
+
+        final Pair<K, V>[] newPairs = new Pair[n + 1];
+
+        System.arraycopy(pairs, 0, newPairs, 0, n);
+        newPairs[n] = new Pair<K, V>(key, value);
+        pairs = newPairs;
+        modify();
+
+        return null;
+    }
+
+    @Override
+    public void putAll(final Map<? extends K, ? extends V> m) {
+        for (final Entry<? extends K, ? extends V> e : m.entrySet()) {
+            put(e.getKey(), e.getValue());
+        }
+    }
+
+    @Override
+    public V remove(final Object key) {
+        final Entry<K, V> e = removeEntry(key);
+
+        return e == null ? null : e.getValue();
+    }
+
+    @SuppressWarnings("unchecked")
+    public Entry<K, V> removeAt(final int i) {
+        final Pair<K, V> pair = pairs[i];
+        final Pair<K, V>[] newPairs = new Pair[pairs.length - 1];
+
+        System.arraycopy(pairs, 0, newPairs, 0, i);
+        System.arraycopy(pairs, i + 1, newPairs, i, pairs.length - i - 1);
+        pairs = newPairs;
+        modify();
+
+        return pair;
+    }
+
+    final Entry<K, V> removeEntry(final Object key) {
+        for (int i = 0; i < pairs.length; i++) {
+            if (key.equals(pairs[i].key)) {
+                return removeAt(i);
+            }
+        }
+
+        return null;
+    }
+
+    @Override
+    public int size() {
+        return pairs.length;
+    }
+
+    @Override
+    public String toString() {
+        final Iterator<Entry<K, V>> i = entrySet().iterator();
+
+        if (!i.hasNext()) {
+            return "{}";
+        }
+
+        final StringBuilder sb = new StringBuilder();
+
+        sb.append('{');
+
+        while (true) {
+            final Entry<K, V> e = i.next();
+            final K key = e.getKey();
+            final V value = e.getValue();
+
+            sb.append(key == this ? "(this Map)" : key);
+            sb.append('=');
+            sb.append(value == this ? "(this Map)" : value);
+
+            if (!i.hasNext()) {
+                return sb.append('}').toString();
+            }
+
+            sb.append(", ");
+        }
+    }
+
+    @Override
+    public Collection<V> values() {
+        final Collection<V> vs = values;
+
+        return vs != null ? vs : (values = new Values());
+    }
 
 }

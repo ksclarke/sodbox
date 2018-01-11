@@ -1,93 +1,98 @@
+
 package info.freelibrary.sodbox.impl;
 
-import java.lang.reflect.*;
-import info.freelibrary.sodbox.impl.ReflectionProvider;
-import java.util.*;
+import java.lang.reflect.Constructor;
+import java.lang.reflect.Field;
+import java.util.HashMap;
 
-import sun.reflect.*;
 import sun.misc.Unsafe;
+import sun.reflect.ReflectionFactory;
 
 public class SunReflectionProvider implements ReflectionProvider {
 
-	private Constructor myCons;
-	private Unsafe unsafe;
-	private ReflectionFactory factory;
-	private HashMap constructorHash;
+    static final Class[] defaultConstructorProfile = new Class[0];
 
-	static final Class[] defaultConstructorProfile = new Class[0];
+    private Constructor myCons;
 
-	public SunReflectionProvider() {
-		try {
-			Class osClass = Class.forName("java.io.ObjectStreamClass$FieldReflector");
-			Field unsafeField = osClass.getDeclaredField("unsafe");
-			unsafeField.setAccessible(true);
-			unsafe = (Unsafe) unsafeField.get(null);
-			myCons = Object.class.getDeclaredConstructor(new Class[0]);
-			factory = ReflectionFactory.getReflectionFactory();
-			constructorHash = new HashMap();
-		}
-		catch (Exception x) {
-			throw new Error("Failed to initialize reflection provider");
-		}
-	}
+    private Unsafe unsafe;
 
-	public Constructor getDefaultConstructor(Class aClass) throws Exception {
-		Constructor cons = (Constructor) constructorHash.get(aClass);
+    private ReflectionFactory factory;
 
-		if (cons == null) {
-			try {
-				cons = aClass.getDeclaredConstructor(defaultConstructorProfile);
-			}
-			catch (NoSuchMethodException x) {
-				cons = factory.newConstructorForSerialization(aClass, myCons);
-			}
+    private HashMap constructorHash;
 
-			constructorHash.put(aClass, cons);
-		}
+    public SunReflectionProvider() {
+        try {
+            final Class osClass = Class.forName("java.io.ObjectStreamClass$FieldReflector");
+            final Field unsafeField = osClass.getDeclaredField("unsafe");
+            unsafeField.setAccessible(true);
+            unsafe = (Unsafe) unsafeField.get(null);
+            myCons = Object.class.getDeclaredConstructor(new Class[0]);
+            factory = ReflectionFactory.getReflectionFactory();
+            constructorHash = new HashMap();
+        } catch (final Exception x) {
+            throw new Error("Failed to initialize reflection provider");
+        }
+    }
 
-		return cons;
-	}
+    @Override
+    public Constructor getDefaultConstructor(final Class aClass) throws Exception {
+        Constructor cons = (Constructor) constructorHash.get(aClass);
 
-	public void setInt(Field field, Object object, int value) throws Exception {
-		unsafe.putInt(object, unsafe.objectFieldOffset(field), value);
-	}
+        if (cons == null) {
+            try {
+                cons = aClass.getDeclaredConstructor(defaultConstructorProfile);
+            } catch (final NoSuchMethodException x) {
+                cons = factory.newConstructorForSerialization(aClass, myCons);
+            }
 
-	public void setLong(Field field, Object object, long value)
-			throws Exception {
-		unsafe.putLong(object, unsafe.objectFieldOffset(field), value);
-	}
+            constructorHash.put(aClass, cons);
+        }
 
-	public void setShort(Field field, Object object, short value)
-			throws Exception {
-		unsafe.putShort(object, unsafe.objectFieldOffset(field), value);
-	}
+        return cons;
+    }
 
-	public void setChar(Field field, Object object, char value)
-			throws Exception {
-		unsafe.putChar(object, unsafe.objectFieldOffset(field), value);
-	}
+    @Override
+    public void set(final Field field, final Object object, final Object value) throws Exception {
+        unsafe.putObject(object, unsafe.objectFieldOffset(field), value);
+    }
 
-	public void setByte(Field field, Object object, byte value)
-			throws Exception {
-		unsafe.putByte(object, unsafe.objectFieldOffset(field), value);
-	}
+    @Override
+    public void setBoolean(final Field field, final Object object, final boolean value) throws Exception {
+        unsafe.putBoolean(object, unsafe.objectFieldOffset(field), value);
+    }
 
-	public void setFloat(Field field, Object object, float value)
-			throws Exception {
-		unsafe.putFloat(object, unsafe.objectFieldOffset(field), value);
-	}
+    @Override
+    public void setByte(final Field field, final Object object, final byte value) throws Exception {
+        unsafe.putByte(object, unsafe.objectFieldOffset(field), value);
+    }
 
-	public void setDouble(Field field, Object object, double value)
-			throws Exception {
-		unsafe.putDouble(object, unsafe.objectFieldOffset(field), value);
-	}
+    @Override
+    public void setChar(final Field field, final Object object, final char value) throws Exception {
+        unsafe.putChar(object, unsafe.objectFieldOffset(field), value);
+    }
 
-	public void setBoolean(Field field, Object object, boolean value)
-			throws Exception {
-		unsafe.putBoolean(object, unsafe.objectFieldOffset(field), value);
-	}
+    @Override
+    public void setDouble(final Field field, final Object object, final double value) throws Exception {
+        unsafe.putDouble(object, unsafe.objectFieldOffset(field), value);
+    }
 
-	public void set(Field field, Object object, Object value) throws Exception {
-		unsafe.putObject(object, unsafe.objectFieldOffset(field), value);
-	}
+    @Override
+    public void setFloat(final Field field, final Object object, final float value) throws Exception {
+        unsafe.putFloat(object, unsafe.objectFieldOffset(field), value);
+    }
+
+    @Override
+    public void setInt(final Field field, final Object object, final int value) throws Exception {
+        unsafe.putInt(object, unsafe.objectFieldOffset(field), value);
+    }
+
+    @Override
+    public void setLong(final Field field, final Object object, final long value) throws Exception {
+        unsafe.putLong(object, unsafe.objectFieldOffset(field), value);
+    }
+
+    @Override
+    public void setShort(final Field field, final Object object, final short value) throws Exception {
+        unsafe.putShort(object, unsafe.objectFieldOffset(field), value);
+    }
 }

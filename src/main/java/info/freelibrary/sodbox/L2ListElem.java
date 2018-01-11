@@ -1,3 +1,4 @@
+
 package info.freelibrary.sodbox;
 
 /**
@@ -5,75 +6,76 @@ package info.freelibrary.sodbox;
  */
 public class L2ListElem extends PersistentResource {
 
-	protected L2ListElem next;
-	protected L2ListElem prev;
+    protected L2ListElem next;
 
-	public L2ListElem() {
-		next = prev = this;
-	}
+    protected L2ListElem prev;
 
-	/**
-	 * Get next list element. Been call for the last list element, this method
-	 * will return first element of the list or list header.
-	 */
-	public L2ListElem getNext() {
-		return next;
-	}
+    public L2ListElem() {
+        next = prev = this;
+    }
 
-	/**
-	 * Get previous list element. Been call for the first list element, this
-	 * method will return last element of the list or list header.
-	 */
-	public L2ListElem getPrev() {
-		return prev;
-	}
+    /**
+     * Get next list element. Been call for the last list element, this method will return first element of the list
+     * or list header.
+     */
+    public L2ListElem getNext() {
+        return next;
+    }
 
-	/**
-	 * Make list empty. This method should be applied to list header.
-	 */
-	public void prune() {
-		modify();
-		next = prev = this;
-	}
+    /**
+     * Get previous list element. Been call for the first list element, this method will return last element of the
+     * list or list header.
+     */
+    public L2ListElem getPrev() {
+        return prev;
+    }
 
-	/**
-	 * Link specified element in the list after this element.
-	 * 
-	 * @param elem element to be linked in the list after this element.
-	 */
-	public void linkAfter(L2ListElem elem) {
-		modify();
-		next.modify();
-		elem.modify();
-		elem.next = next;
-		elem.prev = this;
-		next.prev = elem;
-		next = elem;
-	}
+    /**
+     * Link specified element in the list after this element.
+     *
+     * @param elem element to be linked in the list after this element.
+     */
+    public void linkAfter(final L2ListElem elem) {
+        modify();
+        next.modify();
+        elem.modify();
+        elem.next = next;
+        elem.prev = this;
+        next.prev = elem;
+        next = elem;
+    }
 
-	/**
-	 * Link specified element in the list before this element.
-	 * 
-	 * @param elem element to be linked in the list before this element
-	 */
-	public void linkBefore(L2ListElem elem) {
-		modify();
-		prev.modify();
-		elem.modify();
-		elem.next = this;
-		elem.prev = prev;
-		prev.next = elem;
-		prev = elem;
-	}
+    /**
+     * Link specified element in the list before this element.
+     *
+     * @param elem element to be linked in the list before this element
+     */
+    public void linkBefore(final L2ListElem elem) {
+        modify();
+        prev.modify();
+        elem.modify();
+        elem.next = this;
+        elem.prev = prev;
+        prev.next = elem;
+        prev = elem;
+    }
 
-	/**
-	 * Remove element from the list.
-	 */
-	public void unlink() {
-		next.modify();
-		prev.modify();
-		next.prev = prev;
-		prev.next = next;
-	}
+    /**
+     * Make list empty. This method should be applied to list header.
+     */
+    public void prune() {
+        modify();
+        next = prev = this;
+    }
+
+    /**
+     * Remove element from the list.
+     */
+    public void unlink() {
+        next.modify();
+        prev.modify();
+        next.prev = prev;
+        prev.next = next;
+    }
 
 }

@@ -1,3 +1,4 @@
+
 package info.freelibrary.sodbox;
 
 /**
@@ -5,165 +6,160 @@ package info.freelibrary.sodbox;
  */
 public class PersistentResource extends Persistent implements IResource {
 
-	private transient Thread owner;
-	private transient int nReaders;
-	private transient int nWriters;
-	
-	public PersistentResource() {}
+    private transient Thread owner;
 
-	public PersistentResource(Storage storage) {
-		super(storage);
-	}
-	
-	public synchronized void sharedLock() {
-		Thread currThread = Thread.currentThread();
+    private transient int nReaders;
 
-		try {
-			while (true) {
-				if (owner == currThread) {
-					nWriters += 1;
-					break;
-				}
-				else if (nWriters == 0) {
-					if (myStorage == null || myStorage.lockObject(this)) {
-						nReaders += 1;
-					}
-					break;
-				}
-				else {
-					wait();
-				}
-			}
-		}
-		catch (InterruptedException x) {
-			throw new StorageError(StorageError.LOCK_FAILED);
-		}
-	}
+    private transient int nWriters;
 
-	public boolean sharedLock(long timeout) {
-		Thread currThread = Thread.currentThread();
-		long startTime = System.currentTimeMillis();
+    public PersistentResource() {
+    }
 
-		synchronized (this) {
-			try {
-				while (true) {
-					if (owner == currThread) {
-						nWriters += 1;
-						return true;
-					}
-					else if (nWriters == 0) {
-						if (myStorage == null || myStorage.lockObject(this)) {
-							nReaders += 1;
-						}
-						return true;
-					}
-					else {
-						long currTime = System.currentTimeMillis();
-						if (currTime < startTime) {
-							currTime = startTime;
-						}
-						if (startTime + timeout <= currTime) {
-							return false;
-						}
-						wait(startTime + timeout - currTime);
-					}
-				}
-			}
-			catch (InterruptedException x) {
-				return false;
-			}
-		}
-	}
+    public PersistentResource(final Storage storage) {
+        super(storage);
+    }
 
-	public synchronized void exclusiveLock() {
-		Thread currThread = Thread.currentThread();
+    @Override
+    public synchronized void exclusiveLock() {
+        final Thread currThread = Thread.currentThread();
 
-		try {
-			while (true) {
-				if (owner == currThread) {
-					nWriters += 1;
-					break;
-				}
-				else if (nReaders == 0 && nWriters == 0) {
-					nWriters = 1;
-					owner = currThread;
-					if (myStorage != null) {
-						myStorage.lockObject(this);
-					}
-					break;
-				}
-				else {
-					wait();
-				}
-			}
-		}
-		catch (InterruptedException x) {
-			throw new StorageError(StorageError.LOCK_FAILED);
-		}
-	}
+        try {
+            while (true) {
+                if (owner == currThread) {
+                    nWriters += 1;
+                    break;
+                } else if (nReaders == 0 && nWriters == 0) {
+                    nWriters = 1;
+                    owner = currThread;
+                    if (myStorage != null) {
+                        myStorage.lockObject(this);
+                    }
+                    break;
+                } else {
+                    wait();
+                }
+            }
+        } catch (final InterruptedException x) {
+            throw new StorageError(StorageError.LOCK_FAILED);
+        }
+    }
 
-	public boolean exclusiveLock(long timeout) {
-		Thread currThread = Thread.currentThread();
-		long startTime = System.currentTimeMillis();
+    @Override
+    public boolean exclusiveLock(final long timeout) {
+        final Thread currThread = Thread.currentThread();
+        final long startTime = System.currentTimeMillis();
 
-		synchronized (this) {
-			try {
-				while (true) {
-					if (owner == currThread) {
-						nWriters += 1;
-						return true;
-					}
-					else if (nReaders == 0 && nWriters == 0) {
-						nWriters = 1;
-						owner = currThread;
-						if (myStorage != null) {
-							myStorage.lockObject(this);
-						}
-						return true;
-					}
-					else {
-						long currTime = System.currentTimeMillis();
-						if (currTime < startTime) {
-							currTime = startTime;
-						}
-						if (startTime + timeout <= currTime) {
-							return false;
-						}
-						wait(startTime + timeout - currTime);
-					}
-				}
-			}
-			catch (InterruptedException x) {
-				return false;
-			}
-		}
-	}
+        synchronized (this) {
+            try {
+                while (true) {
+                    if (owner == currThread) {
+                        nWriters += 1;
+                        return true;
+                    } else if (nReaders == 0 && nWriters == 0) {
+                        nWriters = 1;
+                        owner = currThread;
+                        if (myStorage != null) {
+                            myStorage.lockObject(this);
+                        }
+                        return true;
+                    } else {
+                        long currTime = System.currentTimeMillis();
+                        if (currTime < startTime) {
+                            currTime = startTime;
+                        }
+                        if (startTime + timeout <= currTime) {
+                            return false;
+                        }
+                        wait(startTime + timeout - currTime);
+                    }
+                }
+            } catch (final InterruptedException x) {
+                return false;
+            }
+        }
+    }
 
-	public synchronized void unlock() {
-		if (nWriters != 0) {
-			if (--nWriters == 0) {
-				owner = null;
-				notifyAll();
-			}
-		}
-		else if (nReaders != 0) {
-			if (--nReaders == 0) {
-				notifyAll();
-			}
-		}
-	}
+    @Override
+    public synchronized void reset() {
+        if (nWriters > 0) {
+            nWriters = 0;
+            nReaders = 0;
+            owner = null;
+        } else if (nReaders > 0) {
+            nReaders -= 1;
+        }
 
-	public synchronized void reset() {
-		if (nWriters > 0) {
-			nWriters = 0;
-			nReaders = 0;
-			owner = null;
-		}
-		else if (nReaders > 0) {
-			nReaders -= 1;
-		}
+        notifyAll();
+    }
 
-		notifyAll();
-	}
+    @Override
+    public synchronized void sharedLock() {
+        final Thread currThread = Thread.currentThread();
+
+        try {
+            while (true) {
+                if (owner == currThread) {
+                    nWriters += 1;
+                    break;
+                } else if (nWriters == 0) {
+                    if (myStorage == null || myStorage.lockObject(this)) {
+                        nReaders += 1;
+                    }
+                    break;
+                } else {
+                    wait();
+                }
+            }
+        } catch (final InterruptedException x) {
+            throw new StorageError(StorageError.LOCK_FAILED);
+        }
+    }
+
+    @Override
+    public boolean sharedLock(final long timeout) {
+        final Thread currThread = Thread.currentThread();
+        final long startTime = System.currentTimeMillis();
+
+        synchronized (this) {
+            try {
+                while (true) {
+                    if (owner == currThread) {
+                        nWriters += 1;
+                        return true;
+                    } else if (nWriters == 0) {
+                        if (myStorage == null || myStorage.lockObject(this)) {
+                            nReaders += 1;
+                        }
+                        return true;
+                    } else {
+                        long currTime = System.currentTimeMillis();
+                        if (currTime < startTime) {
+                            currTime = startTime;
+                        }
+                        if (startTime + timeout <= currTime) {
+                            return false;
+                        }
+                        wait(startTime + timeout - currTime);
+                    }
+                }
+            } catch (final InterruptedException x) {
+                return false;
+            }
+        }
+    }
+
+    @Override
+    public synchronized void unlock() {
+        if (nWriters != 0) {
+            if (--nWriters == 0) {
+                owner = null;
+                notifyAll();
+            }
+        } else if (nReaders != 0) {
+            if (--nReaders == 0) {
+                notifyAll();
+            }
+        }
+    }
 
 }

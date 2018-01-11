@@ -1,347 +1,381 @@
+
 package info.freelibrary.sodbox.impl;
 
-import info.freelibrary.sodbox.*;
+import java.util.ArrayList;
+import java.util.Iterator;
 
-import java.util.*;
+import info.freelibrary.sodbox.PatriciaTrie;
+import info.freelibrary.sodbox.PatriciaTrieKey;
+import info.freelibrary.sodbox.Persistent;
+import info.freelibrary.sodbox.PersistentCollection;
 
-class PTrie<T> extends PersistentCollection<T> implements PatriciaTrie<T> 
-{ 
-    private PTrieNode<T> rootZero;
-    private PTrieNode<T> rootOne;
-    private int          count;
+class PTrie<T> extends PersistentCollection<T> implements PatriciaTrie<T> {
 
-    public int size() { 
-        return count;
-    }
+    private PTrieNode<T> myRootZero;
 
-    public ArrayList<T> elements() { 
-        ArrayList<T> list = new ArrayList<T>(count);
-        fill(list, rootZero);
-        fill(list, rootOne);
-        return list;
-    }
+    private PTrieNode<T> myRootOne;
 
-    public Object[] toArray() { 
-        return elements().toArray();
-    }
+    private int myCount;
 
-    public <E> E[] toArray(E[] arr) { 
-        return elements().toArray(arr);
-    }
-
-    public Iterator<T> iterator() { 
-        return elements().iterator();
-    }
-    
-    private static <E> void fill(ArrayList<E> list, PTrieNode<E> node) { 
-        if (node != null) {
-            list.add(node.obj);
-            fill(list, node.childZero);
-            fill(list, node.childOne);
+    private static <E> void fill(final ArrayList<E> aList, final PTrieNode<E> aNode) {
+        if (aNode != null) {
+            aList.add(aNode.myObj);
+            fill(aList, aNode.myChildZero);
+            fill(aList, aNode.myChildOne);
         }
     }
 
-    private static int firstBit(long key, int keyLength)
-    {
-        return (int)(key >>> (keyLength - 1)) & 1;
+    private static int firstBit(final long aKey, final int aKeyLength) {
+        return (int) (aKey >>> (aKeyLength - 1)) & 1;
     }
 
-    private static int getCommonPartLength(long keyA, int keyLengthA, long keyB, int keyLengthB)
-    {
-        if (keyLengthA > keyLengthB) {
-            keyA >>>= keyLengthA - keyLengthB;
-            keyLengthA = keyLengthB;
+    private static int getCommonPartLength(long aKeyA, int aKeyLengthA, long aKeyB, int aKeyLengthB) {
+        if (aKeyLengthA > aKeyLengthB) {
+            aKeyA >>>= aKeyLengthA - aKeyLengthB;
+            aKeyLengthA = aKeyLengthB;
         } else {
-            keyB >>>= keyLengthB - keyLengthA;
-            keyLengthB = keyLengthA;
+            aKeyB >>>= aKeyLengthB - aKeyLengthA;
+            aKeyLengthB = aKeyLengthA;
         }
-        long diff = keyA ^ keyB;
-        
+
+        long diff = aKeyA ^ aKeyB;
         int count = 0;
+
         while (diff != 0) {
             diff >>>= 1;
             count += 1;
         }
-        return keyLengthA - count;
+
+        return aKeyLengthA - count;
     }
 
-    public T add(PatriciaTrieKey key, T obj) 
-    { 
+    @Override
+    public T add(final PatriciaTrieKey aKey, final T aObj) {
         modify();
-        count += 1;
+        myCount += 1;
 
-        if (firstBit(key.mask, key.length) == 1) {
-            if (rootOne != null) { 
-                return rootOne.add(key.mask, key.length, obj);
-            } else { 
-                rootOne = new PTrieNode<T>(key.mask, key.length, obj);
+        if (firstBit(aKey.myMask, aKey.myLength) == 1) {
+            if (myRootOne != null) {
+                return myRootOne.add(aKey.myMask, aKey.myLength, aObj);
+            } else {
+                myRootOne = new PTrieNode<T>(aKey.myMask, aKey.myLength, aObj);
                 return null;
             }
-        } else { 
-            if (rootZero != null) { 
-                return rootZero.add(key.mask, key.length, obj);
-            } else { 
-                rootZero = new PTrieNode<T>(key.mask, key.length, obj);
+        } else {
+            if (myRootZero != null) {
+                return myRootZero.add(aKey.myMask, aKey.myLength, aObj);
+            } else {
+                myRootZero = new PTrieNode<T>(aKey.myMask, aKey.myLength, aObj);
                 return null;
             }
-        }            
-    }
-    
-    public T findBestMatch(PatriciaTrieKey key) 
-    {
-        if (firstBit(key.mask, key.length) == 1) {
-            if (rootOne != null) { 
-                return rootOne.findBestMatch(key.mask, key.length);
-            } 
-        } else { 
-            if (rootZero != null) { 
-                return rootZero.findBestMatch(key.mask, key.length);
-            } 
         }
-        return null;
     }
-    
 
-    public T findExactMatch(PatriciaTrieKey key) 
-    {
-        if (firstBit(key.mask, key.length) == 1) {
-            if (rootOne != null) { 
-                return rootOne.findExactMatch(key.mask, key.length);
-            } 
-        } else { 
-            if (rootZero != null) { 
-                return rootZero.findExactMatch(key.mask, key.length);
-            } 
+    @Override
+    public void clear() {
+        if (myRootOne != null) {
+            myRootOne.deallocate();
+            myRootOne = null;
         }
+
+        if (myRootZero != null) {
+            myRootZero.deallocate();
+            myRootZero = null;
+        }
+
+        myCount = 0;
+    }
+
+    @Override
+    public ArrayList<T> elements() {
+        final ArrayList<T> list = new ArrayList<T>(myCount);
+
+        fill(list, myRootZero);
+        fill(list, myRootOne);
+
+        return list;
+    }
+
+    @Override
+    public T findBestMatch(final PatriciaTrieKey aKey) {
+        if (firstBit(aKey.myMask, aKey.myLength) == 1) {
+            if (myRootOne != null) {
+                return myRootOne.findBestMatch(aKey.myMask, aKey.myLength);
+            }
+        } else {
+            if (myRootZero != null) {
+                return myRootZero.findBestMatch(aKey.myMask, aKey.myLength);
+            }
+        }
+
         return null;
     }
-    
-    public T remove(PatriciaTrieKey key) 
-    { 
-        if (firstBit(key.mask, key.length) == 1) {
-            if (rootOne != null) { 
-                T obj = rootOne.remove(key.mask, key.length);
-                if (obj != null) { 
+
+    @Override
+    public T findExactMatch(final PatriciaTrieKey aKey) {
+        if (firstBit(aKey.myMask, aKey.myLength) == 1) {
+            if (myRootOne != null) {
+                return myRootOne.findExactMatch(aKey.myMask, aKey.myLength);
+            }
+        } else {
+            if (myRootZero != null) {
+                return myRootZero.findExactMatch(aKey.myMask, aKey.myLength);
+            }
+        }
+
+        return null;
+    }
+
+    @Override
+    public Iterator<T> iterator() {
+        return elements().iterator();
+    }
+
+    @Override
+    public T remove(final PatriciaTrieKey aKey) {
+        if (firstBit(aKey.myMask, aKey.myLength) == 1) {
+            if (myRootOne != null) {
+                final T obj = myRootOne.remove(aKey.myMask, aKey.myLength);
+
+                if (obj != null) {
                     modify();
-                    count -= 1;
-                    if (rootOne.isNotUsed()) { 
-                        rootOne.deallocate();
-                        rootOne = null;
+                    myCount -= 1;
+
+                    if (myRootOne.isNotUsed()) {
+                        myRootOne.deallocate();
+                        myRootOne = null;
                     }
                     return obj;
                 }
-            }  
-        } else { 
-            if (rootZero != null) { 
-                T obj = rootZero.remove(key.mask, key.length);
-                if (obj != null) { 
+            }
+        } else {
+            if (myRootZero != null) {
+                final T obj = myRootZero.remove(aKey.myMask, aKey.myLength);
+
+                if (obj != null) {
                     modify();
-                    count -= 1;
-                    if (rootZero.isNotUsed()) { 
-                        rootZero.deallocate();
-                        rootZero = null;
+                    myCount -= 1;
+
+                    if (myRootZero.isNotUsed()) {
+                        myRootZero.deallocate();
+                        myRootZero = null;
                     }
+
                     return obj;
                 }
-            }  
+            }
         }
+
         return null;
     }
 
-    public void clear() 
-    {
-        if (rootOne != null) { 
-            rootOne.deallocate();
-            rootOne = null;
-        }
-        if (rootZero != null) { 
-            rootZero.deallocate();
-            rootZero = null;
-        }
-        count = 0;
+    @Override
+    public int size() {
+        return myCount;
     }
 
-    static class PTrieNode<T> extends Persistent 
-    {
-        long         key;
-        int          keyLength;
-        T            obj;
-        PTrieNode<T> childZero;
-        PTrieNode<T> childOne;
+    @Override
+    public Object[] toArray() {
+        return elements().toArray();
+    }
 
-        PTrieNode(long key, int keyLength, T obj)
-        {
-            this.obj = obj;
-            this.key = key;
-            this.keyLength = keyLength; 
+    @Override
+    public <E> E[] toArray(final E[] aArray) {
+        return elements().toArray(aArray);
+    }
+
+    static class PTrieNode<T> extends Persistent {
+
+        long myKey;
+
+        int myKeyLength;
+
+        T myObj;
+
+        PTrieNode<T> myChildZero;
+
+        PTrieNode<T> myChildOne;
+
+        PTrieNode() {
         }
 
-        PTrieNode() {}
+        PTrieNode(final long aKey, final int aKeyLength, final T aObj) {
+            this.myObj = aObj;
+            this.myKey = aKey;
+            this.myKeyLength = aKeyLength;
+        }
 
-        T add(long key, int keyLength, T obj) 
-        {
-            if (key == this.key && keyLength == this.keyLength) {
+        T add(final long aKey, final int aKeyLength, final T aObj) {
+            if ((aKey == this.myKey) && (aKeyLength == this.myKeyLength)) {
                 modify();
-                T prevObj = this.obj;
-                this.obj = obj;
+                final T prevObj = this.myObj;
+                this.myObj = aObj;
                 return prevObj;
             }
-            int keyLengthCommon = getCommonPartLength(key, keyLength, this.key, this.keyLength);
-            int keyLengthDiff = this.keyLength - keyLengthCommon;
-            long keyCommon = key >>> (keyLength - keyLengthCommon);
-            long keyDiff = this.key - (keyCommon << keyLengthDiff);
+
+            final int keyLengthCommon = getCommonPartLength(aKey, aKeyLength, this.myKey, this.myKeyLength);
+            int keyLengthDiff = this.myKeyLength - keyLengthCommon;
+            final long keyCommon = aKey >>> (aKeyLength - keyLengthCommon);
+            long keyDiff = this.myKey - (keyCommon << keyLengthDiff);
+
             if (keyLengthDiff > 0) {
                 modify();
-                PTrieNode<T> newNode = new PTrieNode<T>(keyDiff, keyLengthDiff, this.obj);
-                newNode.childZero = childZero;
-                newNode.childOne = childOne;
-                
-                this.key = keyCommon;
-                this.keyLength = keyLengthCommon;
-                this.obj = null;
-                
-                if (firstBit(keyDiff, keyLengthDiff) == 1) {
-                    childZero = null;
-                    childOne = newNode;
-                } else {
-                    childZero = newNode;
-                    childOne = null;
-                }
-            }
-            
-            if (keyLength > keyLengthCommon) {
-                keyLengthDiff = keyLength - keyLengthCommon;
-                keyDiff = key - (keyCommon << keyLengthDiff);
-                
-                if (firstBit(keyDiff, keyLengthDiff) == 1) {
-                    if (childOne != null) {
-                        return childOne.add(keyDiff, keyLengthDiff, obj);
-                    } else { 
-                        modify();
-                        childOne = new PTrieNode<T>(keyDiff, keyLengthDiff, obj);
-                        return null;
-                    }
-                } else {
-                    if (childZero != null) { 
-                        return childZero.add(keyDiff, keyLengthDiff, obj);
-                    } else { 
-                        modify();
-                        childZero = new PTrieNode<T>(keyDiff, keyLengthDiff, obj);
-                        return null;
-                    }
-                }
-            } else { 
-                T prevObj = this.obj;
-                this.obj = obj;
-                return prevObj;
-            }            
-        }
-    
-        
-        T findBestMatch(long key, int keyLength) 
-        {             
-            if (keyLength > this.keyLength) { 
-                int keyLengthCommon = getCommonPartLength(key, keyLength, this.key, this.keyLength);
-                int keyLengthDiff = keyLength - keyLengthCommon;
-                long keyCommon = key >>> keyLengthDiff;
-                long keyDiff = key - (keyCommon << keyLengthDiff);
+                final PTrieNode<T> newNode = new PTrieNode<T>(keyDiff, keyLengthDiff, this.myObj);
+                newNode.myChildZero = myChildZero;
+                newNode.myChildOne = myChildOne;
+
+                this.myKey = keyCommon;
+                this.myKeyLength = keyLengthCommon;
+                this.myObj = null;
 
                 if (firstBit(keyDiff, keyLengthDiff) == 1) {
-                    if (childOne != null) { 
-                        return childOne.findBestMatch(keyDiff, keyLengthDiff);
+                    myChildZero = null;
+                    myChildOne = newNode;
+                } else {
+                    myChildZero = newNode;
+                    myChildOne = null;
+                }
+            }
+
+            if (aKeyLength > keyLengthCommon) {
+                keyLengthDiff = aKeyLength - keyLengthCommon;
+                keyDiff = aKey - (keyCommon << keyLengthDiff);
+
+                if (firstBit(keyDiff, keyLengthDiff) == 1) {
+                    if (myChildOne != null) {
+                        return myChildOne.add(keyDiff, keyLengthDiff, aObj);
+                    } else {
+                        modify();
+                        myChildOne = new PTrieNode<T>(keyDiff, keyLengthDiff, aObj);
+                        return null;
                     }
                 } else {
-                    if (childZero != null) { 
-                        return childZero.findBestMatch(keyDiff, keyLengthDiff);
+                    if (myChildZero != null) {
+                        return myChildZero.add(keyDiff, keyLengthDiff, aObj);
+                    } else {
+                        modify();
+                        myChildZero = new PTrieNode<T>(keyDiff, keyLengthDiff, aObj);
+                        return null;
+                    }
+                }
+            } else {
+                final T prevObj = this.myObj;
+                this.myObj = aObj;
+                return prevObj;
+            }
+        }
+
+        @Override
+        public void deallocate() {
+            if (myChildOne != null) {
+                myChildOne.deallocate();
+            }
+            if (myChildZero != null) {
+                myChildZero.deallocate();
+            }
+            super.deallocate();
+        }
+
+        T findBestMatch(final long aKey, final int aKeyLength) {
+            if (aKeyLength > this.myKeyLength) {
+                final int keyLengthCommon = getCommonPartLength(aKey, aKeyLength, this.myKey, this.myKeyLength);
+                final int keyLengthDiff = aKeyLength - keyLengthCommon;
+                final long keyCommon = aKey >>> keyLengthDiff;
+                final long keyDiff = aKey - (keyCommon << keyLengthDiff);
+
+                if (firstBit(keyDiff, keyLengthDiff) == 1) {
+                    if (myChildOne != null) {
+                        return myChildOne.findBestMatch(keyDiff, keyLengthDiff);
+                    }
+                } else {
+                    if (myChildZero != null) {
+                        return myChildZero.findBestMatch(keyDiff, keyLengthDiff);
                     }
                 }
             }
-            return obj;
+
+            return myObj;
         }
-				
-        T findExactMatch(long key, int keyLength) 
-        {             
-            if (keyLength >= this.keyLength) { 
-                if (key == this.key && keyLength == this.keyLength) { 
-                    return obj;
-                } else { 
-                    int keyLengthCommon = getCommonPartLength(key, keyLength, this.key, this.keyLength);
-                    if (keyLengthCommon == this.keyLength) { 
-                        int keyLengthDiff = keyLength - keyLengthCommon;
-                        long keyCommon = key >>> keyLengthDiff;
-                        long keyDiff = key - (keyCommon << keyLengthDiff);
-                        
+
+        T findExactMatch(final long aKey, final int aKeyLength) {
+            if (aKeyLength >= this.myKeyLength) {
+                if ((aKey == this.myKey) && (aKeyLength == this.myKeyLength)) {
+                    return myObj;
+                } else {
+                    final int keyLengthCommon = getCommonPartLength(aKey, aKeyLength, this.myKey, this.myKeyLength);
+
+                    if (keyLengthCommon == this.myKeyLength) {
+                        final int keyLengthDiff = aKeyLength - keyLengthCommon;
+                        final long keyCommon = aKey >>> keyLengthDiff;
+                        final long keyDiff = aKey - (keyCommon << keyLengthDiff);
+
                         if (firstBit(keyDiff, keyLengthDiff) == 1) {
-                            if (childOne != null) { 
-                                return childOne.findBestMatch(keyDiff, keyLengthDiff);
+                            if (myChildOne != null) {
+                                return myChildOne.findBestMatch(keyDiff, keyLengthDiff);
                             }
                         } else {
-                            if (childZero != null) { 
-                                return childZero.findBestMatch(keyDiff, keyLengthDiff);
-                            } 
+                            if (myChildZero != null) {
+                                return myChildZero.findBestMatch(keyDiff, keyLengthDiff);
+                            }
                         }
                     }
                 }
             }
-            return null;
-        }		
 
-        boolean isNotUsed() { 
-            return obj == null && childOne == null && childZero == null;
+            return null;
         }
 
-        T remove(long key, int keyLength) 
-        {             
-            if (keyLength >= this.keyLength) { 
-                if (key == this.key && keyLength == this.keyLength) { 
-                    T obj = this.obj;
-                    this.obj = null;
+        boolean isNotUsed() {
+            return (myObj == null) && (myChildOne == null) && (myChildZero == null);
+        }
+
+        T remove(final long aKey, final int aKeyLength) {
+            if (aKeyLength >= this.myKeyLength) {
+                if ((aKey == this.myKey) && (aKeyLength == this.myKeyLength)) {
+                    final T obj = this.myObj;
+
+                    this.myObj = null;
+
                     return obj;
-                } else { 
-                    int keyLengthCommon = getCommonPartLength(key, keyLength, this.key, this.keyLength);
-                    int keyLengthDiff = keyLength - keyLengthCommon;
-                    long keyCommon = key >>> keyLengthDiff;
-                    long keyDiff = key - (keyCommon << keyLengthDiff);
-                    
+                } else {
+                    final int keyLengthCommon = getCommonPartLength(aKey, aKeyLength, this.myKey, this.myKeyLength);
+                    final int keyLengthDiff = aKeyLength - keyLengthCommon;
+                    final long keyCommon = aKey >>> keyLengthDiff;
+                    final long keyDiff = aKey - (keyCommon << keyLengthDiff);
+
                     if (firstBit(keyDiff, keyLengthDiff) == 1) {
-                        if (childOne != null) { 
-                            T obj = childOne.findBestMatch(keyDiff, keyLengthDiff);
-                            if (obj != null) { 
-                                if (childOne.isNotUsed()) {
+                        if (myChildOne != null) {
+                            final T obj = myChildOne.findBestMatch(keyDiff, keyLengthDiff);
+
+                            if (obj != null) {
+                                if (myChildOne.isNotUsed()) {
                                     modify();
-                                    childOne.deallocate();
-                                    childOne = null;
+                                    myChildOne.deallocate();
+                                    myChildOne = null;
                                 }
-                                return obj;                                    
+
+                                return obj;
                             }
                         }
                     } else {
-                        if (childZero != null) { 
-                            T obj = childZero.findBestMatch(keyDiff, keyLengthDiff);
-                            if (obj != null) { 
-                                if (childZero.isNotUsed()) { 
+                        if (myChildZero != null) {
+                            final T obj = myChildZero.findBestMatch(keyDiff, keyLengthDiff);
+
+                            if (obj != null) {
+                                if (myChildZero.isNotUsed()) {
                                     modify();
-                                    childZero.deallocate();
-                                    childZero = null;
+                                    myChildZero.deallocate();
+                                    myChildZero = null;
                                 }
-                                return obj;                                    
+
+                                return obj;
                             }
-                        } 
+                        }
                     }
                 }
             }
-            return null;
-        }		
 
-        public void deallocate() 
-        {
-            if (childOne != null) { 
-                childOne.deallocate();
-            }
-            if (childZero != null) { 
-                childZero.deallocate();
-            }
-            super.deallocate();
+            return null;
         }
     }
 }

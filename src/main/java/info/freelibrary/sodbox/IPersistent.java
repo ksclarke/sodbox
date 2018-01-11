@@ -1,123 +1,114 @@
+
 package info.freelibrary.sodbox;
 
 /**
  * Interface of all persistent capable objects.
  */
-public interface IPersistent extends ILoadable, IStoreable,
-		java.io.Externalizable {
+public interface IPersistent extends ILoadable, IStoreable, java.io.Externalizable {
 
-	/**
-	 * Load object from the database (if needed).
-	 */
-	public void load();
+    /**
+     * Assign OID to the object. This method is used by storage class and you should not invoke it directly.
+     *
+     * @param storage associated storage
+     * @param oid object identifier
+     */
+    public void assignOid(Storage storage, int oid, boolean raw);
 
-	/**
-	 * Check if object is stub and has to be loaded from the database.
-	 * 
-	 * @return <code>true</code> if object has to be loaded from the database
-	 */
-	public boolean isRaw();
+    /**
+     * Deallocate persistent object from the database.
+     */
+    public void deallocate();
 
-	/**
-	 * Check if object was modified within current transaction.
-	 * 
-	 * @return <code>true</code> if object is persistent and was modified within
-	 *         current transaction
-	 */
-	public boolean isModified();
+    /**
+     * Get object identifier (OID).
+     *
+     * @return OID (0 if object is not persistent yet)
+     */
+    public int getOid();
 
-	/**
-	 * Check if object is deleted by Java GC from process memory.
-	 * 
-	 * @return <code>true</code> if object is deleted by GC
-	 */
-	public boolean isDeleted();
+    /**
+     * Get storage in which this object is stored.
+     *
+     * @return storage containing this object (null if object is not persistent yet)
+     */
+    public Storage getStorage();
 
-	/**
-	 * Check if object is persistent.
-	 * 
-	 * @return <code>true</code> if object has assigned OID
-	 */
-	public boolean isPersistent();
+    /**
+     * Invalidate object. Invalidated object has to be explicitly reloaded usin3g load() method. Attempt to store
+     * invalidated object will cause StoraegError exception.
+     */
+    public void invalidate();
 
-	/**
-	 * Explicitly make object persistent. Usually objects are made persistent
-	 * implicitly using "persistence through reachability approach", but this
-	 * method allows to do it explicitly.
-	 * 
-	 * @param storage storage in which object should be stored
-	 */
-	public void makePersistent(Storage storage);
+    /**
+     * Check if object is deleted by Java GC from process memory.
+     *
+     * @return <code>true</code> if object is deleted by GC
+     */
+    public boolean isDeleted();
 
-	/**
-	 * Save object in the database.
-	 */
-	public void store();
+    /**
+     * Check if object was modified within current transaction.
+     *
+     * @return <code>true</code> if object is persistent and was modified within current transaction
+     */
+    public boolean isModified();
 
-	/**
-	 * Mark object as modified. Object will be saved to the database during
-	 * transaction commit.
-	 */
-	public void modify();
+    /**
+     * Check if object is persistent.
+     *
+     * @return <code>true</code> if object has assigned OID
+     */
+    public boolean isPersistent();
 
-	/**
-	 * Load object from the database (if needed) and mark it as modified.
-	 */
-	public void loadAndModify();
+    /**
+     * Check if object is stub and has to be loaded from the database.
+     *
+     * @return <code>true</code> if object has to be loaded from the database
+     */
+    public boolean isRaw();
 
-	/**
-	 * Get object identifier (OID).
-	 * 
-	 * @return OID (0 if object is not persistent yet)
-	 */
-	public int getOid();
+    /**
+     * Load object from the database (if needed).
+     */
+    public void load();
 
-	/**
-	 * Deallocate persistent object from the database.
-	 */
-	public void deallocate();
+    /**
+     * Load object from the database (if needed) and mark it as modified.
+     */
+    public void loadAndModify();
 
-	/**
-	 * Specified whether object should be automatically loaded when it is
-	 * referenced by other loaded persistent object. Default implementation of
-	 * this method returns <code>true</code> making all cluster of referenced
-	 * objects loaded together. To avoid main memory overflow you should stop
-	 * recursive loading of all objects from the database to main memory by
-	 * redefining this method in some classes and returning <code>false</code>
-	 * in it. In this case object has to be loaded explicitly using
-	 * Persistent.load method.
-	 * 
-	 * @return <code>true</code> if object is automatically loaded
-	 */
-	public boolean recursiveLoading();
+    /**
+     * Explicitly make object persistent. Usually objects are made persistent implicitly using "persistence through
+     * reachability approach", but this method allows to do it explicitly.
+     *
+     * @param storage storage in which object should be stored
+     */
+    public void makePersistent(Storage storage);
 
-	/**
-	 * Get storage in which this object is stored.
-	 * 
-	 * @return storage containing this object (null if object is not persistent
-	 *         yet)
-	 */
-	public Storage getStorage();
+    /**
+     * Mark object as modified. Object will be saved to the database during transaction commit.
+     */
+    public void modify();
 
-	/**
-	 * Invalidate object. Invalidated object has to be explicitly reloaded
-	 * usin3g load() method. Attempt to store invalidated object will cause
-	 * StoraegError exception.
-	 */
-	public void invalidate();
+    /**
+     * Specified whether object should be automatically loaded when it is referenced by other loaded persistent
+     * object. Default implementation of this method returns <code>true</code> making all cluster of referenced
+     * objects loaded together. To avoid main memory overflow you should stop recursive loading of all objects from
+     * the database to main memory by redefining this method in some classes and returning <code>false</code> in it.
+     * In this case object has to be loaded explicitly using Persistent.load method.
+     *
+     * @return <code>true</code> if object is automatically loaded
+     */
+    public boolean recursiveLoading();
 
-	/**
-	 * Assign OID to the object. This method is used by storage class and you
-	 * should not invoke it directly.
-	 * 
-	 * @param storage associated storage
-	 * @param oid object identifier
-	 */
-	public void assignOid(Storage storage, int oid, boolean raw);
+    /**
+     * Save object in the database.
+     */
+    public void store();
 
-	/**
-	 * Method used to remove association of object with storage.
-	 */
-	public void unassignOid();
+    /**
+     * Method used to remove association of object with storage.
+     */
+    public void unassignOid();
 
 }

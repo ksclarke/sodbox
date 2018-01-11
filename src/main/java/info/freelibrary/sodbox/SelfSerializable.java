@@ -1,3 +1,4 @@
+
 package info.freelibrary.sodbox;
 
 /**
@@ -5,18 +6,18 @@ package info.freelibrary.sodbox;
  */
 public interface SelfSerializable {
 
-	/**
-	 * Serialize object.
-	 * 
-	 * @param out writer to be used for object serialization
-	 */
-	void pack(SodboxOutputStream out) throws java.io.IOException;
+    /**
+     * Serialize object.
+     *
+     * @param out writer to be used for object serialization
+     */
+    void pack(SodboxOutputStream out) throws java.io.IOException;
 
-	/**
-	 * Deserialize object.
-	 * 
-	 * @param in reader to be used for object deserialization
-	 */
-	void unpack(SodboxInputStream in) throws java.io.IOException;
+    /**
+     * Deserialize object.
+     *
+     * @param in reader to be used for object deserialization
+     */
+    void unpack(SodboxInputStream in) throws java.io.IOException;
 
 }

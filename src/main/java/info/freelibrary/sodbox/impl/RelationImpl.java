@@ -1,172 +1,218 @@
+
 package info.freelibrary.sodbox.impl;
-import info.freelibrary.sodbox.*;
 
-import  java.util.*;
+import java.util.Collection;
+import java.util.Iterator;
+import java.util.List;
+import java.util.ListIterator;
 
-public class RelationImpl<M, O> extends Relation<M,O> {
-    public int size() {
-        return link.size();
-    }
-    
-    public void setSize(int newSize) {
-        link.setSize(newSize);
-    }
-    
-    public boolean isEmpty() {
-        return link.isEmpty();
-    }
-    
-    public boolean remove(Object o) {
-        return link.remove(o);
+import info.freelibrary.sodbox.Link;
+import info.freelibrary.sodbox.Relation;
+
+public class RelationImpl<M, O> extends Relation<M, O> {
+
+    Link<M> link;
+
+    RelationImpl() {
     }
 
-    public M get(int i) {
-        return link.get(i);
-    }
-
-    public Object getRaw(int i) {
-        return link.getRaw(i);
-    }
-
-    public M set(int i, M obj) {
-        return link.set(i, obj);
-    }
-
-    public void setObject(int i, M obj) {
-        link.setObject(i, obj);
-    }
-
-    public void removeObject(int i) {
-        link.removeObject(i);
-    }
-
-    public M remove(int i) {
-        return link.remove(i);
-    }
-
-    public void insert(int i, M obj) {
-        link.insert(i, obj);
-    }
-
-    public void add(int i, M obj) {
-        link.add(i, obj);
-    }
-
-    public boolean add(M obj) {
-        return link.add(obj);
-    }
-
-    public void addAll(M[] arr) {
-        link.addAll(arr);
-    }
-
-    public void addAll(M[] arr, int from, int length) {
-        link.addAll(arr, from, length);
-    }
-
-    public boolean addAll(Link<M> anotherLink) {
-        return link.addAll(anotherLink); 
-    }
-
-    public Object[] toArray() {
-        return link.toArray();
-    }
-
-    public Object[] toRawArray() {
-        return link.toRawArray();
-    }
-
-    public <T> T[] toArray(T[] arr) {
-        return link.<T>toArray(arr);
-    }
-
-    public boolean contains(Object obj) {
-        return link.contains(obj);
-    }
-
-    public boolean containsObject(M obj) {
-        return link.containsObject(obj);
-    }
-
-    public int indexOf(Object obj) {
-        return link.indexOf(obj);
-    }
-
-    public int lastIndexOf(Object obj) {
-        return link.lastIndexOf(obj);
-    }
-      
-    public int indexOfObject(Object obj) {
-        return link.indexOfObject(obj);
-    }
-
-    public int lastIndexOfObject(Object obj) {
-        return link.lastIndexOfObject(obj);
-    }
-      
-    public void clear() {
-        link.clear();
-    }
-
-    public void deallocateMembers() {
-        link.deallocateMembers();
-    }
-
-    public Iterator<M> iterator() {
-        return link.iterator();
-    }
-    
-
-    public boolean containsAll(Collection<?> c) {        
-        return link.containsAll(c);
-    }
-
-    public boolean containsElement(int i, M obj) {
-        return link.containsElement(i, obj);
-    }
-
-    public boolean addAll(Collection<? extends M> c) {
-        return link.addAll(c);
-    }
-
-    public boolean addAll(int index, Collection<? extends M> c) {
-        return link.addAll(index, c);
-    }
-
-    public boolean removeAll(Collection<?> c) {
-        return link.removeAll(c);
-    }
-
-    public boolean retainAll(Collection<?> c) {
-        return link.retainAll(c);
-    }
-
-    public void pin() { 
-        link.pin();
-    }
-    
-    public void unpin() { 
-        link.unpin();
-    }
-    
-    public List<M> subList(int fromIndex, int toIndex) {
-        return link.subList(fromIndex, toIndex);
-    }
-
-    public ListIterator<M> listIterator(int index) {
-        return link.listIterator(index);
-    }
-
-    public ListIterator<M> listIterator() {
-        return link.listIterator();
-    }
-
-    RelationImpl() {}
-
-    RelationImpl(StorageImpl db, O owner) { 
+    RelationImpl(final StorageImpl db, final O owner) {
         super(owner);
         link = new LinkImpl<M>(db, 8);
     }
 
-    Link<M> link;
+    @Override
+    public void add(final int i, final M obj) {
+        link.add(i, obj);
+    }
+
+    @Override
+    public boolean add(final M obj) {
+        return link.add(obj);
+    }
+
+    @Override
+    public boolean addAll(final Collection<? extends M> c) {
+        return link.addAll(c);
+    }
+
+    @Override
+    public boolean addAll(final int index, final Collection<? extends M> c) {
+        return link.addAll(index, c);
+    }
+
+    @Override
+    public boolean addAll(final Link<M> anotherLink) {
+        return link.addAll(anotherLink);
+    }
+
+    @Override
+    public void addAll(final M[] arr) {
+        link.addAll(arr);
+    }
+
+    @Override
+    public void addAll(final M[] arr, final int from, final int length) {
+        link.addAll(arr, from, length);
+    }
+
+    @Override
+    public void clear() {
+        link.clear();
+    }
+
+    @Override
+    public boolean contains(final Object obj) {
+        return link.contains(obj);
+    }
+
+    @Override
+    public boolean containsAll(final Collection<?> c) {
+        return link.containsAll(c);
+    }
+
+    @Override
+    public boolean containsElement(final int i, final M obj) {
+        return link.containsElement(i, obj);
+    }
+
+    @Override
+    public boolean containsObject(final M obj) {
+        return link.containsObject(obj);
+    }
+
+    @Override
+    public void deallocateMembers() {
+        link.deallocateMembers();
+    }
+
+    @Override
+    public M get(final int i) {
+        return link.get(i);
+    }
+
+    @Override
+    public Object getRaw(final int i) {
+        return link.getRaw(i);
+    }
+
+    @Override
+    public int indexOf(final Object obj) {
+        return link.indexOf(obj);
+    }
+
+    @Override
+    public int indexOfObject(final Object obj) {
+        return link.indexOfObject(obj);
+    }
+
+    @Override
+    public void insert(final int i, final M obj) {
+        link.insert(i, obj);
+    }
+
+    @Override
+    public boolean isEmpty() {
+        return link.isEmpty();
+    }
+
+    @Override
+    public Iterator<M> iterator() {
+        return link.iterator();
+    }
+
+    @Override
+    public int lastIndexOf(final Object obj) {
+        return link.lastIndexOf(obj);
+    }
+
+    @Override
+    public int lastIndexOfObject(final Object obj) {
+        return link.lastIndexOfObject(obj);
+    }
+
+    @Override
+    public ListIterator<M> listIterator() {
+        return link.listIterator();
+    }
+
+    @Override
+    public ListIterator<M> listIterator(final int index) {
+        return link.listIterator(index);
+    }
+
+    @Override
+    public void pin() {
+        link.pin();
+    }
+
+    @Override
+    public M remove(final int i) {
+        return link.remove(i);
+    }
+
+    @Override
+    public boolean remove(final Object o) {
+        return link.remove(o);
+    }
+
+    @Override
+    public boolean removeAll(final Collection<?> c) {
+        return link.removeAll(c);
+    }
+
+    @Override
+    public void removeObject(final int i) {
+        link.removeObject(i);
+    }
+
+    @Override
+    public boolean retainAll(final Collection<?> c) {
+        return link.retainAll(c);
+    }
+
+    @Override
+    public M set(final int i, final M obj) {
+        return link.set(i, obj);
+    }
+
+    @Override
+    public void setObject(final int i, final M obj) {
+        link.setObject(i, obj);
+    }
+
+    @Override
+    public void setSize(final int newSize) {
+        link.setSize(newSize);
+    }
+
+    @Override
+    public int size() {
+        return link.size();
+    }
+
+    @Override
+    public List<M> subList(final int fromIndex, final int toIndex) {
+        return link.subList(fromIndex, toIndex);
+    }
+
+    @Override
+    public Object[] toArray() {
+        return link.toArray();
+    }
+
+    @Override
+    public <T> T[] toArray(final T[] arr) {
+        return link.<T>toArray(arr);
+    }
+
+    @Override
+    public Object[] toRawArray() {
+        return link.toRawArray();
+    }
+
+    @Override
+    public void unpin() {
+        link.unpin();
+    }
 }

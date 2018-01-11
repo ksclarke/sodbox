@@ -1,3 +1,4 @@
+
 package info.freelibrary.sodbox;
 
 /**
@@ -5,13 +6,13 @@ package info.freelibrary.sodbox;
  */
 public interface IndexProvider {
 
-	/**
-	 * Get index for the specified field of the class.
-	 * 
-	 * @param cls class where index is located
-	 * @param key field of the class
-	 * @return Index for this field or null if index doesn't exist
-	 */
-	GenericIndex getIndex(Class cls, String key);
+    /**
+     * Get index for the specified field of the class.
+     *
+     * @param cls class where index is located
+     * @param key field of the class
+     * @return Index for this field or null if index doesn't exist
+     */
+    GenericIndex getIndex(Class cls, String key);
 
 }

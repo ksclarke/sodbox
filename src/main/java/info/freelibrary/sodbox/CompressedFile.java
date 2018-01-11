@@ -1,114 +1,121 @@
+
 package info.freelibrary.sodbox;
 
 import java.io.IOException;
 import java.io.InputStream;
-
 import java.util.Enumeration;
-import java.util.zip.ZipFile;
 import java.util.zip.ZipEntry;
+import java.util.zip.ZipFile;
 
 /**
- * Compressed read-only database file. You should create database using normal
- * file (OSFile). Then use CompressDatabase utility to compress database file.
- * To work with compressed database file you should pass instance of this class
- * in <code>Storage.open</code> method
+ * Compressed read-only database file. You should create database using normal file (OSFile). Then use
+ * CompressDatabase utility to compress database file. To work with compressed database file you should pass instance
+ * of this class in <code>Storage.open</code> method
  */
 public class CompressedFile implements IFile {
 
-	static final int SEGMENT_LENGTH = 128 * 1024;
+    static final int SEGMENT_LENGTH = 128 * 1024;
 
-	ZipFile file;
-	ZipEntry[] entries;
-	byte[] segment;
-	ZipEntry currEntry;
+    ZipFile file;
 
-	public void write(long pos, byte[] buf) {
-		throw new UnsupportedOperationException("ZipFile.write");
-	}
+    ZipEntry[] entries;
 
-	public int read(long pos, byte[] buf) {
-		try {
-			int seg = (int) (pos / SEGMENT_LENGTH);
-			ZipEntry e = entries[seg];
-			int size = (int) e.getSize();
+    byte[] segment;
 
-			if (e != currEntry) {
-				InputStream in = file.getInputStream(e);
-				int rc, offs = 0;
+    ZipEntry currEntry;
 
-				while (offs < size
-						&& (rc = in.read(segment, offs, size - offs)) >= 0) {
-					offs += rc;
-				}
+    /**
+     * Constructor of compressed file
+     *
+     * @param path path to the archive previously prepared by CompressDatabase utility
+     */
+    public CompressedFile(final String path) {
+        try {
+            file = new ZipFile(path);
+            final int nEntries = file.size();
+            entries = new ZipEntry[nEntries];
+            final Enumeration<? extends ZipEntry> ee = file.entries();
 
-				if (offs != size) {
-					throw new StorageError(StorageError.FILE_ACCESS_ERROR);
-				}
+            for (int i = 0; ee.hasMoreElements(); i++) {
+                entries[i] = ee.nextElement();
+            }
 
-				currEntry = e;
-			}
+            segment = new byte[SEGMENT_LENGTH];
+            currEntry = null;
+        } catch (final IOException x) {
+            throw new StorageError(StorageError.FILE_ACCESS_ERROR);
+        }
+    }
 
-			int offs = (int) (pos - (long) seg * SEGMENT_LENGTH);
-			if (offs < size) {
-				int len = buf.length < size - offs ? buf.length : size - offs;
-				System.arraycopy(segment, offs, buf, 0, len);
-				return len;
-			}
+    @Override
+    public void close() {
+        try {
+            file.close();
+        } catch (final IOException x) {
+            throw new StorageError(StorageError.FILE_ACCESS_ERROR);
+        }
+    }
 
-			return 0;
-		}
-		catch (IOException x) {
-			throw new StorageError(StorageError.FILE_ACCESS_ERROR);
-		}
-	}
+    @Override
+    public long length() {
+        return (long) (entries.length - 1) * SEGMENT_LENGTH + entries[entries.length - 1].getSize();
+    }
 
-	public void sync() {}
+    @Override
+    public void lock(final boolean shared) {
+    }
 
-	public boolean tryLock(boolean shared) {
-		return true;
-	}
+    @Override
+    public int read(final long pos, final byte[] buf) {
+        try {
+            final int seg = (int) (pos / SEGMENT_LENGTH);
+            final ZipEntry e = entries[seg];
+            final int size = (int) e.getSize();
 
-	public void lock(boolean shared) {}
+            if (e != currEntry) {
+                final InputStream in = file.getInputStream(e);
+                int rc, offs = 0;
 
-	public void unlock() {}
+                while (offs < size && (rc = in.read(segment, offs, size - offs)) >= 0) {
+                    offs += rc;
+                }
 
-	public void close() {
-		try {
-			file.close();
-		}
-		catch (IOException x) {
-			throw new StorageError(StorageError.FILE_ACCESS_ERROR);
-		}
-	}
+                if (offs != size) {
+                    throw new StorageError(StorageError.FILE_ACCESS_ERROR);
+                }
 
-	public long length() {
-		return (long) (entries.length - 1) * SEGMENT_LENGTH
-				+ entries[entries.length - 1].getSize();
-	}
+                currEntry = e;
+            }
 
-	/**
-	 * Constructor of compressed file
-	 * 
-	 * @param path path to the archive previously prepared by CompressDatabase
-	 *        utility
-	 */
-	public CompressedFile(String path) {
-		try {
-			file = new ZipFile(path);
-			int nEntries = file.size();
-			entries = new ZipEntry[nEntries];
-			Enumeration<? extends ZipEntry> ee = file.entries();
+            final int offs = (int) (pos - (long) seg * SEGMENT_LENGTH);
+            if (offs < size) {
+                final int len = buf.length < size - offs ? buf.length : size - offs;
+                System.arraycopy(segment, offs, buf, 0, len);
+                return len;
+            }
 
-			for (int i = 0; ee.hasMoreElements(); i++) {
-				entries[i] = (ZipEntry) ee.nextElement();
-			}
+            return 0;
+        } catch (final IOException x) {
+            throw new StorageError(StorageError.FILE_ACCESS_ERROR);
+        }
+    }
 
-			segment = new byte[SEGMENT_LENGTH];
-			currEntry = null;
-		}
-		catch (IOException x) {
-			throw new StorageError(StorageError.FILE_ACCESS_ERROR);
-		}
-	}
+    @Override
+    public void sync() {
+    }
+
+    @Override
+    public boolean tryLock(final boolean shared) {
+        return true;
+    }
+
+    @Override
+    public void unlock() {
+    }
+
+    @Override
+    public void write(final long pos, final byte[] buf) {
+        throw new UnsupportedOperationException("ZipFile.write");
+    }
 
 }

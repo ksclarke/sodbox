@@ -1,3 +1,4 @@
+
 package info.freelibrary.sodbox;
 
 /**
@@ -5,30 +6,32 @@ package info.freelibrary.sodbox;
  */
 public class XMLImportException extends Exception {
 
-	private static final long serialVersionUID = -1747040844641874359L;
+    private static final long serialVersionUID = -1747040844641874359L;
 
-	private int myLine;
-	private int myColumn;
-	private String myMessage;
+    private final int myLine;
 
-	public XMLImportException(int line, int column, String message) {
-		super("In line " + line + " column " + column + ": " + message);
+    private final int myColumn;
 
-		myLine = line;
-		myColumn = column;
-		myMessage = message;
-	}
+    private final String myMessage;
 
-	public String getMessageText() {
-		return myMessage;
-	}
+    public XMLImportException(final int line, final int column, final String message) {
+        super("In line " + line + " column " + column + ": " + message);
 
-	public int getLine() {
-		return myLine;
-	}
+        myLine = line;
+        myColumn = column;
+        myMessage = message;
+    }
 
-	public int getColumn() {
-		return myColumn;
-	}
+    public int getColumn() {
+        return myColumn;
+    }
+
+    public int getLine() {
+        return myLine;
+    }
+
+    public String getMessageText() {
+        return myMessage;
+    }
 
 }

@@ -1,30 +1,36 @@
+
 package info.freelibrary.sodbox.impl;
 
-import info.freelibrary.sodbox.*;
+import info.freelibrary.sodbox.IFile;
+import info.freelibrary.sodbox.ReplicationMasterStorage;
 
+public class ReplicationMasterStorageImpl extends StorageImpl implements ReplicationMasterStorage {
 
-public class ReplicationMasterStorageImpl extends StorageImpl implements ReplicationMasterStorage
-{ 
-    public ReplicationMasterStorageImpl(int port, String[] hosts, int asyncBufSize, String pageTimestampFile) { 
+    int port;
+
+    String[] hosts;
+
+    int asyncBufSize;
+
+    String pageTimestampFile;
+
+    public ReplicationMasterStorageImpl(final int port, final String[] hosts, final int asyncBufSize,
+            final String pageTimestampFile) {
         this.port = port;
         this.hosts = hosts;
         this.asyncBufSize = asyncBufSize;
-        this.pageTimestampFile =  pageTimestampFile;
-    }
-    
-    public void open(IFile file, long pagePoolSize) {
-        super.open(asyncBufSize != 0 
-                   ? (ReplicationMasterFile)new AsyncReplicationMasterFile(this, file, asyncBufSize, pageTimestampFile)
-                   : new ReplicationMasterFile(this, file, pageTimestampFile),
-                   pagePoolSize);
+        this.pageTimestampFile = pageTimestampFile;
     }
 
-    public int getNumberOfAvailableHosts() { 
-        return ((ReplicationMasterFile)pool.file).getNumberOfAvailableHosts();
+    @Override
+    public int getNumberOfAvailableHosts() {
+        return ((ReplicationMasterFile) myPagePool.file).getNumberOfAvailableHosts();
     }
 
-    int      port;
-    String[] hosts;
-    int      asyncBufSize;
-    String   pageTimestampFile;
+    @Override
+    public void open(final IFile file, final long pagePoolSize) {
+        super.open(asyncBufSize != 0 ? (ReplicationMasterFile) new AsyncReplicationMasterFile(this, file,
+                asyncBufSize, pageTimestampFile) : new ReplicationMasterFile(this, file, pageTimestampFile),
+                pagePoolSize);
+    }
 }

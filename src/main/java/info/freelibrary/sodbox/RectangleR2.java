@@ -1,3 +1,4 @@
+
 package info.freelibrary.sodbox;
 
 /**
@@ -5,219 +6,215 @@ package info.freelibrary.sodbox;
  */
 public class RectangleR2 implements IValue, Cloneable {
 
-	private double top;
-	private double left;
-	private double bottom;
-	private double right;
+    /**
+     * Non destructive join of two rectangles.
+     *
+     * @param a first joined rectangle
+     * @param b second joined rectangle
+     * @return rectangle containing cover of these two rectangles
+     */
+    public static RectangleR2 join(final RectangleR2 a, final RectangleR2 b) {
+        final RectangleR2 r = new RectangleR2(a);
 
-	/**
-	 * Default constructor.
-	 */
-	public RectangleR2() {}
+        r.join(b);
 
-	/**
-	 * Construct rectangle with specified coordinates.
-	 */
-	public RectangleR2(double top, double left, double bottom, double right) {
-		Assert.that(top <= bottom && left <= right);
+        return r;
+    }
 
-		this.top = top;
-		this.left = left;
-		this.bottom = bottom;
-		this.right = right;
-	}
+    /**
+     * Area of covered rectangle for two specified rectangles.
+     */
+    public static double joinArea(final RectangleR2 a, final RectangleR2 b) {
+        final double left = a.left < b.left ? a.left : b.left;
+        final double right = a.right > b.right ? a.right : b.right;
+        final double top = a.top < b.top ? a.top : b.top;
+        final double bottom = a.bottom > b.bottom ? a.bottom : b.bottom;
 
-	/**
-	 * Create copy of the rectangle.
-	 */
-	public RectangleR2(RectangleR2 r) {
-		this.top = r.top;
-		this.left = r.left;
-		this.bottom = r.bottom;
-		this.right = r.right;
-	}
+        return (bottom - top) * (right - left);
+    }
 
-	/**
-	 * Smallest Y coordinate of the rectangle.
-	 */
-	public final double getTop() {
-		return top;
-	}
+    private double top;
 
-	/**
-	 * Smallest X coordinate of the rectangle.
-	 */
-	public final double getLeft() {
-		return left;
-	}
+    private double left;
 
-	/**
-	 * Greatest Y coordinate of the rectangle.
-	 */
-	public final double getBottom() {
-		return bottom;
-	}
+    private double bottom;
 
-	/**
-	 * Greatest X coordinate of the rectangle.
-	 */
-	public final double getRight() {
-		return right;
-	}
+    private double right;
 
-	/**
-	 * Rectangle area.
-	 */
-	public final double area() {
-		return (bottom - top) * (right - left);
-	}
+    /**
+     * Default constructor.
+     */
+    public RectangleR2() {
+    }
 
-	/**
-	 * Area of covered rectangle for two specified rectangles.
-	 */
-	public static double joinArea(RectangleR2 a, RectangleR2 b) {
-		double left = (a.left < b.left) ? a.left : b.left;
-		double right = (a.right > b.right) ? a.right : b.right;
-		double top = (a.top < b.top) ? a.top : b.top;
-		double bottom = (a.bottom > b.bottom) ? a.bottom : b.bottom;
+    /**
+     * Construct rectangle with specified coordinates.
+     */
+    public RectangleR2(final double top, final double left, final double bottom, final double right) {
+        Assert.that(top <= bottom && left <= right);
 
-		return (bottom - top) * (right - left);
-	}
+        this.top = top;
+        this.left = left;
+        this.bottom = bottom;
+        this.right = right;
+    }
 
-	/**
-	 * Calculate distance from the specified point to the rectangle.
-	 */
-	public double distance(double x, double y) {
-		if (x >= left && x <= right) {
-			if (y >= top) {
-				if (y <= bottom) {
-					return 0;
-				}
-				else {
-					return y - bottom;
-				}
-			}
-			else {
-				return top - y;
-			}
-		}
-		else if (y >= top && y <= bottom) {
-			if (x < left) {
-				return left - x;
-			}
-			else {
-				return x - right;
-			}
-		}
+    /**
+     * Create copy of the rectangle.
+     */
+    public RectangleR2(final RectangleR2 r) {
+        top = r.top;
+        left = r.left;
+        bottom = r.bottom;
+        right = r.right;
+    }
 
-		double dx = x < left ? left - x : x - right;
-		double dy = y < top ? top - y : y - bottom;
+    /**
+     * Rectangle area.
+     */
+    public final double area() {
+        return (bottom - top) * (right - left);
+    }
 
-		return Math.sqrt(dx * dx + dy * dy);
-	}
+    /**
+     * Clone rectangle.
+     */
+    @Override
+    public Object clone() {
+        try {
+            final RectangleR2 r = (RectangleR2) super.clone();
 
-	/**
-	 * Clone rectangle.
-	 */
-	public Object clone() {
-		try {
-			RectangleR2 r = (RectangleR2) super.clone();
+            r.top = top;
+            r.left = left;
+            r.bottom = bottom;
+            r.right = right;
 
-			r.top = this.top;
-			r.left = this.left;
-			r.bottom = this.bottom;
-			r.right = this.right;
+            return r;
+        } catch (final CloneNotSupportedException e) {
+            // this shouldn't happen, since we are Cloneable
+            throw new InternalError();
+        }
+    }
 
-			return r;
-		}
-		catch (CloneNotSupportedException e) {
-			// this shouldn't happen, since we are Cloneable
-			throw new InternalError();
-		}
-	}
+    /**
+     * Checks if this rectangle contains the specified rectangle.
+     */
+    public final boolean contains(final RectangleR2 r) {
+        return left <= r.left && top <= r.top && right >= r.right && bottom >= r.bottom;
+    }
 
-	/**
-	 * Join two rectangles. This rectangle is updates to contain cover of this
-	 * and specified rectangle.
-	 * 
-	 * @param r rectangle to be joined with this rectangle
-	 */
-	public final void join(RectangleR2 r) {
-		if (left > r.left) {
-			left = r.left;
-		}
+    /**
+     * Calculate distance from the specified point to the rectangle.
+     */
+    public double distance(final double x, final double y) {
+        if (x >= left && x <= right) {
+            if (y >= top) {
+                if (y <= bottom) {
+                    return 0;
+                } else {
+                    return y - bottom;
+                }
+            } else {
+                return top - y;
+            }
+        } else if (y >= top && y <= bottom) {
+            if (x < left) {
+                return left - x;
+            } else {
+                return x - right;
+            }
+        }
 
-		if (right < r.right) {
-			right = r.right;
-		}
+        final double dx = x < left ? left - x : x - right;
+        final double dy = y < top ? top - y : y - bottom;
 
-		if (top > r.top) {
-			top = r.top;
-		}
+        return Math.sqrt(dx * dx + dy * dy);
+    }
 
-		if (bottom < r.bottom) {
-			bottom = r.bottom;
-		}
-	}
+    /**
+     * Check if two rectangles are equal.
+     */
+    @Override
+    public boolean equals(final Object o) {
+        if (o instanceof RectangleR2) {
+            final RectangleR2 r = (RectangleR2) o;
 
-	/**
-	 * Non destructive join of two rectangles.
-	 * 
-	 * @param a first joined rectangle
-	 * @param b second joined rectangle
-	 * @return rectangle containing cover of these two rectangles
-	 */
-	public static RectangleR2 join(RectangleR2 a, RectangleR2 b) {
-		RectangleR2 r = new RectangleR2(a);
+            return left == r.left && top == r.top && right == r.right && bottom == r.bottom;
+        }
 
-		r.join(b);
+        return false;
+    }
 
-		return r;
-	}
+    /**
+     * Greatest Y coordinate of the rectangle.
+     */
+    public final double getBottom() {
+        return bottom;
+    }
 
-	/**
-	 * Checks if this rectangle intersects with specified rectangle.
-	 */
-	public final boolean intersects(RectangleR2 r) {
-		return left <= r.right && top <= r.bottom && right >= r.left
-				&& bottom >= r.top;
-	}
+    /**
+     * Smallest X coordinate of the rectangle.
+     */
+    public final double getLeft() {
+        return left;
+    }
 
-	/**
-	 * Checks if this rectangle contains the specified rectangle.
-	 */
-	public final boolean contains(RectangleR2 r) {
-		return left <= r.left && top <= r.top && right >= r.right
-				&& bottom >= r.bottom;
-	}
+    /**
+     * Greatest X coordinate of the rectangle.
+     */
+    public final double getRight() {
+        return right;
+    }
 
-	/**
-	 * Check if two rectangles are equal.
-	 */
-	public boolean equals(Object o) {
-		if (o instanceof RectangleR2) {
-			RectangleR2 r = (RectangleR2) o;
+    /**
+     * Smallest Y coordinate of the rectangle.
+     */
+    public final double getTop() {
+        return top;
+    }
 
-			return left == r.left && top == r.top && right == r.right
-					&& bottom == r.bottom;
-		}
+    /**
+     * Hash code consists of all rectangle coordinates.
+     */
+    @Override
+    public int hashCode() {
+        return (int) (Double.doubleToLongBits(top) ^ Double.doubleToLongBits(bottom) << 1 ^ Double.doubleToLongBits(
+                left) << 2 ^ Double.doubleToLongBits(right) << 3);
+    }
 
-		return false;
-	}
+    /**
+     * Checks if this rectangle intersects with specified rectangle.
+     */
+    public final boolean intersects(final RectangleR2 r) {
+        return left <= r.right && top <= r.bottom && right >= r.left && bottom >= r.top;
+    }
 
-	/**
-	 * Hash code consists of all rectangle coordinates.
-	 */
-	public int hashCode() {
-		return (int) (Double.doubleToLongBits(top)
-				^ (Double.doubleToLongBits(bottom) << 1)
-				^ (Double.doubleToLongBits(left) << 2) ^ (Double
-				.doubleToLongBits(right) << 3));
-	}
+    /**
+     * Join two rectangles. This rectangle is updates to contain cover of this and specified rectangle.
+     *
+     * @param r rectangle to be joined with this rectangle
+     */
+    public final void join(final RectangleR2 r) {
+        if (left > r.left) {
+            left = r.left;
+        }
 
-	public String toString() {
-		return "top=" + top + ", left=" + left + ", bottom=" + bottom
-				+ ", right=" + right;
-	}
+        if (right < r.right) {
+            right = r.right;
+        }
+
+        if (top > r.top) {
+            top = r.top;
+        }
+
+        if (bottom < r.bottom) {
+            bottom = r.bottom;
+        }
+    }
+
+    @Override
+    public String toString() {
+        return "top=" + top + ", left=" + left + ", bottom=" + bottom + ", right=" + right;
+    }
 
 }

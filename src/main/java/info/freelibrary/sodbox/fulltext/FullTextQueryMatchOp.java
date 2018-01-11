@@ -1,10 +1,11 @@
+
 package info.freelibrary.sodbox.fulltext;
 
 /**
  * Match node of full text query
  */
-public class FullTextQueryMatchOp extends FullTextQuery
-{
+public class FullTextQueryMatchOp extends FullTextQuery {
+
     /**
      * Matched word (shown be lowercvases and in normal form, unless used in quotes)
      */
@@ -13,42 +14,44 @@ public class FullTextQueryMatchOp extends FullTextQuery
     /**
      * Position of word in the query (zero based)
      */
-    public int    pos;
+    public int pos;
 
     /**
      * Index of the word in query (set and used internally, should not be accessed by application)
      */
-    public int    wno;
-
+    public int wno;
 
     /**
-     * Query node visitor.
+     * Match node constructor
+     * 
+     * @param op operation code (should ne MATCH or STICT_MATCH)
+     * @param word searched word
+     * @param pos position of word in the query
      */
-    public void visit(FullTextQueryVisitor visitor) { 
-        visitor.visit(this);
+    public FullTextQueryMatchOp(final int op, final String word, final int pos) {
+        super(op);
+        this.word = word;
+        this.pos = pos;
     }
 
     /**
      * Match node provides query constraint
      */
-    public boolean isConstrained() { 
+    @Override
+    public boolean isConstrained() {
         return true;
     }
 
-    public String toString() { 
+    @Override
+    public String toString() {
         return op == MATCH ? word : '"' + word + '"';
     }
 
-
     /**
-     * Match node constructor
-     * @param op operation code (should ne MATCH or STICT_MATCH)
-     * @param word searched word
-     * @param pos position of word in the query
+     * Query node visitor.
      */
-    public FullTextQueryMatchOp(int op, String word, int pos) { 
-        super(op);
-        this.word = word;
-        this.pos = pos;
+    @Override
+    public void visit(final FullTextQueryVisitor visitor) {
+        visitor.visit(this);
     }
-}    
+}
