@@ -1,274 +1,337 @@
-package info.freelibrary.sodbox.impl;
 
-import info.freelibrary.sodbox.*;
+package info.freelibrary.sodbox.impl;
 
 import java.util.ArrayList;
 
-public class RtreeR2Page extends Persistent { 
-    static final int card = (Page.pageSize-ObjectHeader.sizeof-4*3)/(8*4+4);
-    static final int minFill = card/2;
+import info.freelibrary.sodbox.Assert;
+import info.freelibrary.sodbox.Link;
+import info.freelibrary.sodbox.Persistent;
+import info.freelibrary.sodbox.RectangleR2;
+import info.freelibrary.sodbox.Storage;
 
-    int           n;
-    RectangleR2[] b;
-    Link          branch;
+public class RtreeR2Page extends Persistent {
 
-    RtreeR2Page(Storage storage, Object obj, RectangleR2 r) {
-        branch = storage.createLink(card);
-        branch.setSize(card);
-        b = new RectangleR2[card]; 
-        setBranch(0, new RectangleR2(r), obj);
-        n = 1;
-        for (int i = 1; i < card; i++) { 
-            b[i] = new RectangleR2();
-        }        
-    }
-    
-    RtreeR2Page(Storage storage, RtreeR2Page root, RtreeR2Page p) { 
-        branch = storage.createLink(card);
-        branch.setSize(card);
-        b = new RectangleR2[card]; 
-        n = 2;
-        setBranch(0, root.cover(), root);
-        setBranch(1, p.cover(), p);
-        for (int i = 2; i < card; i++) { 
-            b[i] = new RectangleR2();
-        }        
-    }
+    static final int CARD = (Page.PAGE_SIZE - ObjectHeader.SIZE_OF - 4 * 3) / (8 * 4 + 4);
 
-    RtreeR2Page() {}
+    static final int MIN_FILL = CARD / 2;
 
-    RtreeR2Page insert(Storage storage, RectangleR2 r, Object obj, int level) {
-        modify();
-        if (--level != 0) { 
-            // not leaf page
-            int i, mini = 0;
-            double minIncr = Double.MAX_VALUE;
-            double minArea = Double.MAX_VALUE;
-            for (i = 0; i < n; i++) { 
-                double area = b[i].area();
-                double incr = RectangleR2.joinArea(b[i], r) - area;
-                if (incr < minIncr) { 
-                    minIncr = incr;
-                    minArea = area;
-                    mini = i;
-                } else if (incr == minIncr && area < minArea) { 
-                    minArea = area;
-                    mini = i;
-                }                    
-            }
-            RtreeR2Page p = (RtreeR2Page)branch.get(mini);
-            RtreeR2Page q = p.insert(storage, r, obj, level);
-            if (q == null) { 
-                // child was not split
-                b[mini].join(r);
-                return null;
-            } else { 
-                // child was split
-                setBranch(mini, p.cover(),  p);
-                return addBranch(storage, q.cover(), q);
-            }
-        } else { 
-            return addBranch(storage, new RectangleR2(r), obj);
+    int myCount;
+
+    RectangleR2[] myRectR2;
+
+    Link myBranch;
+
+    RtreeR2Page(final Storage aStorage, final Object aObj, final RectangleR2 aRectR2) {
+        myBranch = aStorage.createLink(CARD);
+        myBranch.setSize(CARD);
+        myRectR2 = new RectangleR2[CARD];
+
+        setBranch(0, new RectangleR2(aRectR2), aObj);
+
+        myCount = 1;
+
+        for (int index = 1; index < CARD; index++) {
+            myRectR2[index] = new RectangleR2();
         }
     }
 
-    int remove(RectangleR2 r, Object obj, int level, ArrayList reinsertList) {
-        if (--level != 0) { 
-            for (int i = 0; i < n; i++) { 
-                if (r.intersects(b[i])) { 
-                    RtreeR2Page pg = (RtreeR2Page)branch.get(i);
-                    int reinsertLevel = pg.remove(r, obj, level, reinsertList);
-                    if (reinsertLevel >= 0) { 
-                        if (pg.n >= minFill) { 
-                            setBranch(i, pg.cover(), pg);
+    RtreeR2Page(final Storage aStorage, final RtreeR2Page aRoot, final RtreeR2Page aRtreeR2Page) {
+        myBranch = aStorage.createLink(CARD);
+        myBranch.setSize(CARD);
+        myRectR2 = new RectangleR2[CARD];
+        myCount = 2;
+
+        setBranch(0, aRoot.cover(), aRoot);
+        setBranch(1, aRtreeR2Page.cover(), aRtreeR2Page);
+
+        for (int index = 2; index < CARD; index++) {
+            myRectR2[index] = new RectangleR2();
+        }
+    }
+
+    RtreeR2Page() {
+    }
+
+    RtreeR2Page insert(final Storage aStorage, final RectangleR2 aRectR2, final Object aObj, final int aLevel) {
+        int level = aLevel;
+
+        modify();
+
+        if (--level != 0) {
+            // not leaf page
+            double minIncrement = Double.MAX_VALUE;
+            double minArea = Double.MAX_VALUE;
+            int mini = 0;
+            int index;
+
+            for (index = 0; index < myCount; index++) {
+                final double area = myRectR2[index].area();
+                final double increment = RectangleR2.joinArea(myRectR2[index], aRectR2) - area;
+
+                if (increment < minIncrement) {
+                    minIncrement = increment;
+                    minArea = area;
+                    mini = index;
+                } else if (increment == minIncrement && area < minArea) {
+                    minArea = area;
+                    mini = index;
+                }
+            }
+
+            final RtreeR2Page page1 = (RtreeR2Page) myBranch.get(mini);
+            final RtreeR2Page page2 = page1.insert(aStorage, aRectR2, aObj, level);
+
+            if (page2 == null) {
+                // child was not split
+                myRectR2[mini].join(aRectR2);
+                return null;
+            } else {
+                // child was split
+                setBranch(mini, page1.cover(), page1);
+                return addBranch(aStorage, page2.cover(), page2);
+            }
+        } else {
+            return addBranch(aStorage, new RectangleR2(aRectR2), aObj);
+        }
+    }
+
+    int remove(final RectangleR2 aRectR2, final Object aObj, final int aLevel, final ArrayList aReinsertList) {
+        int level = aLevel;
+
+        if (--level != 0) {
+            for (int index = 0; index < myCount; index++) {
+                if (aRectR2.intersects(myRectR2[index])) {
+                    final RtreeR2Page pg = (RtreeR2Page) myBranch.get(index);
+
+                    int reinsertLevel = pg.remove(aRectR2, aObj, level, aReinsertList);
+
+                    if (reinsertLevel >= 0) {
+                        if (pg.myCount >= MIN_FILL) {
+                            setBranch(index, pg.cover(), pg);
                             modify();
-                        } else { 
+                        } else {
                             // not enough entries in child
-                            reinsertList.add(pg);
+                            aReinsertList.add(pg);
                             reinsertLevel = level - 1;
-                            removeBranch(i);
+                            removeBranch(index);
                         }
+
                         return reinsertLevel;
                     }
                 }
             }
         } else {
-            for (int i = 0; i < n; i++) { 
-                if (branch.containsElement(i, obj)) { 
-                    removeBranch(i);
+            for (int index = 0; index < myCount; index++) {
+                if (myBranch.containsElement(index, aObj)) {
+                    removeBranch(index);
                     return 0;
                 }
             }
         }
-        return -1;        
+
+        return -1;
     }
 
+    void find(final RectangleR2 aRectR2, final ArrayList aResult, final int aLevel) {
+        int level = aLevel;
 
-    void find(RectangleR2 r, ArrayList result, int level) {
         if (--level != 0) { /* this is an internal node in the tree */
-            for (int i = 0; i < n; i++) { 
-                if (r.intersects(b[i])) {
-                    ((RtreeR2Page)branch.get(i)).find(r, result, level); 
+            for (int index = 0; index < myCount; index++) {
+                if (aRectR2.intersects(myRectR2[index])) {
+                    ((RtreeR2Page) myBranch.get(index)).find(aRectR2, aResult, level);
                 }
             }
         } else { /* this is a leaf node */
-            for (int i = 0; i < n; i++) { 
-                if (r.intersects(b[i])) { 
-                    result.add(branch.get(i));
+            for (int index = 0; index < myCount; index++) {
+                if (aRectR2.intersects(myRectR2[index])) {
+                    aResult.add(myBranch.get(index));
                 }
             }
         }
     }
 
-    void purge(int level) {
+    void purge(final int aLevel) {
+        int level = aLevel;
+
         if (--level != 0) { /* this is an internal node in the tree */
-            for (int i = 0; i < n; i++) { 
-                ((RtreeR2Page)branch.get(i)).purge(level);
+            for (int index = 0; index < myCount; index++) {
+                ((RtreeR2Page) myBranch.get(index)).purge(level);
             }
         }
+
         deallocate();
     }
-    
-    final void setBranch(int i, RectangleR2 r, Object obj) { 
-        b[i] = r;
-        branch.setObject(i, obj);
+
+    final void setBranch(final int aIndex, final RectangleR2 aRectR2, final Object aObj) {
+        myRectR2[aIndex] = aRectR2;
+        myBranch.setObject(aIndex, aObj);
     }
 
-    final void removeBranch(int i) {
-        n -= 1;
-        System.arraycopy(b, i+1, b, i, n-i);
-        branch.remove(i);
-        branch.setSize(card);
+    final void removeBranch(final int aIndex) {
+        myCount -= 1;
+
+        System.arraycopy(myRectR2, aIndex + 1, myRectR2, aIndex, myCount - aIndex);
+
+        myBranch.remove(aIndex);
+        myBranch.setSize(CARD);
+
         modify();
     }
 
-    final RtreeR2Page addBranch(Storage storage, RectangleR2 r, Object obj) { 
-        if (n < card) { 
-            setBranch(n++, r, obj);
+    final RtreeR2Page addBranch(final Storage aStorage, final RectangleR2 aRectR2, final Object aObj) {
+        if (myCount < CARD) {
+            setBranch(myCount++, aRectR2, aObj);
             return null;
-        } else { 
-            return splitPage(storage, r, obj);
+        } else {
+            return splitPage(aStorage, aRectR2, aObj);
         }
     }
 
-    final RtreeR2Page splitPage(Storage storage, RectangleR2 r, Object obj) { 
-        int i, j, seed0 = 0, seed1 = 0;
-        double[] rectArea = new double[card+1];
-        double   waste;
-        double   worstWaste = Double.NEGATIVE_INFINITY;
+    final RtreeR2Page splitPage(final Storage aStorage, final RectangleR2 aRectR2, final Object aObj) {
+        int seed0 = 0;
+        int seed1 = 0;
+        int index;
+        int jndex;
+
+        final double[] rectArea = new double[CARD + 1];
+
+        double waste;
+        double worstWaste = Double.NEGATIVE_INFINITY;
+
         //
-        // As the seeds for the two groups, find two rectangles which waste 
+        // As the seeds for the two groups, find two rectangles which waste
         // the most area if covered by a single rectangle.
         //
-        rectArea[0] = r.area();
-        for (i = 0; i < card; i++) { 
-            rectArea[i+1] = b[i].area();
+        rectArea[0] = aRectR2.area();
+
+        for (index = 0; index < CARD; index++) {
+            rectArea[index + 1] = myRectR2[index].area();
         }
-        RectangleR2 bp = r;
-        for (i = 0; i < card; i++) { 
-            for (j = i+1; j <= card; j++) { 
-                waste = RectangleR2.joinArea(bp, b[j-1]) - rectArea[i] - rectArea[j];
+
+        RectangleR2 rectR2 = aRectR2;
+
+        for (index = 0; index < CARD; index++) {
+            for (jndex = index + 1; jndex <= CARD; jndex++) {
+                waste = RectangleR2.joinArea(rectR2, myRectR2[jndex - 1]) - rectArea[index] - rectArea[jndex];
+
                 if (waste > worstWaste) {
                     worstWaste = waste;
-                    seed0 = i;
-                    seed1 = j;
+                    seed0 = index;
+                    seed1 = jndex;
                 }
             }
-            bp = b[i];
-        }       
-        byte[] taken = new byte[card];
-        RectangleR2 group0, group1;
-        double      groupArea0, groupArea1;
-        int         groupCard0, groupCard1;
-        RtreeR2Page pg;
 
-        taken[seed1-1] = 2;
-        group1 = new RectangleR2(b[seed1-1]);
-
-        if (seed0 == 0) { 
-            group0 = new RectangleR2(r);
-            pg = new RtreeR2Page(storage, obj, r);
-        } else { 
-            group0 = new RectangleR2(b[seed0-1]);
-            pg = new RtreeR2Page(storage, branch.getRaw(seed0-1), group0);
-            setBranch(seed0-1, r, obj);
+            rectR2 = myRectR2[index];
         }
+
+        final byte[] taken = new byte[CARD];
+
+        final RectangleR2 group0;
+        final RectangleR2 group1;
+        final RtreeR2Page page;
+        double groupArea0;
+        double groupArea1;
+        int groupCard0;
+        int groupCard1;
+
+        taken[seed1 - 1] = 2;
+        group1 = new RectangleR2(myRectR2[seed1 - 1]);
+
+        if (seed0 == 0) {
+            group0 = new RectangleR2(aRectR2);
+            page = new RtreeR2Page(aStorage, aObj, aRectR2);
+        } else {
+            group0 = new RectangleR2(myRectR2[seed0 - 1]);
+            page = new RtreeR2Page(aStorage, myBranch.getRaw(seed0 - 1), group0);
+            setBranch(seed0 - 1, aRectR2, aObj);
+        }
+
         groupCard0 = groupCard1 = 1;
         groupArea0 = rectArea[seed0];
         groupArea1 = rectArea[seed1];
+
         //
         // Split remaining rectangles between two groups.
-        // The one chosen is the one with the greatest difference in area 
-        // expansion depending on which group - the rect most strongly 
+        // The one chosen is the one with the greatest difference in area
+        // expansion depending on which group - the rect most strongly
         // attracted to one group and repelled from the other.
         //
-        while (groupCard0 + groupCard1 < card + 1 
-               && groupCard0 < card + 1 - minFill
-               && groupCard1 < card + 1 - minFill)
-        {
-            int betterGroup = -1, chosen = -1;
+        while (groupCard0 + groupCard1 < CARD + 1 && groupCard0 < CARD + 1 - MIN_FILL && groupCard1 < CARD + 1 -
+                MIN_FILL) {
+            int betterGroup = -1;
+            int chosen = -1;
             double biggestDiff = -1;
-            for (i = 0; i < card; i++) { 
-                if (taken[i] == 0) { 
-                    double diff = (RectangleR2.joinArea(group0, b[i]) - groupArea0)
-                              - (RectangleR2.joinArea(group1, b[i]) - groupArea1);
-                    if (diff > biggestDiff || -diff > biggestDiff) { 
-                        chosen = i;
-                        if (diff < 0) { 
+
+            for (index = 0; index < CARD; index++) {
+                if (taken[index] == 0) {
+                    final double diff = (RectangleR2.joinArea(group0, myRectR2[index]) - groupArea0) - (RectangleR2
+                            .joinArea(group1, myRectR2[index]) - groupArea1);
+                    if (diff > biggestDiff || -diff > biggestDiff) {
+                        chosen = index;
+
+                        if (diff < 0) {
                             betterGroup = 0;
                             biggestDiff = -diff;
-                        } else { 
+                        } else {
                             betterGroup = 1;
                             biggestDiff = diff;
                         }
                     }
                 }
             }
+
             Assert.that(chosen >= 0);
-            if (betterGroup == 0) { 
-                group0.join(b[chosen]);
+
+            if (betterGroup == 0) {
+                group0.join(myRectR2[chosen]);
                 groupArea0 = group0.area();
                 taken[chosen] = 1;
-                pg.setBranch(groupCard0++, b[chosen], branch.getRaw(chosen));
+                page.setBranch(groupCard0++, myRectR2[chosen], myBranch.getRaw(chosen));
             } else {
                 groupCard1 += 1;
-                group1.join(b[chosen]);
+                group1.join(myRectR2[chosen]);
                 groupArea1 = group1.area();
                 taken[chosen] = 2;
             }
         }
+
         //
         // If one group gets too full, then remaining rectangle are
         // split between two groups in such way to balance cards of two groups.
         //
-        if (groupCard0 + groupCard1 < card + 1) { 
-            for (i = 0; i < card; i++) { 
-                if (taken[i] == 0) { 
-                    if (groupCard0 >= groupCard1) { 
-                        taken[i] = 2;
+        if (groupCard0 + groupCard1 < CARD + 1) {
+            for (index = 0; index < CARD; index++) {
+                if (taken[index] == 0) {
+                    if (groupCard0 >= groupCard1) {
+                        taken[index] = 2;
                         groupCard1 += 1;
-                    } else { 
-                        taken[i] = 1;
-                        pg.setBranch(groupCard0++, b[i], branch.getRaw(i));               
+                    } else {
+                        taken[index] = 1;
+                        page.setBranch(groupCard0++, myRectR2[index], myBranch.getRaw(index));
                     }
                 }
             }
         }
-        pg.n = groupCard0;
-        n = groupCard1;
-        for (i = 0, j = 0; i < groupCard1; j++) { 
-            if (taken[j] == 2) {
-                setBranch(i++, b[j], branch.getRaw(j));
+
+        page.myCount = groupCard0;
+        myCount = groupCard1;
+
+        for (index = 0, jndex = 0; index < groupCard1; jndex++) {
+            if (taken[jndex] == 2) {
+                setBranch(index++, myRectR2[jndex], myBranch.getRaw(jndex));
             }
         }
-        return pg;
-    }   
+
+        return page;
+    }
 
     final RectangleR2 cover() {
-        RectangleR2 r = new RectangleR2(b[0]);
-        for (int i = 1; i < n; i++) { 
-            r.join(b[i]);
+        final RectangleR2 rectR2 = new RectangleR2(myRectR2[0]);
+
+        for (int index = 1; index < myCount; index++) {
+            rectR2.join(myRectR2[index]);
         }
-        return r;
+
+        return rectR2;
     }
 }

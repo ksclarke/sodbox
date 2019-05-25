@@ -1,143 +1,201 @@
+
 package info.freelibrary.sodbox.impl;
-import info.freelibrary.sodbox.*;
 
-import java.io.*;
+import java.io.BufferedReader;
+import java.io.File;
+import java.io.FileReader;
+import java.io.IOException;
+import java.io.StreamTokenizer;
 
-public class MultiFile implements IFile 
-{ 
-    public static class MultiFileSegment { 
-	IFile  f;
-	long   size;
-    }
+import info.freelibrary.sodbox.IFile;
+import info.freelibrary.sodbox.StorageError;
 
-   long seek(long pos) {
-	currSeg = 0;
-	while (pos >= segment[currSeg].size) { 
-	    pos -= segment[currSeg].size;
-	    currSeg += 1;
-	}
-        return pos;
-    }
+public class MultiFile implements IFile {
 
+    MultiFileSegment mySegment[];
 
-    public void write(long pos, byte[] b) 
-    {
-        pos = seek(pos);
-        segment[currSeg].f.write(pos, b);
-    }
+    long myFixedSize;
 
-    public int read(long pos, byte[] b) 
-    { 
-        pos = seek(pos);
-        return segment[currSeg].f.read(pos, b);
-    }
-        
-    public void sync()
-    { 
-        if (!noFlush) { 
-            for (int i = segment.length; --i >= 0;) { 
-                segment[i].f.sync();
-            }
+    int myCurrentSegment;
+
+    boolean isNotFlushable;
+
+    /**
+     * Creates a multi-file.
+     *
+     * @param aSegmentPath A segment path
+     * @param aSegmentSize A segment size
+     * @param aReadOnly Whether file is read only
+     * @param aNoFlush Whether a file is flushable
+     */
+    public MultiFile(final String[] aSegmentPath, final long[] aSegmentSize, final boolean aReadOnly,
+            final boolean aNoFlush) {
+        isNotFlushable = aNoFlush;
+        mySegment = new MultiFileSegment[aSegmentPath.length];
+
+        for (int index = 0; index < mySegment.length; index++) {
+            final MultiFileSegment seg = new MultiFileSegment();
+
+            seg.myFile = new OSFile(aSegmentPath[index], aReadOnly, aNoFlush);
+            seg.mySize = aSegmentSize[index];
+            myFixedSize += seg.mySize;
+            mySegment[index] = seg;
         }
-    }
-    
-    public boolean tryLock(boolean shared) 
-    { 
-        return segment[0].f.tryLock(shared);
+
+        myFixedSize -= mySegment[mySegment.length - 1].mySize;
+        mySegment[mySegment.length - 1].mySize = Long.MAX_VALUE;
     }
 
-    public void lock(boolean shared) 
-    {
-        segment[0].f.lock(shared);
-    }
+    /**
+     * Creates a MultiFile from the supplied segments.
+     *
+     * @param aSegments MultiFile segments
+     */
+    public MultiFile(final MultiFileSegment[] aSegments) {
+        mySegment = aSegments;
 
-    public void unlock() 
-    { 
-        segment[0].f.unlock();
-    }
-
-
-    public void close() 
-    { 
-        for (int i = segment.length; --i >= 0;) { 
-            segment[i].f.close();
+        for (int index = 0; index < aSegments.length; index++) {
+            myFixedSize += aSegments[index].mySize;
         }
+
+        myFixedSize -= mySegment[mySegment.length - 1].mySize;
+        mySegment[mySegment.length - 1].mySize = Long.MAX_VALUE;
     }
 
-    public MultiFile(String[] segmentPath, long[] segmentSize, boolean readOnly, boolean noFlush) { 
-        this.noFlush = noFlush;
-        segment = new MultiFileSegment[segmentPath.length];
-        for (int i = 0; i < segment.length; i++) { 
-            MultiFileSegment seg = new MultiFileSegment();
-            seg.f = new OSFile(segmentPath[i], readOnly, noFlush);
-            seg.size = segmentSize[i];
-            fixedSize += seg.size;
-            segment[i] = seg;
-        }
-        fixedSize -= segment[segment.length-1].size;
-        segment[segment.length-1].size = Long.MAX_VALUE;
-    }
+    /**
+     * Creates a MultiFile.
+     *
+     * @param aFilePath A file path
+     * @param aReadOnly Whether a MultiFile is read only
+     * @param aNoFlush Whether a MultiFile is flushable
+     */
+    public MultiFile(final String aFilePath, final boolean aReadOnly, final boolean aNoFlush) {
+        try {
+            final StreamTokenizer in = new StreamTokenizer(new BufferedReader(new FileReader(aFilePath)));
+            final File dir = new File(aFilePath).getParentFile();
 
-    public MultiFile(MultiFileSegment[] segments) { 
-        segment = segments;
-        for (int i = 0; i < segments.length; i++) { 
-            fixedSize += segments[i].size;
-        }
-        fixedSize -= segment[segment.length-1].size;
-        segment[segment.length-1].size = Long.MAX_VALUE;
-    }
+            int token = in.nextToken();
 
-    public MultiFile(String filePath, boolean readOnly, boolean noFlush) {
-        try { 
-            StreamTokenizer in = 
-                new StreamTokenizer(new BufferedReader(new FileReader(filePath)));
-            File dir = new File(filePath).getParentFile();
-            
-            this.noFlush = noFlush;
-            segment = new MultiFileSegment[0];
-            int tkn = in.nextToken();
+            isNotFlushable = aNoFlush;
+            mySegment = new MultiFileSegment[0];
+
             do {
-                MultiFileSegment seg = new MultiFileSegment();
-                if (tkn != StreamTokenizer.TT_WORD && tkn != '"') { 
+                final MultiFileSegment segment = new MultiFileSegment();
+                final MultiFileSegment[] newSegment;
+
+                if (token != StreamTokenizer.TT_WORD && token != '"') {
                     throw new StorageError(StorageError.FILE_ACCESS_ERROR, "Multifile segment name expected");
                 }
+
                 String path = in.sval;
-                tkn = in.nextToken();
-                if (tkn != StreamTokenizer.TT_EOF) { 
-                    if (tkn != StreamTokenizer.TT_NUMBER) { 
+
+                token = in.nextToken();
+
+                if (token != StreamTokenizer.TT_EOF) {
+                    if (token != StreamTokenizer.TT_NUMBER) {
                         throw new StorageError(StorageError.FILE_ACCESS_ERROR, "Multifile segment size expected");
                     }
-                    seg.size = (long)in.nval*1024; // kilobytes
-                    tkn = in.nextToken();
+
+                    segment.mySize = (long) in.nval * 1024; // kilobytes
+                    token = in.nextToken();
                 }
-                fixedSize += seg.size;
-                if (dir != null) { 
-                    File f = new File(path);
-                    if (!f.isAbsolute()) { 
-                        f = new File(dir, path);
-                        path = f.getPath();
+
+                myFixedSize += segment.mySize;
+
+                if (dir != null) {
+                    File file = new File(path);
+
+                    if (!file.isAbsolute()) {
+                        file = new File(dir, path);
+                        path = file.getPath();
                     }
                 }
-                seg.f = new OSFile(path, readOnly, noFlush);
-                MultiFileSegment[] newSegment = new MultiFileSegment[segment.length+1];
-                System.arraycopy(segment, 0, newSegment, 0, segment.length);
-                newSegment[segment.length] = seg;
-                segment = newSegment;
-            } while (tkn != StreamTokenizer.TT_EOF);
-        
-            fixedSize -= segment[segment.length-1].size;
-            segment[segment.length-1].size = Long.MAX_VALUE;
-        } catch (IOException x) { 
+
+                segment.myFile = new OSFile(path, aReadOnly, aNoFlush);
+                newSegment = new MultiFileSegment[mySegment.length + 1];
+
+                System.arraycopy(mySegment, 0, newSegment, 0, mySegment.length);
+
+                newSegment[mySegment.length] = segment;
+                mySegment = newSegment;
+            } while (token != StreamTokenizer.TT_EOF);
+
+            myFixedSize -= mySegment[mySegment.length - 1].mySize;
+            mySegment[mySegment.length - 1].mySize = Long.MAX_VALUE;
+        } catch (final IOException x) {
             throw new StorageError(StorageError.FILE_ACCESS_ERROR);
         }
     }
 
-    public long length() {
-        return fixedSize +  segment[segment.length-1].f.length();
+    long seek(final long aPosition) {
+        long position = aPosition;
+
+        myCurrentSegment = 0;
+
+        while (position >= mySegment[myCurrentSegment].mySize) {
+            position -= mySegment[myCurrentSegment].mySize;
+            myCurrentSegment += 1;
+        }
+
+        return position;
     }
 
-    MultiFileSegment segment[];
-    long             fixedSize;
-    int              currSeg;
-    boolean          noFlush;
+    @Override
+    public void write(final long aPosition, final byte[] aBytes) {
+        final long position = seek(aPosition);
+
+        mySegment[myCurrentSegment].myFile.write(position, aBytes);
+    }
+
+    @Override
+    public int read(final long aPosition, final byte[] aBytes) {
+        final long position = seek(aPosition);
+
+        return mySegment[myCurrentSegment].myFile.read(position, aBytes);
+    }
+
+    @Override
+    public void sync() {
+        if (!isNotFlushable) {
+            for (int index = mySegment.length; --index >= 0;) {
+                mySegment[index].myFile.sync();
+            }
+        }
+    }
+
+    @Override
+    public boolean tryLock(final boolean aSharedLock) {
+        return mySegment[0].myFile.tryLock(aSharedLock);
+    }
+
+    @Override
+    public void lock(final boolean aSharedLock) {
+        mySegment[0].myFile.lock(aSharedLock);
+    }
+
+    @Override
+    public void unlock() {
+        mySegment[0].myFile.unlock();
+    }
+
+    @Override
+    public void close() {
+        for (int index = mySegment.length; --index >= 0;) {
+            mySegment[index].myFile.close();
+        }
+    }
+
+    @Override
+    public long length() {
+        return myFixedSize + mySegment[mySegment.length - 1].myFile.length();
+    }
+
+    public static class MultiFileSegment {
+
+        IFile myFile;
+
+        long mySize;
+
+    }
+
 }

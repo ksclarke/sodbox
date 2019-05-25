@@ -1,579 +1,740 @@
+
 package info.freelibrary.sodbox.impl;
-import info.freelibrary.sodbox.*;
 
-import  java.util.*;
+import java.util.AbstractCollection;
+import java.util.AbstractSet;
+import java.util.Collection;
+import java.util.Iterator;
+import java.util.Map;
+import java.util.NoSuchElementException;
+import java.util.Set;
+import java.util.Stack;
 
-class PersistentHashImpl<K, V> extends PersistentResource implements IPersistentHash<K, V>
-{
-    static class HashPage extends Persistent 
-    {
-        Link items;
-    
-        HashPage(Storage db, int pageSize) 
-        { 
-            super(db);
-            items = db.createLink(pageSize);
-            items.setSize(pageSize);
+import info.freelibrary.sodbox.IPersistentHash;
+import info.freelibrary.sodbox.Link;
+import info.freelibrary.sodbox.Persistent;
+import info.freelibrary.sodbox.PersistentResource;
+import info.freelibrary.sodbox.Storage;
+
+class PersistentHashImpl<K, V> extends PersistentResource implements IPersistentHash<K, V> {
+
+    private static final long UINT_MASK = 0xFFFFFFFFL;
+
+    HashPage myRoot;
+
+    int myElementCount;
+
+    int myLoadFactor;
+
+    int myPageSize;
+
+    transient volatile Set<Entry<K, V>> myEntrySet;
+
+    transient volatile Set<K> myKeySet;
+
+    transient volatile Collection<V> myValues;
+
+    PersistentHashImpl(final Storage aStorage, final int aPageSize, final int aLoadFactor) {
+        super(aStorage);
+
+        myPageSize = aPageSize;
+        myLoadFactor = aLoadFactor;
+    }
+
+    PersistentHashImpl() {
+    }
+
+    @Override
+    public int size() {
+        return myElementCount;
+    }
+
+    @Override
+    public boolean isEmpty() {
+        return myElementCount == 0;
+    }
+
+    @Override
+    public boolean containsValue(final Object aValue) {
+        final Iterator<Entry<K, V>> iterator = entrySet().iterator();
+
+        if (aValue == null) {
+            while (iterator.hasNext()) {
+                final Entry<K, V> entry = iterator.next();
+
+                if (entry.getValue() == null) {
+                    return true;
+                }
+            }
+        } else {
+            while (iterator.hasNext()) {
+                final Entry<K, V> entry = iterator.next();
+
+                if (aValue.equals(entry.getValue())) {
+                    return true;
+                }
+            }
         }
-        
-        HashPage() {}
-        
-        public void deallocate()
-        {
-            for (Object child : items) {
+
+        return false;
+    }
+
+    @Override
+    public boolean containsKey(final Object aKey) {
+        return getEntry(aKey) != null;
+    }
+
+    @Override
+    public V get(final Object aKey) {
+        final Entry<K, V> entry = getEntry(aKey);
+        return entry != null ? entry.getValue() : null;
+    }
+
+    @SuppressWarnings("unchecked")
+    @Override
+    public Entry<K, V> getEntry(final Object aKey) {
+        HashPage page = myRoot;
+
+        if (page != null) {
+            final int hashCode = aKey.hashCode();
+
+            int divisor = 1;
+
+            while (true) {
+                final int h = (int) ((hashCode & UINT_MASK) / divisor % myPageSize);
+                final Object child = page.myItems.get(h);
+
                 if (child instanceof HashPage) {
-                    ((HashPage)child).deallocate();
+                    page = (HashPage) child;
+                    divisor *= myPageSize;
+                } else {
+                    for (CollisionItem<K, V> item = (CollisionItem<K, V>) child; item != null; item = item.myNext) {
+                        if (item.myHashCode == hashCode && item.myKey.equals(aKey)) {
+                            return item;
+                        }
+                    }
+
+                    break;
+                }
+            }
+        }
+
+        return null;
+    }
+
+    @SuppressWarnings("unchecked")
+    @Override
+    public V put(final K aKey, final V aValue) {
+        final int hashCode = aKey.hashCode();
+
+        HashPage page = myRoot;
+
+        if (page == null) {
+            final int h = (int) ((hashCode & UINT_MASK) % myPageSize);
+
+            page = new HashPage(getStorage(), myPageSize);
+            page.myItems.set(h, new CollisionItem<>(aKey, aValue, hashCode));
+
+            myRoot = page;
+            myElementCount = 1;
+            modify();
+
+            return null;
+        } else {
+            int divisor = 1;
+
+            while (true) {
+                final int h = (int) ((hashCode & UINT_MASK) / divisor % myPageSize);
+                final Object child = page.myItems.get(h);
+
+                if (child instanceof HashPage) {
+                    page = (HashPage) child;
+                    divisor *= myPageSize;
+                } else {
+                    CollisionItem<K, V> prev = null;
+                    CollisionItem<K, V> last = null;
+                    int collisionChainLength = 0;
+
+                    for (CollisionItem<K, V> item = (CollisionItem<K, V>) child; item != null; item = item.myNext) {
+                        if (item.myHashCode == hashCode) {
+                            if (item.myKey.equals(aKey)) {
+                                final V prevValue = item.myObject;
+
+                                item.myObject = aValue;
+                                item.modify();
+
+                                return prevValue;
+                            }
+
+                            if (prev == null || prev.myHashCode != hashCode) {
+                                collisionChainLength += 1;
+                            }
+                            prev = item;
+                        } else {
+                            collisionChainLength += 1;
+                        }
+
+                        last = item;
+                    }
+
+                    if (prev == null || prev.myHashCode != hashCode) {
+                        collisionChainLength += 1;
+                    }
+
+                    if (collisionChainLength > myLoadFactor) {
+                        final HashPage newPage = new HashPage(getStorage(), myPageSize);
+
+                        divisor *= myPageSize;
+                        CollisionItem<K, V> next;
+
+                        for (CollisionItem<K, V> item = (CollisionItem<K, V>) child; item != null; item = next) {
+                            final int hc = (int) ((item.myHashCode & UINT_MASK) / divisor % myPageSize);
+
+                            next = item.myNext;
+                            item.myNext = (CollisionItem<K, V>) newPage.myItems.get(hc);
+                            newPage.myItems.set(hc, item);
+                            item.modify();
+                        }
+
+                        page.myItems.set(h, newPage);
+                        page.modify();
+                        page = newPage;
+                    } else {
+                        final CollisionItem<K, V> newItem = new CollisionItem<>(aKey, aValue, hashCode);
+
+                        if (prev == null) {
+                            prev = last;
+                        }
+
+                        if (prev != null) {
+                            newItem.myNext = prev.myNext;
+                            prev.myNext = newItem;
+                            prev.modify();
+                        } else {
+                            page.myItems.set(h, newItem);
+                            page.modify();
+                        }
+
+                        myElementCount += 1;
+                        modify();
+
+                        return null;
+                    }
+                }
+            }
+        }
+    }
+
+    @SuppressWarnings("unchecked")
+    @Override
+    public V remove(final Object aKey) {
+        HashPage page = myRoot;
+
+        if (page != null) {
+            final int hashCode = aKey.hashCode();
+
+            int divisor = 1;
+
+            while (true) {
+                final int h = (int) ((hashCode & UINT_MASK) / divisor % myPageSize);
+                final Object child = page.myItems.get(h);
+
+                if (child instanceof HashPage) {
+                    page = (HashPage) child;
+                    divisor *= myPageSize;
+                } else {
+                    CollisionItem<K, V> prev = null;
+
+                    for (CollisionItem<K, V> item = (CollisionItem<K, V>) child; item != null; item = item.myNext) {
+                        if (item.myHashCode == hashCode && item.myKey.equals(aKey)) {
+                            final V obj = item.myObject;
+
+                            if (prev != null) {
+                                prev.myNext = item.myNext;
+                                prev.modify();
+                            } else {
+                                page.myItems.set(h, item.myNext);
+                                page.modify();
+                            }
+
+                            myElementCount -= 1;
+                            modify();
+
+                            return obj;
+                        }
+
+                        prev = item;
+                    }
+
+                    break;
+                }
+            }
+        }
+
+        return null;
+    }
+
+    @Override
+    public void putAll(final Map<? extends K, ? extends V> aMap) {
+        final Iterator<? extends Entry<? extends K, ? extends V>> iterator = aMap.entrySet().iterator();
+
+        while (iterator.hasNext()) {
+            final Entry<? extends K, ? extends V> e = iterator.next();
+
+            put(e.getKey(), e.getValue());
+        }
+    }
+
+    @Override
+    public void clear() {
+        if (myRoot != null) {
+            myRoot.deallocate();
+            myRoot = null;
+            myElementCount = 0;
+            modify();
+        }
+    }
+
+    @Override
+    public Set<K> keySet() {
+        if (myKeySet == null) {
+            myKeySet = new AbstractSet<K>() {
+
+                @Override
+                public Iterator<K> iterator() {
+                    return new Iterator<K>() {
+
+                        private final Iterator<Entry<K, V>> myKeyIterator = entrySet().iterator();
+
+                        @Override
+                        public boolean hasNext() {
+                            return myKeyIterator.hasNext();
+                        }
+
+                        @Override
+                        public K next() {
+                            return myKeyIterator.next().getKey();
+                        }
+
+                        @Override
+                        public void remove() {
+                            myKeyIterator.remove();
+                        }
+                    };
+                }
+
+                @Override
+                public int size() {
+                    return PersistentHashImpl.this.size();
+                }
+
+                @Override
+                public boolean contains(final Object aKey) {
+                    return PersistentHashImpl.this.containsKey(aKey);
+                }
+            };
+        }
+
+        return myKeySet;
+    }
+
+    @Override
+    public Collection<V> values() {
+        if (myValues == null) {
+            myValues = new AbstractCollection<V>() {
+
+                @Override
+                public Iterator<V> iterator() {
+                    return new Iterator<V>() {
+
+                        private final Iterator<Entry<K, V>> myValuesIterator = entrySet().iterator();
+
+                        @Override
+                        public boolean hasNext() {
+                            return myValuesIterator.hasNext();
+                        }
+
+                        @Override
+                        public V next() {
+                            return myValuesIterator.next().getValue();
+                        }
+
+                        @Override
+                        public void remove() {
+                            myValuesIterator.remove();
+                        }
+                    };
+                }
+
+                @Override
+                public int size() {
+                    return PersistentHashImpl.this.size();
+                }
+
+                @Override
+                public boolean contains(final Object aValue) {
+                    return PersistentHashImpl.this.containsValue(aValue);
+                }
+            };
+        }
+
+        return myValues;
+    }
+
+    protected Iterator<Entry<K, V>> entryIterator() {
+        return new EntryIterator();
+    }
+
+    @Override
+    public Set<Entry<K, V>> entrySet() {
+        if (myEntrySet == null) {
+            myEntrySet = new AbstractSet<Entry<K, V>>() {
+
+                @Override
+                public Iterator<Entry<K, V>> iterator() {
+                    return entryIterator();
+                }
+
+                @Override
+                public int size() {
+                    return PersistentHashImpl.this.size();
+                }
+
+                @SuppressWarnings("unchecked")
+                @Override
+                public boolean remove(final Object aObject) {
+                    if (!(aObject instanceof Map.Entry)) {
+                        return false;
+                    }
+
+                    final Map.Entry<K, V> entry = (Map.Entry<K, V>) aObject;
+                    final K key = entry.getKey();
+                    final V value = entry.getValue();
+
+                    if (value != null) {
+                        final V v = PersistentHashImpl.this.get(key);
+
+                        if (value.equals(v)) {
+                            PersistentHashImpl.this.remove(key);
+
+                            return true;
+                        }
+                    } else {
+                        if (PersistentHashImpl.this.containsKey(key) && PersistentHashImpl.this.get(key) == null) {
+                            PersistentHashImpl.this.remove(key);
+
+                            return true;
+                        }
+                    }
+
+                    return false;
+                }
+
+                @SuppressWarnings("unchecked")
+                @Override
+                public boolean contains(final Object aEntry) {
+                    final Entry<K, V> entry = (Entry<K, V>) aEntry;
+
+                    if (entry.getValue() != null) {
+                        return entry.getValue().equals(PersistentHashImpl.this.get(entry.getKey()));
+                    } else {
+                        return PersistentHashImpl.this.containsKey(entry.getKey()) && PersistentHashImpl.this.get(
+                                entry.getKey()) == null;
+                    }
+                }
+            };
+        }
+
+        return myEntrySet;
+    }
+
+    @SuppressWarnings("unchecked")
+    @Override
+    public boolean equals(final Object aObject) {
+        if (aObject == this) {
+            return true;
+        }
+
+        if (!(aObject instanceof Map)) {
+            return false;
+        }
+
+        final Map<K, V> map = (Map<K, V>) aObject;
+
+        if (map.size() != size()) {
+            return false;
+        }
+
+        try {
+            final Iterator<Entry<K, V>> iterator = entrySet().iterator();
+
+            while (iterator.hasNext()) {
+                final Entry<K, V> e = iterator.next();
+                final K key = e.getKey();
+                final V value = e.getValue();
+
+                if (value == null) {
+                    if (!(map.get(key) == null && map.containsKey(key))) {
+                        return false;
+                    }
+                } else {
+                    if (!value.equals(map.get(key))) {
+                        return false;
+                    }
+                }
+            }
+        } catch (final ClassCastException details) {
+            return false;
+        } catch (final NullPointerException details) {
+            return false;
+        }
+
+        return true;
+    }
+
+    @Override
+    public int hashCode() {
+        final Iterator<Entry<K, V>> iterator = entrySet().iterator();
+
+        int h = 0;
+
+        while (iterator.hasNext()) {
+            h += iterator.next().hashCode();
+        }
+
+        return h;
+    }
+
+    @Override
+    public String toString() {
+        final StringBuffer buffer = new StringBuffer();
+        final Iterator<Entry<K, V>> iterator = entrySet().iterator();
+
+        buffer.append("{");
+
+        boolean hasNext = iterator.hasNext();
+
+        while (hasNext) {
+            final Entry<K, V> e = iterator.next();
+            final K key = e.getKey();
+            final V value = e.getValue();
+
+            if (key == this) {
+                buffer.append("( this Hash )");
+            } else {
+                buffer.append(key);
+            }
+
+            buffer.append("=");
+
+            if (value == this) {
+                buffer.append("(this Hash)");
+            } else {
+                buffer.append(value);
+            }
+
+            hasNext = iterator.hasNext();
+
+            if (hasNext) {
+                buffer.append(", ");
+            }
+        }
+
+        buffer.append("}");
+
+        return buffer.toString();
+    }
+
+    static class HashPage extends Persistent {
+
+        Link myItems;
+
+        HashPage(final Storage aStorage, final int aPageSize) {
+            super(aStorage);
+
+            myItems = aStorage.createLink(aPageSize);
+            myItems.setSize(aPageSize);
+        }
+
+        HashPage() {
+        }
+
+        @Override
+        public void deallocate() {
+            for (final Object child : myItems) {
+                if (child instanceof HashPage) {
+                    ((HashPage) child).deallocate();
                 } else {
                     CollisionItem next;
-                    for (CollisionItem item = (CollisionItem)child; item != null; item = next) {
-                        next = item.next;
+
+                    for (CollisionItem item = (CollisionItem) child; item != null; item = next) {
+                        next = item.myNext;
                         item.deallocate();
                     }
                 }
             }
+
             super.deallocate();
-        }        
+        }
     }
 
-    static class CollisionItem<K,V> extends Persistent implements Entry<K,V>
-    { 
-        K                  key;
-        V                  obj;
-        int                hashCode;
-        CollisionItem<K,V> next;
-         
-        public K getKey() { 
-            return key;
+    static class CollisionItem<K, V> extends Persistent implements Entry<K, V> {
+
+        K myKey;
+
+        V myObject;
+
+        int myHashCode;
+
+        CollisionItem<K, V> myNext;
+
+        CollisionItem(final K aKey, final V aObject, final int aHashCode) {
+            myKey = aKey;
+            myObject = aObject;
+            myHashCode = aHashCode;
         }
 
-        public V getValue() { 
-            return obj;
+        CollisionItem() {
         }
 
-        public V setValue(V value) { 
+        @Override
+        public K getKey() {
+            return myKey;
+        }
+
+        @Override
+        public V getValue() {
+            return myObject;
+        }
+
+        @Override
+        public V setValue(final V aValue) {
             modify();
-            V prevValue = obj;
-            obj = value;
+
+            final V prevValue = myObject;
+
+            myObject = aValue;
+
             return prevValue;
         }
-
-        CollisionItem(K key, V obj, int hashCode) 
-        {
-            this.key = key;
-            this.obj = obj;
-            this.hashCode = hashCode;
-        }
-         
-        CollisionItem() {}
-    }    
-             
-    HashPage root;
-    int      nElems;
-    int      loadFactor;
-    int      pageSize;
- 
-    transient volatile Set<Entry<K,V>> entrySet;
-    transient volatile Set<K>          keySet;
-    transient volatile Collection<V>   valuesCol;
-
-    PersistentHashImpl(Storage storage, int pageSize, int loadFactor) { 
-        super(storage);
-        this.pageSize = pageSize;
-        this.loadFactor = loadFactor;
     }
 
-    PersistentHashImpl() {}
+    static class StackElem {
 
-    public int size() {
-        return nElems;
-    }
+        HashPage myPage;
 
-    public boolean isEmpty() {
-	return nElems == 0;
-    }
+        int myPosition;
 
-    public boolean containsValue(Object value) {
-	Iterator<Entry<K,V>> i = entrySet().iterator();
-	if (value==null) {
-	    while (i.hasNext()) {
-		Entry<K,V> e = i.next();
-		if (e.getValue()==null)
-		    return true;
-	    }
-	} else {
-	    while (i.hasNext()) {
-		Entry<K,V> e = i.next();
-		if (value.equals(e.getValue()))
-		    return true;
-	    }
-	}
-	return false;
-    }
-
-    public boolean containsKey(Object key) 
-    {
-        return getEntry(key) != null;
-    }
-
-    public V get(Object key) 
-    {
-        Entry<K,V> entry = getEntry(key);
-        return entry != null ? entry.getValue() : null;           
-    }
-
-    private static final long UINT_MASK = 0xFFFFFFFFL;
-
-    public Entry<K,V> getEntry(Object key) 
-    {
-        HashPage pg = root; 
-        if (pg != null) {
-            int divisor = 1;
-            int hashCode = key.hashCode();
-            while (true) {
-                int h = (int)((hashCode & UINT_MASK) / divisor % pageSize);
-                Object child = pg.items.get(h);
-                if (child instanceof HashPage) {
-                    pg = (HashPage)child; 
-                    divisor *= pageSize;
-                } else {
-                    for (CollisionItem<K,V> item = (CollisionItem<K,V>)child; item != null; item = item.next) {
-                        if (item.hashCode == hashCode && item.key.equals(key)) {
-                            return item;
-                        }
-                    }
-                    break;
-                }
-            }
-        }
-        return null;
-    }
-    
-    public V put(K key, V value) 
-    {
-        int hashCode = key.hashCode();
-        HashPage pg = root;
-        if (pg == null) {
-            pg = new HashPage(getStorage(), pageSize);
-            int h = (int)((hashCode & UINT_MASK) % pageSize);
-            pg.items.set(h, new CollisionItem<K,V>(key, value, hashCode));
-            root = pg;
-            nElems = 1;
-            modify();
-            return null;
-        } else { 
-            int divisor = 1;
-            while (true)
-            {
-                int h = (int)((hashCode & UINT_MASK) / divisor % pageSize);
-                Object child = pg.items.get(h);
-                if (child instanceof HashPage) {
-                    pg = (HashPage)child;
-                    divisor *= pageSize;                        
-                } else { 
-                    CollisionItem<K,V> prev = null;
-                    CollisionItem<K,V> last = null;
-                    int collisionChainLength = 0;
-                    for (CollisionItem<K,V> item = (CollisionItem<K,V>)child; item != null; item = item.next) {
-                         if (item.hashCode == hashCode) {
-                             if (item.key.equals(key)) {  
-                                 V prevValue = item.obj;
-                                 item.obj = value;
-                                 item.modify();
-                                 return prevValue;
-                             }      
-                             if (prev == null || prev.hashCode != hashCode) {
-                                 collisionChainLength += 1;
-                             }                           
-                             prev = item; 
-                         } else {      
-                             collisionChainLength += 1;
-                         }            
-                         last = item;                
-                    }
-                    if (prev == null || prev.hashCode != hashCode) {
-                        collisionChainLength += 1;
-                    }
-                    if (collisionChainLength > loadFactor) {
-                        HashPage newPage = new HashPage(getStorage(), pageSize);
-                        divisor *= pageSize;
-                        CollisionItem<K,V> next;
-                        for (CollisionItem<K,V> item = (CollisionItem<K,V>)child; item != null; item = next) {
-                            next = item.next;
-                            int hc = (int)((item.hashCode & UINT_MASK) / divisor % pageSize);                        
-                            item.next = (CollisionItem<K,V>)newPage.items.get(hc);
-                            newPage.items.set(hc, item);    
-                            item.modify();
-                        }
-                        pg.items.set(h, newPage);
-                        pg.modify();
-                        pg = newPage;      
-                    } else {
-                        CollisionItem<K,V> newItem = new CollisionItem<K,V>(key, value, hashCode);
-                        if (prev == null) {
-                            prev = last;
-                        }
-                        if (prev != null) {
-                            newItem.next = prev.next;
-                            prev.next = newItem;
-                            prev.modify();
-                        } else {
-                            pg.items.set(h, newItem);
-                            pg.modify();
-                        }
-                        nElems += 1;
-                        modify();
-                        return null;
-                    }                            
-                }
-            }
+        StackElem(final HashPage aPage, final int aPosition) {
+            myPage = aPage;
+            myPosition = aPosition;
         }
     }
 
-    public V remove(Object key) 
-    {
-        HashPage pg = root; 
-        if (pg != null) {
-            int divisor = 1;
-            int hashCode = key.hashCode();
-            while (true) {
-                int h = (int)((hashCode & UINT_MASK) / divisor % pageSize);
-                Object child = pg.items.get(h);
-                if (child instanceof HashPage) {
-                    pg = (HashPage)child; 
-                    divisor *= pageSize;
-                } else {
-                    CollisionItem<K,V> prev = null;
-                    for (CollisionItem<K,V> item = (CollisionItem<K,V>)child; item != null; item = item.next) {
-                        if (item.hashCode == hashCode && item.key.equals(key)) {
-                            V obj = item.obj;
-                            if (prev != null) {
-                                prev.next = item.next;
-                                prev.modify();
-                            } else {
-                                pg.items.set(h, item.next);
-                                pg.modify();
-                            }
-                            nElems -= 1;
-                            modify();
-                            return obj;
-                        }
-                        prev = item;
-                    }
-                    break;
-                }
-            }
-        }
-        return null;
-    }
+    class EntryIterator implements Iterator<Entry<K, V>> {
 
-    public void putAll(Map<? extends K, ? extends V> t) {
-	Iterator<? extends Entry<? extends K, ? extends V>> i = t.entrySet().iterator();
-	while (i.hasNext()) {
-	    Entry<? extends K, ? extends V> e = i.next();
-	    put(e.getKey(), e.getValue());
-	}
-    }
+        CollisionItem<K, V> myCurrentItem;
 
-    public void clear() 
-    {
-        if (root != null) {
-            root.deallocate();
-            root = null;
-            nElems = 0;
-            modify();
-        }
-    }
+        CollisionItem<K, V> myNextItem;
 
-    public Set<K> keySet() {
-	if (keySet == null) {
-	    keySet = new AbstractSet<K>() {
-		public Iterator<K> iterator() {
-		    return new Iterator<K>() {
-			private Iterator<Entry<K,V>> i = entrySet().iterator();
+        Stack<StackElem> myStack = new Stack<>();
 
-			public boolean hasNext() {
-			    return i.hasNext();
-			}
+        @SuppressWarnings("unchecked")
+        EntryIterator() {
+            HashPage page = myRoot;
 
-			public K next() {
-			    return i.next().getKey();
-			}
-
-			public void remove() {
-			    i.remove();
-			}
-                    };
-		}
-
-		public int size() {
-		    return PersistentHashImpl.this.size();
-		}
-
-		public boolean contains(Object k) {
-		    return PersistentHashImpl.this.containsKey(k);
-		}
-	    };
-	}
-	return keySet;
-    }
-
-    public Collection<V> values() {
-	if (valuesCol == null) {
-	    valuesCol = new AbstractCollection<V>() {
-		public Iterator<V> iterator() {
-		    return new Iterator<V>() {
-			private Iterator<Entry<K,V>> i = entrySet().iterator();
-
-			public boolean hasNext() {
-			    return i.hasNext();
-			}
-
-			public V next() {
-			    return i.next().getValue();
-			}
-
-			public void remove() {
-			    i.remove();
-			}
-                    };
-                }
-
-		public int size() {
-		    return PersistentHashImpl.this.size();
-		}
-
-		public boolean contains(Object v) {
-		    return PersistentHashImpl.this.containsValue(v);
-		}
-	    };
-	}
-	return valuesCol;
-    }
-
-    protected Iterator<Entry<K,V>> entryIterator() {
-        return new EntryIterator();
-    }
-
-    static class StackElem
-    {
-        HashPage page;
-        int      pos;
-
-        StackElem(HashPage page, int pos) {
-            this.page = page;
-            this.pos = pos;
-        }
-    }
-
-    class EntryIterator implements Iterator<Entry<K,V>> {          
-        CollisionItem<K,V> currItem;
-        CollisionItem<K,V> nextItem;
-        Stack<StackElem> stack = new Stack<StackElem>();
-
-        EntryIterator() 
-        {
-            HashPage pg = root;
-            
-            if (pg != null) {
+            if (page != null) {
                 int start = 0;
-                int sp = 0;
-              DepthFirst:
-                while (true) { 
-                    for (int i = start, n = pg.items.size(); i < n; i++) { 
-                        Object child = pg.items.get(i);
+
+                DepthFirst:
+                while (true) {
+                    for (int index = start, n = page.myItems.size(); index < n; index++) {
+                        final Object child = page.myItems.get(index);
+
                         if (child != null) {
-                            stack.push(new StackElem(pg, i));
+                            myStack.push(new StackElem(page, index));
+
                             if (child instanceof HashPage) {
-                                pg = (HashPage)child;
+                                page = (HashPage) child;
                                 start = 0;
+
                                 continue DepthFirst;
                             } else {
-                                nextItem = (CollisionItem<K,V>)child;
+                                myNextItem = (CollisionItem<K, V>) child;
                                 return;
                             }
                         }
                     }
-                    if (stack.isEmpty()) {
+
+                    if (myStack.isEmpty()) {
                         break;
-                    } else { 
-                        StackElem top = stack.pop();
-                        pg = top.page;
-                        start = top.pos + 1;
-                    } 
+                    } else {
+                        final StackElem top = myStack.pop();
+
+                        page = top.myPage;
+                        start = top.myPosition + 1;
+                    }
                 }
-            } 
+            }
         }
 
+        @Override
         public boolean hasNext() {
-            return nextItem != null;
+            return myNextItem != null;
         }
-                    
-        public Entry<K,V> next() {
-            if (nextItem == null) {
-                throw new NoSuchElementException(); 
+
+        @SuppressWarnings("unchecked")
+        @Override
+        public Entry<K, V> next() {
+            if (myNextItem == null) {
+                throw new NoSuchElementException();
             }
-            currItem = nextItem;       
-            if ((nextItem = nextItem.next) == null) {
+
+            myCurrentItem = myNextItem;
+
+            if ((myNextItem = myNextItem.myNext) == null) {
                 do {
-                    StackElem top = stack.pop();
-                    HashPage pg = top.page;
-                    int start = top.pos + 1;                           
-                    
-                  DepthFirst:
+                    final StackElem top = myStack.pop();
+
+                    HashPage page = top.myPage;
+                    int start = top.myPosition + 1;
+
+                    DepthFirst:
                     while (true) {
-                        for (int i = start, n = pg.items.size(); i < n; i++) { 
-                            Object child = pg.items.get(i);
+                        for (int index = start, n = page.myItems.size(); index < n; index++) {
+                            final Object child = page.myItems.get(index);
+
                             if (child != null) {
-                                stack.push(new StackElem(pg, i));
+                                myStack.push(new StackElem(page, index));
+
                                 if (child instanceof HashPage) {
-                                    pg = (HashPage)child;
+                                    page = (HashPage) child;
                                     start = 0;
+
                                     continue DepthFirst;
                                 } else {
-                                    nextItem = (CollisionItem<K,V>)child;
-                                    return currItem;
+                                    myNextItem = (CollisionItem<K, V>) child;
+
+                                    return myCurrentItem;
                                 }
                             }
                         }
+
                         break;
-                    } 
-                } while (!stack.isEmpty());
-            }            
-            return currItem;
+                    }
+                } while (!myStack.isEmpty());
+            }
+
+            return myCurrentItem;
         }
 
+        @Override
         public void remove() {
-            if (currItem == null) {
-                throw new NoSuchElementException(); 
+            if (myCurrentItem == null) {
+                throw new NoSuchElementException();
             }
-            PersistentHashImpl.this.remove(currItem.key);
+
+            PersistentHashImpl.this.remove(myCurrentItem.myKey);
         }
     }
-
-    public Set<Entry<K,V>> entrySet() {
-	if (entrySet == null) {
-	    entrySet = new AbstractSet<Entry<K,V>>() {
-		public Iterator<Entry<K,V>> iterator() {
-		    return entryIterator();
-		}
-
-		public int size() {
-		    return PersistentHashImpl.this.size();
-		}
-
-                public boolean remove(Object o) {
-                    if (!(o instanceof Map.Entry)) {
-                        return false;
-                    }
-                    Map.Entry<K,V> entry = (Map.Entry<K,V>) o;
-                    K key = entry.getKey();
-                    V value = entry.getValue();
-                    if (value != null) { 
-                        V v = PersistentHashImpl.this.get(key);
-                        if (value.equals(v)) {
-                            PersistentHashImpl.this.remove(key);
-                            return true;
-                        }
-                    } else {
-                        if (PersistentHashImpl.this.containsKey(key)
-                            && PersistentHashImpl.this.get(key) == null)
-                        {
-                            PersistentHashImpl.this.remove(key);
-                            return true;
-                        }
-                    }
-                    return false;
-                }
-                
-		public boolean contains(Object k) {
-                    Entry<K,V> e = (Entry<K,V>)k;
-                    if (e.getValue() != null) { 
-                        return e.getValue().equals(PersistentHashImpl.this.get(e.getKey()));
-                    } else {
-                        return PersistentHashImpl.this.containsKey(e.getKey()) 
-                            && PersistentHashImpl.this.get(e.getKey()) == null;
-                    }
-		}
-	    };
-	}
-	return entrySet;
-    }   
-
-     
-    public boolean equals(Object o) {
-	if (o == this) {
-	    return true;
-        }
-	if (!(o instanceof Map)) {
-	    return false;
-        }
-	Map<K,V> t = (Map<K,V>) o;
-	if (t.size() != size()) {
-	    return false;
-        }
-
-        try {
-            Iterator<Entry<K,V>> i = entrySet().iterator();
-            while (i.hasNext()) {
-                Entry<K,V> e = i.next();
-		K key = e.getKey();
-                V value = e.getValue();
-                if (value == null) {
-                    if (!(t.get(key)==null && t.containsKey(key))) {
-                        return false;
-                    }
-                } else {
-                    if (!value.equals(t.get(key))) {
-                        return false;
-                    }
-                }
-            }
-        } catch(ClassCastException unused) {
-            return false;
-        } catch(NullPointerException unused) {
-            return false;
-        }
-
-	return true;
-    }
-
-    public int hashCode() {
-	int h = 0;
-	Iterator<Entry<K,V>> i = entrySet().iterator();
-	while (i.hasNext()) {
-	    h += i.next().hashCode();
-        }
-	return h;
-    }
-
-    public String toString() {
-	StringBuffer buf = new StringBuffer();
-	buf.append("{");
-
-	Iterator<Entry<K,V>> i = entrySet().iterator();
-        boolean hasNext = i.hasNext();
-        while (hasNext) {
-	    Entry<K,V> e = i.next();
-	    K key = e.getKey();
-            V value = e.getValue();
-	    if (key == this) {
-		buf.append("(this Hash)");
-            } else {
-		buf.append(key);
-            }
-	    buf.append("=");
-	    if (value == this) {
-		buf.append("(this Hash)");
-            } else {
-		buf.append(value);
-            }
-            hasNext = i.hasNext();
-            if (hasNext) {
-                buf.append(", ");
-            }
-        }
-
-	buf.append("}");
-	return buf.toString();
-    }
-} 
+}

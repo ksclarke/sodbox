@@ -1,118 +1,154 @@
+
 package info.freelibrary.sodbox.impl;
-import info.freelibrary.sodbox.*;
 
-import  java.util.*;
+import java.util.Collection;
+import java.util.Iterator;
+import java.util.List;
+import java.util.ListIterator;
 
-class ScalableList<E> extends PersistentCollection<E> implements IPersistentList<E>
-{
-    Link<E>            small;
-    IPersistentList<E> large;
+import info.freelibrary.sodbox.IPersistentList;
+import info.freelibrary.sodbox.Link;
+import info.freelibrary.sodbox.PersistentCollection;
+import info.freelibrary.sodbox.Storage;
+
+class ScalableList<E> extends PersistentCollection<E> implements IPersistentList<E> {
 
     static final int BTREE_THRESHOLD = 128;
 
-    ScalableList(Storage storage, int initialSize) { 
-        super(storage);
-        if (initialSize <= BTREE_THRESHOLD) { 
-            small = storage.<E>createLink(initialSize);
-        } else { 
-            large = storage.<E>createList();
+    Link<E> mySmall;
+
+    IPersistentList<E> myLarge;
+
+    ScalableList(final Storage aStorage, final int aInitialSize) {
+        super(aStorage);
+
+        if (aInitialSize <= BTREE_THRESHOLD) {
+            mySmall = aStorage.<E>createLink(aInitialSize);
+        } else {
+            myLarge = aStorage.<E>createList();
         }
     }
 
-    ScalableList() {}
-
-    public E get(int i) { 
-        return small != null ? small.get(i) : large.get(i);
+    ScalableList() {
     }
-    
-    public E set(int i, E obj) { 
-        return small != null ? small.set(i, obj) : large.set(i, obj);
-    }
-       
-    public boolean isEmpty() { 
-        return small != null ? small.isEmpty() : large.isEmpty();
-    }    
 
+    @Override
+    public E get(final int aIndex) {
+        return mySmall != null ? mySmall.get(aIndex) : myLarge.get(aIndex);
+    }
+
+    @Override
+    public E set(final int aIndex, final E aObj) {
+        return mySmall != null ? mySmall.set(aIndex, aObj) : myLarge.set(aIndex, aObj);
+    }
+
+    @Override
+    public boolean isEmpty() {
+        return mySmall != null ? mySmall.isEmpty() : myLarge.isEmpty();
+    }
+
+    @Override
     public int size() {
-        return small != null ? small.size() : large.size();
+        return mySmall != null ? mySmall.size() : myLarge.size();
     }
 
-    public boolean contains(Object o) {         
-        return small != null ? small.contains(o) : large.contains(o);
+    @Override
+    public boolean contains(final Object aObj) {
+        return mySmall != null ? mySmall.contains(aObj) : myLarge.contains(aObj);
     }
 
-    public <T> T[] toArray(T a[]) { 
-        return small != null ? small.<T>toArray(a) : large.<T>toArray(a);
+    @Override
+    public <T> T[] toArray(final T aArray[]) {
+        return mySmall != null ? mySmall.<T>toArray(aArray) : myLarge.<T>toArray(aArray);
     }
 
-    public Object[] toArray() { 
-        return small != null ? small.toArray() : large.toArray();
+    @Override
+    public Object[] toArray() {
+        return mySmall != null ? mySmall.toArray() : myLarge.toArray();
     }
-    public boolean add(E o) {
-        add(size(), o);
+
+    @Override
+    public boolean add(final E aObj) {
+        add(size(), aObj);
         return true;
     }
 
-    public void add(int i, E o) {
-        if (small != null) { 
-            if (small.size() == BTREE_THRESHOLD) { 
-                large = getStorage().<E>createList();
-                large.addAll(small);
-                large.add(i, o);
+    @Override
+    public void add(final int aIndex, final E aObj) {
+        if (mySmall != null) {
+            if (mySmall.size() == BTREE_THRESHOLD) {
+                myLarge = getStorage().<E>createList();
+                myLarge.addAll(mySmall);
+                myLarge.add(aIndex, aObj);
+
                 modify();
-                small = null;
-            } else { 
-                small.add(i, o);
+
+                mySmall = null;
+            } else {
+                mySmall.add(aIndex, aObj);
             }
-        } else { 
-            large.add(i, o);
+        } else {
+            myLarge.add(aIndex, aObj);
         }
     }
 
-    public E remove(int i) {
-        return small != null ? small.remove(i) : large.remove(i);
+    @Override
+    public E remove(final int aIndex) {
+        return mySmall != null ? mySmall.remove(aIndex) : myLarge.remove(aIndex);
     }
 
+    @Override
     public void clear() {
-        if (large != null) { 
-            large.clear();            
-        } else { 
-            small.clear();
+        if (myLarge != null) {
+            myLarge.clear();
+        } else {
+            mySmall.clear();
         }
-    }   
-
-    public int indexOf(Object o) {
-        return small != null ? small.indexOf(o) : large.indexOf(o);
-    }    
-
-    public int lastIndexOf(Object o) {
-        return small != null ? small.lastIndexOf(o) : large.lastIndexOf(o);
     }
 
-    public boolean addAll(int index, Collection<? extends E> c) {
-	boolean modified = false;
-	Iterator<? extends E> e = c.iterator();
-	while (e.hasNext()) {
-	    add(index++, e.next());
-	    modified = true;
-	}
-	return modified;
-    }    
-            
+    @Override
+    public int indexOf(final Object aObj) {
+        return mySmall != null ? mySmall.indexOf(aObj) : myLarge.indexOf(aObj);
+    }
+
+    @Override
+    public int lastIndexOf(final Object aObj) {
+        return mySmall != null ? mySmall.lastIndexOf(aObj) : myLarge.lastIndexOf(aObj);
+    }
+
+    @Override
+    public boolean addAll(final int aIndex, final Collection<? extends E> aCollection) {
+        final Iterator<? extends E> iterator = aCollection.iterator();
+
+        boolean modified = false;
+        int index = aIndex;
+
+        while (iterator.hasNext()) {
+            add(index++, iterator.next());
+            modified = true;
+        }
+
+        return modified;
+    }
+
+    @Override
     public Iterator<E> iterator() {
-        return small != null ? small.iterator() : large.iterator();
+        return mySmall != null ? mySmall.iterator() : myLarge.iterator();
     }
-    
+
+    @Override
     public ListIterator<E> listIterator() {
-	return listIterator(0);
+        return listIterator(0);
     }
 
-    public ListIterator<E> listIterator(int index) {
-        return small != null ? small.listIterator(index) : large.listIterator(index);
+    @Override
+    public ListIterator<E> listIterator(final int aIndex) {
+        return mySmall != null ? mySmall.listIterator(aIndex) : myLarge.listIterator(aIndex);
     }
 
-    public List<E> subList(int fromIndex, int toIndex) {
-        return small != null ? small.subList(fromIndex, toIndex) : large.subList(fromIndex, toIndex);
+    @Override
+    public List<E> subList(final int aFromIndex, final int aToIndex) {
+        return mySmall != null ? mySmall.subList(aFromIndex, aToIndex) : myLarge.subList(aFromIndex, aToIndex);
     }
+
 }
-        

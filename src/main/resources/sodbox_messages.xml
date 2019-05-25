@@ -1,0 +1,95 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE properties SYSTEM "http://java.sun.com/dtd/properties.dtd">
+
+<!--<![CDATA[
+  To process this file outside of a full build, run:
+    mvn info.freelibrary:freelib-utils:generate-codes -DmessageFiles=$(find src -name *_messages.xml)
+]]>-->
+
+<properties>
+  <entry key="message-class-name">info.freelibrary.sodbox.MessageCodes</entry>
+
+  <entry key="SB-000">{}</entry>
+  <entry key="SB-001">Bad XML file format: line '{}', column '{}'</entry>
+  <entry key="SB-002">Unexpected token</entry>
+  <entry key="SB-003">Attribute value expected</entry>
+  <entry key="SB-004">Element is not closed</entry>
+  <entry key="SB-005">Element name expected</entry>
+  <entry key="SB-006">Conversion for field '{}' is not possible</entry>
+  <entry key="SB-007">Invalid date</entry>
+  <entry key="SB-008">Exception in custom serializer: {}</entry>
+  <entry key="SB-009">Text element expected</entry>
+  <entry key="SB-010">Object reference expected</entry>
+  <entry key="SB-011">Bad hexadecimal constant</entry>
+  <entry key="SB-012">The 'ref' element was expected</entry>
+  <entry key="SB-013">Key type is not specified for index</entry>
+  <entry key="SB-014">Field name is not specified for field index</entry>
+  <entry key="SB-015">ID is not specified</entry>
+  <entry key="SB-016">Unclosed element tag</entry>
+  <entry key="SB-017">Bad integer constant: {}</entry>
+  <entry key="SB-018">Failed to convert key value</entry>
+  <entry key="SB-019">Bad key type</entry>
+  <entry key="SB-020">Bad type</entry>
+  <entry key="SB-021">Attribute {} should have integer value</entry>
+  <entry key="SB-022">Attribute {} is not set</entry>
+  <entry key="SB-023">Root element is not closed</entry>
+  <entry key="SB-024">Incorrect root object specification</entry>
+  <entry key="SB-025">Database element should have 'root' attribute</entry>
+  <entry key="SB-026">No root element</entry>
+  <entry key="SB-027">Invalid type</entry>
+  <entry key="SB-028">Unknown transaction mode</entry>
+  <entry key="SB-029">Delay is not supported for global transactions</entry>
+  <entry key="SB-030">Initial object cache size should be positive</entry>
+  <entry key="SB-031">Getting default constructor for {}</entry>
+  <entry key="SB-032">Illegal transaction mode: Serialization mode doesn't work with multi-client support</entry>
+  <entry key="SB-033">Ending single client serializable thread transaction</entry>
+  <entry key="SB-034">Ending multi-client support thread transaction</entry>
+  <entry key="SB-035">Ending single client exclusive or cooperative thread transaction</entry>
+  <entry key="SB-036">Rollback serialized thread transaction [locked: {}, modified: {}]</entry>
+  <entry key="SB-037">Beginning serializable transaction [nested: {}]</entry>
+  <entry key="SB-038">Beginning multi-client exclusive transaction</entry>
+  <entry key="SB-039">Beginning multi-client cooperative transaction</entry>
+  <entry key="SB-040">Beginning single client exclusive transaction</entry>
+  <entry key="SB-041">Beginning single client cooperative transaction</entry>
+  <entry key="SB-042">Rolling back multi-client thread transaction</entry>
+  <entry key="SB-043">Rolling back serializable thread transaction with no modified objects</entry>
+  <entry key="SB-044">A replication slave transaction only works with replication slave storage</entry>
+  <entry key="SB-045"></entry>
+  <entry key="SB-046"></entry>
+  <entry key="SB-047"></entry>
+  <entry key="SB-048"></entry>
+  <entry key="SB-049"></entry>
+  <entry key="SB-050"></entry>
+  <entry key="SB-051"></entry>
+  <entry key="SB-052"></entry>
+  <entry key="SB-053"></entry>
+  <entry key="SB-054"></entry>
+  <entry key="SB-055"></entry>
+  <entry key="SB-056"></entry>
+  <entry key="SB-057"></entry>
+  <entry key="SB-058"></entry>
+  <entry key="SB-059"></entry>
+
+  <!-- Logging messages for testing purposes only -->
+  <entry key="SBT-001">Elapsed time for inserting {} records: {} milliseconds</entry>
+  <entry key="SBT-002">Elapsed time for performing {} index searches: {} milliseconds</entry>
+  <entry key="SBT-003">Elapsed time for deleting {} records: {} milliseconds</entry>
+  <entry key="SBT-004">Unable to delete a file created by the test: {}</entry>
+  <entry key="SBT-005">Storage is unexpectedly null</entry>
+  <entry key="SBT-006">Caught expected StorageError</entry>
+  <entry key="SBT-007"></entry>
+  <entry key="SBT-008"></entry>
+  <entry key="SBT-009"></entry>
+  <entry key="SBT-010"></entry>
+  <entry key="SBT-011"></entry>
+  <entry key="SBT-012"></entry>
+  <entry key="SBT-013"></entry>
+  <entry key="SBT-014"></entry>
+  <entry key="SBT-015"></entry>
+  <entry key="SBT-016"></entry>
+  <entry key="SBT-017"></entry>
+  <entry key="SBT-018"></entry>
+  <entry key="SBT-019"></entry>
+  <entry key="SBT-020"></entry>
+
+</properties>

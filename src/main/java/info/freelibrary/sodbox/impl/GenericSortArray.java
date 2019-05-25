@@ -1,7 +1,31 @@
+
 package info.freelibrary.sodbox.impl;
 
-public interface GenericSortArray { 
+/**
+ * A generic sort array.
+ */
+public interface GenericSortArray {
+
+    /**
+     * Gets size.
+     */
     int size();
-    int compare(int i, int j);
-    void swap(int i, int j);
+
+    /**
+     * Compares two array members
+     *
+     * @param aFirstMember
+     * @param aSecondMember
+     * @return
+     */
+    int compare(int aFirstMember, int aSecondMember);
+
+    /**
+     * Swaps two array members.
+     *
+     * @param aFirstMember
+     * @param aSecondMember
+     */
+    void swap(int aFirstMember, int aSecondMember);
+
 }

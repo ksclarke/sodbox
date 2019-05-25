@@ -1,759 +1,938 @@
+
 package info.freelibrary.sodbox.impl;
 
-import java.io.*;
+import java.io.IOException;
+import java.io.Writer;
 import java.util.Date;
-import java.lang.reflect.Field;
 
-import info.freelibrary.sodbox.*;
+import info.freelibrary.sodbox.Assert;
+import info.freelibrary.sodbox.StorageError;
 
-public class XMLExporter { 
-    public XMLExporter(StorageImpl storage, Writer writer) { 
-        this.storage = storage;
-        this.writer = writer;
+@SuppressWarnings("MultipleStringLiterals")
+public class XMLExporter {
+
+    static final char HEX_DIGIT[] = { '0', '1', '2', '3', '4', '5', '6', '7', '8', '9', 'A', 'B', 'C', 'D', 'E',
+        'F' };
+
+    private final StorageImpl myStorage;
+
+    private final Writer myWriter;
+
+    private int[] myMarkedBitmap;
+
+    private int[] myExportedBitmap;
+
+    private int[] myCompoundKeyTypes;
+
+    /**
+     * Create an XML exporter.
+     *
+     * @param aStorage A database storage
+     * @param aWriter A writer
+     */
+    public XMLExporter(final StorageImpl aStorage, final Writer aWriter) {
+        myStorage = aStorage;
+        myWriter = aWriter;
     }
 
-    public void exportDatabase(int rootOid) throws IOException 
-    { 
-        if (storage.encoding != null) { 
-            writer.write("<?xml version=\"1.0\" encoding=\"" + storage.encoding + "\"?>\n");
-        } else { 
-            writer.write("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n");
+    /**
+     * Export database.
+     *
+     * @param aRootOid A root OID.
+     * @throws IOException If there is trouble reading from the database.
+     */
+    public void exportDatabase(final int aRootOid) throws IOException {
+        if (myStorage.myEncoding != null) {
+            myWriter.write("<?xml version=\"1.0\" encoding=\"" + myStorage.myEncoding + "\"?>\n");
+        } else {
+            myWriter.write("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n");
         }
-        writer.write("<database root=\"" + rootOid + "\">\n");
-        exportedBitmap = new int[(storage.currIndexSize + 31) / 32];
-        markedBitmap = new int[(storage.currIndexSize + 31) / 32];
-        markedBitmap[rootOid >> 5] |= 1 << (rootOid & 31);
-        int nExportedObjects;
-        do { 
-            nExportedObjects = 0;
-            for (int i = 0; i < markedBitmap.length; i++) { 
-                int mask = markedBitmap[i];
-                if (mask != 0) { 
-                    for (int j = 0, bit = 1; j < 32; j++, bit <<= 1) { 
-                        if ((mask & bit) != 0) { 
-                            int oid = (i << 5) + j;
-                            exportedBitmap[i] |= bit;
-                            markedBitmap[i] &= ~bit;
-                            try { 
-                                byte[] obj = storage.get(oid);
-                                int typeOid = ObjectHeader.getType(obj, 0);                
-                                ClassDescriptor desc = storage.findClassDescriptor(typeOid);
-                                if (desc.cls == Btree.class) { 
-                                    exportIndex(oid, obj, "info.freelibrary.sodbox.impl.Btree");
-                                } else if (desc.cls == PersistentSet.class) { 
+
+        myWriter.write("<database root=\"" + aRootOid + "\">\n");
+        myExportedBitmap = new int[(myStorage.myCurrentIndexSize + 31) / 32];
+        myMarkedBitmap = new int[(myStorage.myCurrentIndexSize + 31) / 32];
+        myMarkedBitmap[aRootOid >> 5] |= 1 << (aRootOid & 31);
+
+        int exportedObjectCount;
+
+        do {
+            exportedObjectCount = 0;
+
+            for (int index = 0; index < myMarkedBitmap.length; index++) {
+                final int mask = myMarkedBitmap[index];
+
+                if (mask != 0) {
+                    for (int jndex = 0, bit = 1; jndex < 32; jndex++, bit <<= 1) {
+                        if ((mask & bit) != 0) {
+                            final int oid = (index << 5) + jndex;
+
+                            myExportedBitmap[index] |= bit;
+                            myMarkedBitmap[index] &= ~bit;
+
+                            try {
+                                final byte[] obj = myStorage.get(oid);
+                                final int typeOid = ObjectHeader.getType(obj, 0);
+                                final ClassDescriptor desc = myStorage.findClassDescriptor(typeOid);
+
+                                if (desc.myClass == Btree.class) {
+                                    exportIndex(oid, obj, Btree.class.getName());
+                                } else if (desc.myClass == PersistentSet.class) {
                                     exportSet(oid, obj);
-                                } else if (desc.cls == BtreeFieldIndex.class) { 
-                                    exportFieldIndex(oid, obj, "info.freelibrary.sodbox.impl.BtreeFieldIndex");
-                                } else if (desc.cls == BtreeCaseInsensitiveFieldIndex.class) { 
-                                    exportFieldIndex(oid, obj, "info.freelibrary.sodbox.impl.BtreeCaseInsensitiveFieldIndex");
-                                } else if (desc.cls == BtreeMultiFieldIndex.class) { 
-                                    exportMultiFieldIndex(oid, obj, "info.freelibrary.sodbox.impl.BtreeMultiFieldIndex");
-                                } else if (desc.cls == BtreeCaseInsensitiveMultiFieldIndex.class) { 
-                                    exportMultiFieldIndex(oid, obj, "info.freelibrary.sodbox.impl.BtreeCaseInsensitiveMultiFieldIndex");
-                                } else if (desc.cls == BtreeCompoundIndex.class) { 
+                                } else if (desc.myClass == BtreeFieldIndex.class) {
+                                    exportFieldIndex(oid, obj, BtreeFieldIndex.class.getName());
+                                } else if (desc.myClass == BtreeCaseInsensitiveFieldIndex.class) {
+                                    exportFieldIndex(oid, obj, BtreeCaseInsensitiveFieldIndex.class.getName());
+                                } else if (desc.myClass == BtreeMultiFieldIndex.class) {
+                                    exportMultiFieldIndex(oid, obj, BtreeMultiFieldIndex.class.getName());
+                                } else if (desc.myClass == BtreeCaseInsensitiveMultiFieldIndex.class) {
+                                    exportMultiFieldIndex(oid, obj, BtreeCaseInsensitiveMultiFieldIndex.class
+                                            .getName());
+                                } else if (desc.myClass == BtreeCompoundIndex.class) {
                                     exportCompoundIndex(oid, obj);
-                                } else { 
-                                    String className = exportIdentifier(desc.name);
-                                    writer.write(" <" + className + " id=\"" + oid + "\">\n");
-                                    exportObject(desc, obj, ObjectHeader.sizeof, 2);
-                                    writer.write(" </" + className + ">\n");
+                                } else {
+                                    final String className = exportIdentifier(desc.myName);
+
+                                    myWriter.write(" <" + className + " id=\"" + oid + "\">\n");
+                                    exportObject(desc, obj, ObjectHeader.SIZE_OF, 2);
+                                    myWriter.write(" </" + className + ">\n");
                                 }
-                                nExportedObjects += 1;
-                            } catch (StorageError x) { 
-                                if (storage.listener != null) {
-                                    storage.listener.objectNotExported(oid, x);
-                                } else { 
-                                    System.err.println("XML export failed for object " + oid + ": " + x);
+
+                                exportedObjectCount += 1;
+                            } catch (final StorageError details) {
+                                if (myStorage.myListener != null) {
+                                    myStorage.myListener.objectNotExported(oid, details);
+                                } else {
+                                    System.err.println("XML export failed for object " + oid + ": " + details);
                                 }
                             }
                         }
                     }
                 }
-            }                            
-        } while (nExportedObjects != 0);
-        writer.write("</database>\n");   
-        writer.flush(); // writer should be closed by calling code
+            }
+        } while (exportedObjectCount != 0);
+
+        myWriter.write("</database>\n");
+        myWriter.flush(); // writer should be closed by calling code
     }
 
-    final String exportIdentifier(String name) { 
-        return name.replace('$', '-');
+    final String exportIdentifier(final String aName) {
+        return aName.replace('$', '-');
     }
 
-    final void exportSet(int oid,  byte[] data) throws IOException 
-    { 
-        Btree btree = new Btree(data, ObjectHeader.sizeof);
-        storage.assignOid(btree, oid, false);
-        writer.write(" <info.freelibrary.sodbox.impl.PersistentSet id=\"" + oid + "\" unique=\"" + (btree.unique ? '1' : '0') + "\">\n");
+    final void exportSet(final int aOid, final byte[] aData) throws IOException {
+        final Btree btree = new Btree(aData, ObjectHeader.SIZE_OF);
+
+        myStorage.assignOid(btree, aOid, false);
+        myWriter.write(" <" + PersistentSet.class.getName() + " id=\"" + aOid + "\" unique=\"" +
+                (btree.isUniqueKeyIndex ? '1' : '0') + "\">\n");
         btree.export(this);
-        writer.write(" </info.freelibrary.sodbox.impl.PersistentSet>\n");
+        myWriter.write(" </" + PersistentSet.class.getName() + ">\n");
     }
 
-    final void exportIndex(int oid, byte[] data, String name) throws IOException 
-    { 
-        Btree btree = new Btree(data, ObjectHeader.sizeof);
-        storage.assignOid(btree, oid, false);
-        writer.write(" <" + name + " id=\"" + oid + "\" unique=\"" + (btree.unique ? '1' : '0') 
-                     + "\" type=\"" + ClassDescriptor.signature[btree.type] + "\">\n");
+    final void exportIndex(final int aOid, final byte[] aData, final String aName) throws IOException {
+        final Btree btree = new Btree(aData, ObjectHeader.SIZE_OF);
+
+        myStorage.assignOid(btree, aOid, false);
+        myWriter.write(" <" + aName + " id=\"" + aOid + "\" unique=\"" + (btree.isUniqueKeyIndex ? '1' : '0') +
+                "\" type=\"" + ClassDescriptor.SIGNATURE[btree.myType] + "\">\n");
         btree.export(this);
-        writer.write(" </" + name + ">\n");
+        myWriter.write(" </" + aName + ">\n");
     }
 
-    final void exportFieldIndex(int oid,  byte[] data, String name) throws IOException
-    { 
-        Btree btree = new Btree(data, ObjectHeader.sizeof);
-        storage.assignOid(btree, oid, false);
-        writer.write(" <" + name + " id=\"" + oid + "\" unique=\"" + (btree.unique ? '1' : '0') + "\"");
-        int offs = Btree.sizeof;
-        writer.write(" autoinc=\"" + Bytes.unpack8(data, offs) + "\"");
-        offs += 8;
-        writer.write(" class=");
-        offs = exportString(data, offs);
-        writer.write(" field=");
-        offs = exportString(data, offs);
-        writer.write(">\n");
+    final void exportFieldIndex(final int aOid, final byte[] aData, final String aName) throws IOException {
+        final Btree btree = new Btree(aData, ObjectHeader.SIZE_OF);
+        int offset;
+
+        myStorage.assignOid(btree, aOid, false);
+        myWriter.write(" <" + aName + " id=\"" + aOid + "\" unique=\"" + (btree.isUniqueKeyIndex ? '1' : '0') + "\"");
+
+        offset = Btree.SIZE_OF;
+
+        myWriter.write(" autoinc=\"" + Bytes.unpack8(aData, offset) + "\"");
+        offset += 8;
+        myWriter.write(" class=");
+        offset = exportString(aData, offset);
+        myWriter.write(" field=");
+        offset = exportString(aData, offset);
+        myWriter.write(">\n");
         btree.export(this);
-        writer.write(" </" + name + ">\n");
+        myWriter.write(" </" + aName + ">\n");
     }
 
-    final void exportMultiFieldIndex(int oid,  byte[] data, String name) throws IOException
-    { 
-        Btree btree = new Btree(data, ObjectHeader.sizeof);
-        storage.assignOid(btree, oid, false);
-        writer.write(" <" + name + " id=\"" + oid + "\" unique=\"" + (btree.unique ? '1' : '0') + "\" class=");
-        int offs = exportString(data, Btree.sizeof);
-        int nFields = Bytes.unpack4(data, offs);
-        offs += 4;
-        for (int i = 0; i < nFields; i++) { 
-            writer.write(" field" + i + "=");
-            offs = exportString(data, offs);
+    final void exportMultiFieldIndex(final int aOid, final byte[] aData, final String aName) throws IOException {
+        final Btree btree = new Btree(aData, ObjectHeader.SIZE_OF);
+
+        myStorage.assignOid(btree, aOid, false);
+        myWriter.write(" <" + aName + " id=\"" + aOid + "\" unique=\"" + (btree.isUniqueKeyIndex ? '1' : '0') +
+                "\" class=");
+
+        int offset = exportString(aData, Btree.SIZE_OF);
+
+        final int nFields = Bytes.unpack4(aData, offset);
+
+        offset += 4;
+
+        for (int i = 0; i < nFields; i++) {
+            myWriter.write(" field" + i + "=");
+            offset = exportString(aData, offset);
         }
-        writer.write(">\n");
-        int nTypes = Bytes.unpack4(data, offs);
-        offs += 4;
-        compoundKeyTypes = new int[nTypes];
-        for (int i = 0; i < nTypes; i++) { 
-            compoundKeyTypes[i] = Bytes.unpack4(data, offs);
-            offs += 4;
+
+        myWriter.write(">\n");
+
+        final int nTypes = Bytes.unpack4(aData, offset);
+
+        offset += 4;
+        myCompoundKeyTypes = new int[nTypes];
+
+        for (int i = 0; i < nTypes; i++) {
+            myCompoundKeyTypes[i] = Bytes.unpack4(aData, offset);
+            offset += 4;
         }
-        btree.export(this); 
-        compoundKeyTypes = null;
-        writer.write(" </" + name + ">\n");
+
+        btree.export(this);
+        myCompoundKeyTypes = null;
+        myWriter.write(" </" + aName + ">\n");
     }
 
-    final void exportCompoundIndex(int oid,  byte[] data) throws IOException
-    { 
-        Btree btree = new Btree(data, ObjectHeader.sizeof);
-        storage.assignOid(btree, oid, false);
-        writer.write(" <info.freelibrary.sodbox.impl.BtreeCompoundIndex id=\"" + oid + "\" unique=\"" + (btree.unique ? '1' : '0') + "\"");
-        int offs = Btree.sizeof;
-        int nTypes = Bytes.unpack4(data, offs);
-        offs += 4;
-        compoundKeyTypes = new int[nTypes];
-        for (int i = 0; i < nTypes; i++) { 
-            int type = Bytes.unpack4(data, offs); 
-            writer.write(" type" + i + "=\"" + ClassDescriptor.signature[type] + "\"");
-             
-            compoundKeyTypes[i] = type;
-            offs += 4;
+    final void exportCompoundIndex(final int aOid, final byte[] aData) throws IOException {
+        final Btree btree = new Btree(aData, ObjectHeader.SIZE_OF);
+
+        myStorage.assignOid(btree, aOid, false);
+        myWriter.write(" <info.freelibrary.sodbox.impl.BtreeCompoundIndex id=\"" + aOid + "\" unique=\"" +
+                (btree.isUniqueKeyIndex ? '1' : '0') + "\"");
+
+        int offset = Btree.SIZE_OF;
+        final int nTypes = Bytes.unpack4(aData, offset);
+
+        offset += 4;
+        myCompoundKeyTypes = new int[nTypes];
+
+        for (int index = 0; index < nTypes; index++) {
+            final int type = Bytes.unpack4(aData, offset);
+
+            myWriter.write(" type" + index + "=\"" + ClassDescriptor.SIGNATURE[type] + "\"");
+
+            myCompoundKeyTypes[index] = type;
+            offset += 4;
         }
-        writer.write(">\n");
-        btree.export(this); 
-        compoundKeyTypes = null;
-        writer.write(" </info.freelibrary.sodbox.impl.BtreeCompoundIndex>\n");
+
+        myWriter.write(">\n");
+        btree.export(this);
+        myCompoundKeyTypes = null;
+        myWriter.write(" </info.freelibrary.sodbox.impl.BtreeCompoundIndex>\n");
     }
 
-    final int exportKey(byte[] body, int offs, int size, int type) throws IOException
-    {
-        switch (type) { 
-            case ClassDescriptor.tpBoolean:
-                writer.write(body[offs++] != 0 ? "1" : "0");
+    final int exportKey(final byte[] aBody, final int aOffset, final int aSize, final int aType) throws IOException {
+        int offset = aOffset;
+
+        switch (aType) {
+            case ClassDescriptor.TP_BOOLEAN:
+                myWriter.write(aBody[offset++] != 0 ? "1" : "0");
                 break;
-            case ClassDescriptor.tpByte:
-                writer.write(Integer.toString(body[offs++]));
+            case ClassDescriptor.TP_BYTE:
+                myWriter.write(Integer.toString(aBody[offset++]));
                 break;
-            case ClassDescriptor.tpChar:
-                writer.write(Integer.toString((char)Bytes.unpack2(body, offs)));
-                offs += 2;
+            case ClassDescriptor.TP_CHAR:
+                myWriter.write(Integer.toString((char) Bytes.unpack2(aBody, offset)));
+                offset += 2;
                 break;
-            case ClassDescriptor.tpShort:
-                writer.write(Integer.toString(Bytes.unpack2(body, offs)));
-                offs += 2;
+            case ClassDescriptor.TP_SHORT:
+                myWriter.write(Integer.toString(Bytes.unpack2(aBody, offset)));
+                offset += 2;
                 break;
-            case ClassDescriptor.tpInt:
-            case ClassDescriptor.tpObject:
-            case ClassDescriptor.tpEnum:
-                writer.write(Integer.toString(Bytes.unpack4(body, offs)));
-                offs += 4;
+            case ClassDescriptor.TP_INT:
+            case ClassDescriptor.TP_OBJECT:
+            case ClassDescriptor.TP_ENUM:
+                myWriter.write(Integer.toString(Bytes.unpack4(aBody, offset)));
+                offset += 4;
                 break;
-            case ClassDescriptor.tpLong:
-                writer.write(Long.toString(Bytes.unpack8(body, offs)));
-                offs += 8;
+            case ClassDescriptor.TP_LONG:
+                myWriter.write(Long.toString(Bytes.unpack8(aBody, offset)));
+                offset += 8;
                 break;
-            case ClassDescriptor.tpFloat:
-                writer.write(Float.toString(Float.intBitsToFloat(Bytes.unpack4(body, offs))));
-                offs += 4;
+            case ClassDescriptor.TP_FLOAT:
+                myWriter.write(Float.toString(Float.intBitsToFloat(Bytes.unpack4(aBody, offset))));
+                offset += 4;
                 break;
-            case ClassDescriptor.tpDouble:
-                writer.write(Double.toString(Double.longBitsToDouble(Bytes.unpack8(body, offs))));
-                offs += 8;
+            case ClassDescriptor.TP_DOUBLE:
+                myWriter.write(Double.toString(Double.longBitsToDouble(Bytes.unpack8(aBody, offset))));
+                offset += 8;
                 break;
-            case ClassDescriptor.tpString:
-            case ClassDescriptor.tpClass:
-                for (int i = 0; i < size; i++) { 
-                    exportChar((char)Bytes.unpack2(body, offs));
-                    offs += 2;
+            case ClassDescriptor.TP_STRING:
+            case ClassDescriptor.TP_CLASS:
+                for (int index = 0; index < aSize; index++) {
+                    exportChar((char) Bytes.unpack2(aBody, offset));
+                    offset += 2;
+                }
+
+                break;
+            case ClassDescriptor.TP_ARRAY_OF_BYTES:
+                for (int index = 0; index < aSize; index++) {
+                    final byte singleByte = aBody[offset++];
+
+                    myWriter.write(HEX_DIGIT[(singleByte >>> 4) & 0xF]);
+                    myWriter.write(HEX_DIGIT[singleByte & 0xF]);
                 }
                 break;
-            case ClassDescriptor.tpArrayOfByte:
-                for (int i = 0; i < size; i++) { 
-                    byte b = body[offs++];
-                    writer.write(hexDigit[(b >>> 4) & 0xF]);
-                    writer.write(hexDigit[b & 0xF]);
+            case ClassDescriptor.TP_DATE: {
+                final long msec = Bytes.unpack8(aBody, offset);
+
+                offset += 8;
+
+                if (msec >= 0) {
+                    myWriter.write(XMLImporter.HTTP_FORMATTER.format(new Date(msec)));
+                } else {
+                    myWriter.write("null");
                 }
-                break;
-            case ClassDescriptor.tpDate:
-            {
-                long msec = Bytes.unpack8(body, offs);
-                offs += 8;
-                if (msec >= 0) { 
-                    writer.write(XMLImporter.httpFormatter.format(new Date(msec)));
-                } else { 
-                    writer.write("null");
-                }
+
                 break;
             }
             default:
                 Assert.that(false);
         }
-        return offs;
+
+        return offset;
     }
 
-    final void exportCompoundKey(byte[] body, int offs, int size, int type) throws IOException 
-    { 
-        Assert.that(type == ClassDescriptor.tpArrayOfByte);
-        int end = offs + size;
-        for (int i = 0; i < compoundKeyTypes.length; i++) { 
-            type = compoundKeyTypes[i];
-            if (type == ClassDescriptor.tpArrayOfByte || type == ClassDescriptor.tpString) { 
-                size = Bytes.unpack4(body, offs);
-                offs += 4;
+    final void exportCompoundKey(final byte[] aBody, final int aOffset, final int aSize, final int aType)
+            throws IOException {
+        Assert.that(aType == ClassDescriptor.TP_ARRAY_OF_BYTES);
+
+        int offset = aOffset;
+        int size = aSize;
+        int type = aType;
+
+        final int end = offset + size;
+
+        for (int index = 0; index < myCompoundKeyTypes.length; index++) {
+            type = myCompoundKeyTypes[index];
+
+            if (type == ClassDescriptor.TP_ARRAY_OF_BYTES || type == ClassDescriptor.TP_STRING) {
+                size = Bytes.unpack4(aBody, offset);
+                offset += 4;
             }
-            writer.write(" key" + i + "=\"");
-            offs = exportKey(body, offs, size, type); 
-            writer.write("\"");
+
+            myWriter.write(" key" + index + "=\"");
+            offset = exportKey(aBody, offset, size, type);
+            myWriter.write("\"");
         }
-        Assert.that(offs == end);
+
+        Assert.that(offset == end);
     }
 
-    final void exportAssoc(int oid, byte[] body, int offs, int size, int type) throws IOException
-    {
-        writer.write("  <ref id=\"" + oid + "\"");
-        if ((exportedBitmap[oid >> 5] & (1 << (oid & 31))) == 0) { 
-            markedBitmap[oid >> 5] |= 1 << (oid & 31);
+    final void exportAssoc(final int aOid, final byte[] aBody, final int aOffset, final int aSize, final int aType)
+            throws IOException {
+        myWriter.write("  <ref id=\"" + aOid + "\"");
+
+        if ((myExportedBitmap[aOid >> 5] & (1 << (aOid & 31))) == 0) {
+            myMarkedBitmap[aOid >> 5] |= 1 << (aOid & 31);
         }
-        if (compoundKeyTypes != null) { 
-            exportCompoundKey(body, offs, size, type);
-        } else { 
-            writer.write(" key=\"");
-            exportKey(body, offs, size, type);
-            writer.write("\"");
-        }
-        writer.write("/>\n");
-    }
 
-    final void indentation(int indent) throws IOException { 
-        while (--indent >= 0) { 
-            writer.write(' ');
-        }
-    }
-
-    final void exportChar(char ch) throws IOException { 
-        switch (ch) {
-          case '<':
-            writer.write("&lt;");
-            break;
-          case '>':
-            writer.write("&gt;");
-            break;
-          case '&':
-            writer.write("&amp;");
-            break;
-          case '"':
-            writer.write("&quot;");
-            break;
-          case '\'':
-            writer.write("&apos;");
-            break;
-          default:
-            writer.write(ch);
-        }
-    }
-
-    final int exportString(byte[] body, int offs) throws IOException { 
-        int len = Bytes.unpack4(body, offs);
-        offs += 4;
-        if (len >= 0) { 
-            writer.write("\"");                    
-            while (--len >= 0) { 
-                exportChar((char)Bytes.unpack2(body, offs));
-                offs += 2;
-            }
-            writer.write("\"");                    
-        } else if (len < -1) { 
-            writer.write("\"");   
-            String s;
-            if (storage.encoding != null) { 
-                s = new String(body, offs, -len-2, storage.encoding);
-            } else { 
-                s = new String(body, offs, -len-2);
-            }
-            offs -= len+2;
-            for (int i = 0, n = s.length(); i < n; i++) { 
-                exportChar(s.charAt(i));
-            }
-            writer.write("\"");   
-        } else { 
-            writer.write("null");
-        }       
-        return offs;
-    }
-
-    static final char hexDigit[] = {
-        '0', '1', '2', '3', '4', '5', '6', '7', '8', '9', 'A', 'B', 'C', 'D', 'E', 'F'
-    };
-
-    final int exportBinary(byte[] body, int offs) throws IOException { 
-        int len = Bytes.unpack4(body, offs);
-        offs += 4;
-        if (len < 0) { 
-            writer.write("null");
+        if (myCompoundKeyTypes != null) {
+            exportCompoundKey(aBody, aOffset, aSize, aType);
         } else {
-            writer.write('\"');
-            while (--len >= 0) {
-                byte b = body[offs++];
-                writer.write(hexDigit[(b >>> 4) & 0xF]);
-                writer.write(hexDigit[b & 0xF]);
-            }
-            writer.write('\"');
+            myWriter.write(" key=\"");
+            exportKey(aBody, aOffset, aSize, aType);
+            myWriter.write("\"");
         }
-        return offs;
+
+        myWriter.write("/>\n");
     }
-    
-    final int exportRef(byte[] body, int offs, int indent) throws IOException { 
-        int oid = Bytes.unpack4(body, offs);
-        offs += 4;
-        if (oid < 0) {
-            int tid = -1-oid;
-            switch (tid) {
-            case ClassDescriptor.tpString:
-                offs = exportString(body, offs);
+
+    final void indentation(final int aIndention) throws IOException {
+        int indention = aIndention;
+
+        while (--indention >= 0) {
+            myWriter.write(' ');
+        }
+    }
+
+    final void exportChar(final char aCharacter) throws IOException {
+        switch (aCharacter) {
+            case '<':
+                myWriter.write("&lt;");
                 break;
-             case ClassDescriptor.tpClass:
-                writer.write("<class name=\"");
-                offs = exportString(body, offs);
-                writer.write("\"/>");
+            case '>':
+                myWriter.write("&gt;");
                 break;
-            case ClassDescriptor.tpBoolean:
-            case ClassDescriptor.tpByte:
-            case ClassDescriptor.tpChar:
-            case ClassDescriptor.tpShort:
-            case ClassDescriptor.tpInt:
-            case ClassDescriptor.tpLong:
-            case ClassDescriptor.tpFloat:
-            case ClassDescriptor.tpDouble:
-            case ClassDescriptor.tpDate:
-            case ClassDescriptor.tpEnum:
-                {
-                    int len = ClassDescriptor.sizeof[tid];
-                    writer.write("<scalar type=\"" + tid + "\" value=\"");
-                    while (--len >= 0) {
-                        byte b = body[offs++];
-                        writer.write(hexDigit[(b >> 4) & 0xF]);
-                        writer.write(hexDigit[b & 0xF]);
-                    }
-                    writer.write("\"/>");
-                    break;
-                }
-            case ClassDescriptor.tpCustom:
-            {
-                StorageImpl.ByteArrayObjectInputStream in = storage.new ByteArrayObjectInputStream(body, offs, null, true, false);
-                Object obj = storage.serializer.unpack(in);
-                offs = in.getPosition();  
-                writer.write("<scalar type=\"" + tid + "\" value=\"");
-                String s = storage.serializer.print(obj);
-                for (int i = 0; i < s.length(); i++) { 
-                    exportChar(s.charAt(i));
-                }
-                writer.write("\"/>");
+            case '&':
+                myWriter.write("&amp;");
                 break;
-            }
+            case '"':
+                myWriter.write("&quot;");
+                break;
+            case '\'':
+                myWriter.write("&apos;");
+                break;
             default:
-                if (tid >= ClassDescriptor.tpValueTypeBias) { 
-                    int typeOid = - ClassDescriptor.tpValueTypeBias - oid;
-                    ClassDescriptor desc = storage.findClassDescriptor(typeOid);
-                    if (desc.isCollection) { 
-                        int len = Bytes.unpack4(body, offs);   
-                        offs += 4;
-                        String className = exportIdentifier(desc.name);
-                        writer.write("\n");
-                        indentation(indent + 1);
-                        writer.write("<" + className + ">\n");
-                        for (int i = 0; i < len; i++) { 
-                            indentation(indent + 2);
-                            writer.write("<element>");
-                            offs = exportRef(body, offs, indent + 2);
-                            writer.write("</element>");
-                        }                            
-                        indentation(indent + 1);
-                        writer.write("</" + className + ">\n");
-                        indentation(indent);
-                    } else {
-                        String className = exportIdentifier(desc.name);
-                        writer.write("\n");
-                        indentation(indent + 1);
-                        writer.write("<" + className + ">\n");
-                        offs = exportObject(desc, body, offs, indent + 2);
-                        indentation(indent + 1);
-                        writer.write("</" + className + ">\n");
-                        indentation(indent);
-                    }
-                } else { 
-                    throw new StorageError(StorageError.UNSUPPORTED_TYPE);
-                }
-            }       
-        } else {
-            writer.write("<ref id=\"" + oid + "\"/>");
-            if (oid != 0 && (exportedBitmap[oid >> 5] & (1 << (oid & 31))) == 0) { 
-                markedBitmap[oid >> 5] |= 1 << (oid & 31);
-            }
+                myWriter.write(aCharacter);
         }
-        return offs;
     }
 
-    final int exportObject(ClassDescriptor desc, byte[] body, int offs, int indent) throws IOException {
-        ClassDescriptor.FieldDescriptor[] all = desc.allFields;
+    final int exportString(final byte[] aBody, final int aOffset) throws IOException {
+        int offset = aOffset;
+        int length = Bytes.unpack4(aBody, offset);
 
-        for (int i = 0, n = all.length; i < n; i++) { 
-            ClassDescriptor.FieldDescriptor fd = all[i];
-            indentation(indent);
-            String fieldName = exportIdentifier(fd.fieldName);
-            writer.write("<" + fieldName + ">");
-            switch (fd.type) { 
-                case ClassDescriptor.tpBoolean:
-                    writer.write(body[offs++] != 0 ? "1" : "0");
+        offset += 4;
+
+        if (length >= 0) {
+            myWriter.write("\"");
+
+            while (--length >= 0) {
+                exportChar((char) Bytes.unpack2(aBody, offset));
+                offset += 2;
+            }
+
+            myWriter.write("\"");
+        } else if (length < -1) {
+            myWriter.write("\"");
+
+            final String string;
+
+            if (myStorage.myEncoding != null) {
+                string = new String(aBody, offset, -length - 2, myStorage.myEncoding);
+            } else {
+                string = new String(aBody, offset, -length - 2);
+            }
+
+            offset -= length + 2;
+
+            for (int index = 0, n = string.length(); index < n; index++) {
+                exportChar(string.charAt(index));
+            }
+
+            myWriter.write("\"");
+        } else {
+            myWriter.write("null");
+        }
+
+        return offset;
+    }
+
+    final int exportBinary(final byte[] aBody, final int aOffset) throws IOException {
+        int offset = aOffset;
+        int length = Bytes.unpack4(aBody, offset);
+
+        offset += 4;
+
+        if (length < 0) {
+            myWriter.write("null");
+        } else {
+            myWriter.write('\"');
+
+            while (--length >= 0) {
+                final byte singleByte = aBody[offset++];
+
+                myWriter.write(HEX_DIGIT[(singleByte >>> 4) & 0xF]);
+                myWriter.write(HEX_DIGIT[singleByte & 0xF]);
+            }
+
+            myWriter.write('\"');
+        }
+
+        return offset;
+    }
+
+    final int exportRef(final byte[] aBody, final int aJOffset, final int aIndention) throws IOException {
+        final int oid;
+
+        int offset = aJOffset;
+
+        oid = Bytes.unpack4(aBody, offset);
+        offset += 4;
+
+        if (oid < 0) {
+            final int tid = -1 - oid;
+
+            switch (tid) {
+                case ClassDescriptor.TP_STRING:
+                    offset = exportString(aBody, offset);
                     break;
-                case ClassDescriptor.tpByte:
-                    writer.write(Integer.toString(body[offs++]));
+                case ClassDescriptor.TP_CLASS:
+                    myWriter.write("<class name=\"");
+                    offset = exportString(aBody, offset);
+                    myWriter.write("\"/>");
                     break;
-                case ClassDescriptor.tpChar:
-                    writer.write(Integer.toString((char)Bytes.unpack2(body, offs)));
-                    offs += 2;
-                    break;
-                case ClassDescriptor.tpShort:
-                    writer.write(Integer.toString(Bytes.unpack2(body, offs)));
-                    offs += 2;
-                    break;
-                case ClassDescriptor.tpInt:
-                    writer.write(Integer.toString(Bytes.unpack4(body, offs)));
-                    offs += 4;
-                    break;
-                case ClassDescriptor.tpLong:
-                    writer.write(Long.toString(Bytes.unpack8(body, offs)));
-                    offs += 8;
-                    break;
-                case ClassDescriptor.tpFloat:
-                    writer.write(Float.toString(Float.intBitsToFloat(Bytes.unpack4(body, offs))));
-                    offs += 4;
-                    break;
-                case ClassDescriptor.tpDouble:
-                    writer.write(Double.toString(Double.longBitsToDouble(Bytes.unpack8(body, offs))));
-                    offs += 8;
-                    break;
-                case ClassDescriptor.tpEnum:
-                { 
-                    int ordinal = Bytes.unpack4(body, offs);
-                    if (ordinal < 0) { 
-                        writer.write("null");
-                    } else { 
-                        writer.write("\"" + ((Enum)fd.field.getType().getEnumConstants()[ordinal]).name() + "\"");
+                case ClassDescriptor.TP_BOOLEAN:
+                case ClassDescriptor.TP_BYTE:
+                case ClassDescriptor.TP_CHAR:
+                case ClassDescriptor.TP_SHORT:
+                case ClassDescriptor.TP_INT:
+                case ClassDescriptor.TP_LONG:
+                case ClassDescriptor.TP_FLOAT:
+                case ClassDescriptor.TP_DOUBLE:
+                case ClassDescriptor.TP_DATE:
+                case ClassDescriptor.TP_ENUM: {
+                    int length = ClassDescriptor.SIZE_OF[tid];
+
+                    myWriter.write("<scalar type=\"" + tid + "\" value=\"");
+
+                    while (--length >= 0) {
+                        final byte b = aBody[offset++];
+
+                        myWriter.write(HEX_DIGIT[(b >> 4) & 0xF]);
+                        myWriter.write(HEX_DIGIT[b & 0xF]);
                     }
-                    offs += 4;
+
+                    myWriter.write("\"/>");
                     break;
                 }
-                case ClassDescriptor.tpString:
-                case ClassDescriptor.tpClass:
-                    offs = exportString(body, offs);
-                    break;
-                case ClassDescriptor.tpDate:
-                {
-                    long msec = Bytes.unpack8(body, offs);
-                    offs += 8;
-                    if (msec >= 0) { 
-                        writer.write("\"" + XMLImporter.httpFormatter.format(new Date(msec)) + "\"");
-                    } else { 
-                        writer.write("null");
+                case ClassDescriptor.TP_CUSTOM: {
+                    final StorageImpl.ByteArrayObjectInputStream in = myStorage.new ByteArrayObjectInputStream(aBody,
+                            offset, null, true, false);
+                    final Object obj = myStorage.mySerializer.unpack(in);
+
+                    offset = in.getPosition();
+                    myWriter.write("<scalar type=\"" + tid + "\" value=\"");
+
+                    final String s = myStorage.mySerializer.print(obj);
+
+                    for (int index = 0; index < s.length(); index++) {
+                        exportChar(s.charAt(index));
                     }
+
+                    myWriter.write("\"/>");
                     break;
                 }
-                case ClassDescriptor.tpObject:
-                    offs = exportRef(body, offs, indent);
+                default:
+                    if (tid >= ClassDescriptor.TP_VALUE_TYPE_BIAS) {
+                        final int typeOid = -ClassDescriptor.TP_VALUE_TYPE_BIAS - oid;
+                        final ClassDescriptor desc = myStorage.findClassDescriptor(typeOid);
+
+                        if (desc.isCollection) {
+                            final int len = Bytes.unpack4(aBody, offset);
+
+                            offset += 4;
+
+                            final String className = exportIdentifier(desc.myName);
+
+                            myWriter.write("\n");
+                            indentation(aIndention + 1);
+                            myWriter.write("<" + className + ">\n");
+
+                            for (int index = 0; index < len; index++) {
+                                indentation(aIndention + 2);
+                                myWriter.write("<element>");
+                                offset = exportRef(aBody, offset, aIndention + 2);
+                                myWriter.write("</element>");
+                            }
+
+                            indentation(aIndention + 1);
+                            myWriter.write("</" + className + ">\n");
+                            indentation(aIndention);
+                        } else {
+                            final String className = exportIdentifier(desc.myName);
+
+                            myWriter.write("\n");
+                            indentation(aIndention + 1);
+                            myWriter.write("<" + className + ">\n");
+                            offset = exportObject(desc, aBody, offset, aIndention + 2);
+                            indentation(aIndention + 1);
+                            myWriter.write("</" + className + ">\n");
+                            indentation(aIndention);
+                        }
+                    } else {
+                        throw new StorageError(StorageError.UNSUPPORTED_TYPE);
+                    }
+            }
+        } else {
+            myWriter.write("<ref id=\"" + oid + "\"/>");
+
+            if (oid != 0 && (myExportedBitmap[oid >> 5] & (1 << (oid & 31))) == 0) {
+                myMarkedBitmap[oid >> 5] |= 1 << (oid & 31);
+            }
+        }
+
+        return offset;
+    }
+
+    final int exportObject(final ClassDescriptor aDescriptor, final byte[] aBody, final int aOffset,
+            final int aIndention) throws IOException {
+        final ClassDescriptor.FieldDescriptor[] all = aDescriptor.myFields;
+
+        int offset = aOffset;
+
+        for (int index = 0, count = all.length; index < count; index++) {
+            final ClassDescriptor.FieldDescriptor fieldDescriptor = all[index];
+
+            indentation(aIndention);
+
+            final String fieldName = exportIdentifier(fieldDescriptor.myFieldName);
+
+            myWriter.write("<" + fieldName + ">");
+
+            switch (fieldDescriptor.myType) {
+                case ClassDescriptor.TP_BOOLEAN:
+                    myWriter.write(aBody[offset++] != 0 ? "1" : "0");
                     break;
-                case ClassDescriptor.tpValue:
-                    writer.write('\n');
-                    offs = exportObject(fd.valueDesc, body, offs, indent+1);
-                    indentation(indent);
+                case ClassDescriptor.TP_BYTE:
+                    myWriter.write(Integer.toString(aBody[offset++]));
                     break;
-                case ClassDescriptor.tpRaw:
-                case ClassDescriptor.tpArrayOfByte:
-                    offs = exportBinary(body, offs);
+                case ClassDescriptor.TP_CHAR:
+                    myWriter.write(Integer.toString((char) Bytes.unpack2(aBody, offset)));
+                    offset += 2;
                     break;
-                case ClassDescriptor.tpCustom:
-                {
-                    StorageImpl.ByteArrayObjectInputStream in = storage.new ByteArrayObjectInputStream(body, offs, null, true, false);
-                    Object obj = storage.serializer.unpack(in);
-                    offs = in.getPosition();  
-                    writer.write("\"");
-                    String s = storage.serializer.print(obj);
-                    for (int j = 0; j < s.length(); j++) { 
+                case ClassDescriptor.TP_SHORT:
+                    myWriter.write(Integer.toString(Bytes.unpack2(aBody, offset)));
+                    offset += 2;
+                    break;
+                case ClassDescriptor.TP_INT:
+                    myWriter.write(Integer.toString(Bytes.unpack4(aBody, offset)));
+                    offset += 4;
+                    break;
+                case ClassDescriptor.TP_LONG:
+                    myWriter.write(Long.toString(Bytes.unpack8(aBody, offset)));
+                    offset += 8;
+                    break;
+                case ClassDescriptor.TP_FLOAT:
+                    myWriter.write(Float.toString(Float.intBitsToFloat(Bytes.unpack4(aBody, offset))));
+                    offset += 4;
+                    break;
+                case ClassDescriptor.TP_DOUBLE:
+                    myWriter.write(Double.toString(Double.longBitsToDouble(Bytes.unpack8(aBody, offset))));
+                    offset += 8;
+                    break;
+                case ClassDescriptor.TP_ENUM: {
+                    final int ordinal = Bytes.unpack4(aBody, offset);
+
+                    if (ordinal < 0) {
+                        myWriter.write("null");
+                    } else {
+                        myWriter.write("\"" + ((Enum) fieldDescriptor.myField.getType().getEnumConstants()[ordinal])
+                                .name() + "\"");
+                    }
+
+                    offset += 4;
+                    break;
+                }
+                case ClassDescriptor.TP_STRING:
+                case ClassDescriptor.TP_CLASS:
+                    offset = exportString(aBody, offset);
+                    break;
+                case ClassDescriptor.TP_DATE: {
+                    final long msec = Bytes.unpack8(aBody, offset);
+                    offset += 8;
+
+                    if (msec >= 0) {
+                        myWriter.write("\"" + XMLImporter.HTTP_FORMATTER.format(new Date(msec)) + "\"");
+                    } else {
+                        myWriter.write("null");
+                    }
+
+                    break;
+                }
+                case ClassDescriptor.TP_OBJECT:
+                    offset = exportRef(aBody, offset, aIndention);
+                    break;
+                case ClassDescriptor.TP_VALUE:
+                    myWriter.write('\n');
+                    offset = exportObject(fieldDescriptor.myClassDescriptor, aBody, offset, aIndention + 1);
+                    indentation(aIndention);
+                    break;
+                case ClassDescriptor.TP_RAW:
+                case ClassDescriptor.TP_ARRAY_OF_BYTES:
+                    offset = exportBinary(aBody, offset);
+                    break;
+                case ClassDescriptor.TP_CUSTOM: {
+                    final StorageImpl.ByteArrayObjectInputStream in = myStorage.new ByteArrayObjectInputStream(aBody,
+                            offset, null, true, false);
+                    final Object obj = myStorage.mySerializer.unpack(in);
+
+                    offset = in.getPosition();
+                    myWriter.write("\"");
+
+                    final String s = myStorage.mySerializer.print(obj);
+
+                    for (int j = 0; j < s.length(); j++) {
                         exportChar(s.charAt(j));
                     }
-                    writer.write("\"");
+
+                    myWriter.write("\"");
                     break;
                 }
-                case ClassDescriptor.tpArrayOfBoolean:
-                {
-                    int len = Bytes.unpack4(body, offs);
-                    offs += 4;
-                    if (len < 0) { 
-                        writer.write("null");
+                case ClassDescriptor.TP_ARRAY_OF_BOOLEANS: {
+                    int length = Bytes.unpack4(aBody, offset);
+
+                    offset += 4;
+
+                    if (length < 0) {
+                        myWriter.write("null");
                     } else {
-                        writer.write('\n');
-                        while (--len >= 0) { 
-                            indentation(indent+1);
-                            writer.write("<element>" + (body[offs++] != 0 ? "1" : "0") + "</element>\n");
+                        myWriter.write('\n');
+
+                        while (--length >= 0) {
+                            indentation(aIndention + 1);
+                            myWriter.write("<element>" + (aBody[offset++] != 0 ? "1" : "0") + "</element>\n");
                         }
-                        indentation(indent);
+
+                        indentation(aIndention);
                     }
+
                     break;
                 }
-                case ClassDescriptor.tpArrayOfChar:
-                {
-                    int len = Bytes.unpack4(body, offs);
-                    offs += 4;
-                    if (len < 0) { 
-                        writer.write("null");
+                case ClassDescriptor.TP_ARRAY_OF_CHARS: {
+                    int length = Bytes.unpack4(aBody, offset);
+
+                    offset += 4;
+
+                    if (length < 0) {
+                        myWriter.write("null");
                     } else {
-                        writer.write('\n');
-                        while (--len >= 0) { 
-                            indentation(indent+1);
-                            writer.write("<element>" + (Bytes.unpack2(body, offs) & 0xFFFF) + "</element>\n");
-                            offs += 2;
+                        myWriter.write('\n');
+
+                        while (--length >= 0) {
+                            indentation(aIndention + 1);
+                            myWriter.write("<element>" + (Bytes.unpack2(aBody, offset) & 0xFFFF) + "</element>\n");
+                            offset += 2;
                         }
-                        indentation(indent);
+
+                        indentation(aIndention);
                     }
+
                     break;
                 }
-            case ClassDescriptor.tpArrayOfShort:
-                {
-                    int len = Bytes.unpack4(body, offs);
-                    offs += 4;
-                    if (len < 0) { 
-                        writer.write("null");
+                case ClassDescriptor.TP_ARRAY_OF_SHORTS: {
+                    int length = Bytes.unpack4(aBody, offset);
+
+                    offset += 4;
+
+                    if (length < 0) {
+                        myWriter.write("null");
                     } else {
-                        writer.write('\n');
-                        while (--len >= 0) { 
-                            indentation(indent+1);
-                            writer.write("<element>" + Bytes.unpack2(body, offs) + "</element>\n");
-                            offs += 2;
+                        myWriter.write('\n');
+
+                        while (--length >= 0) {
+                            indentation(aIndention + 1);
+                            myWriter.write("<element>" + Bytes.unpack2(aBody, offset) + "</element>\n");
+                            offset += 2;
                         }
-                        indentation(indent);
+
+                        indentation(aIndention);
                     }
+
                     break;
                 }
-                case ClassDescriptor.tpArrayOfEnum:
-                {
-                    int len = Bytes.unpack4(body, offs);
-                    offs += 4;
-                    if (len < 0) { 
-                        writer.write("null");
+                case ClassDescriptor.TP_ARRAY_OF_ENUMS: {
+                    int length = Bytes.unpack4(aBody, offset);
+
+                    offset += 4;
+
+                    if (length < 0) {
+                        myWriter.write("null");
                     } else {
-                        writer.write('\n');
-                        Enum[] enumConstants = (Enum[])fd.field.getType().getEnumConstants();
-                        while (--len >= 0) { 
-                            indentation(indent+1);
-                            int ordinal = Bytes.unpack4(body, offs);
-                            if (ordinal < 0) { 
-                                writer.write("null");
-                            } else { 
-                                writer.write("<element>\"" + enumConstants[ordinal].name() + "\"</element>\n");
+                        myWriter.write('\n');
+
+                        final Enum[] enumConstants = (Enum[]) fieldDescriptor.myField.getType().getEnumConstants();
+
+                        while (--length >= 0) {
+                            indentation(aIndention + 1);
+
+                            final int ordinal = Bytes.unpack4(aBody, offset);
+
+                            if (ordinal < 0) {
+                                myWriter.write("null");
+                            } else {
+                                myWriter.write("<element>\"" + enumConstants[ordinal].name() + "\"</element>\n");
                             }
-                            offs += 4;
+
+                            offset += 4;
                         }
-                        indentation(indent);
+
+                        indentation(aIndention);
                     }
+
                     break;
                 }
-                case ClassDescriptor.tpArrayOfInt:
-                {
-                    int len = Bytes.unpack4(body, offs);
-                    offs += 4;
-                    if (len < 0) { 
-                        writer.write("null");
+                case ClassDescriptor.TP_ARRAY_OF_INTS: {
+                    int len = Bytes.unpack4(aBody, offset);
+
+                    offset += 4;
+
+                    if (len < 0) {
+                        myWriter.write("null");
                     } else {
-                        writer.write('\n');
-                        while (--len >= 0) { 
-                            indentation(indent+1);
-                            writer.write("<element>" + Bytes.unpack4(body, offs) + "</element>\n");
-                            offs += 4;
+                        myWriter.write('\n');
+
+                        while (--len >= 0) {
+                            indentation(aIndention + 1);
+                            myWriter.write("<element>" + Bytes.unpack4(aBody, offset) + "</element>\n");
+                            offset += 4;
                         }
-                        indentation(indent);
+
+                        indentation(aIndention);
                     }
+
                     break;
                 }
-                case ClassDescriptor.tpArrayOfLong:
-                {
-                    int len = Bytes.unpack4(body, offs);
-                    offs += 4;
-                    if (len < 0) { 
-                        writer.write("null");
+                case ClassDescriptor.TP_ARRAY_OF_LONGS: {
+                    int length = Bytes.unpack4(aBody, offset);
+
+                    offset += 4;
+
+                    if (length < 0) {
+                        myWriter.write("null");
                     } else {
-                        writer.write('\n');
-                        while (--len >= 0) { 
-                            indentation(indent+1);
-                            writer.write("<element>" + Bytes.unpack8(body, offs) + "</element>\n");
-                            offs += 8;
+                        myWriter.write('\n');
+
+                        while (--length >= 0) {
+                            indentation(aIndention + 1);
+                            myWriter.write("<element>" + Bytes.unpack8(aBody, offset) + "</element>\n");
+                            offset += 8;
                         }
-                        indentation(indent);
+
+                        indentation(aIndention);
                     }
+
                     break;
                 }
-                case ClassDescriptor.tpArrayOfFloat:
-                {
-                    int len = Bytes.unpack4(body, offs);
-                    offs += 4;
-                    if (len < 0) { 
-                        writer.write("null");
+                case ClassDescriptor.TO_ARRAY_OF_FLOATS: {
+                    int length = Bytes.unpack4(aBody, offset);
+
+                    offset += 4;
+
+                    if (length < 0) {
+                        myWriter.write("null");
                     } else {
-                        writer.write('\n');
-                        while (--len >= 0) { 
-                            indentation(indent+1);
-                            writer.write("<element>" 
-                                         + Float.intBitsToFloat(Bytes.unpack4(body, offs)) 
-                                         + "</element>\n");
-                            offs += 4;
+                        myWriter.write('\n');
+
+                        while (--length >= 0) {
+                            indentation(aIndention + 1);
+                            myWriter.write("<element>" + Float.intBitsToFloat(Bytes.unpack4(aBody, offset)) +
+                                    "</element>\n");
+                            offset += 4;
                         }
-                        indentation(indent);
+
+                        indentation(aIndention);
                     }
+
                     break;
                 }
-                case ClassDescriptor.tpArrayOfDouble:
-                {
-                    int len = Bytes.unpack4(body, offs);
-                    offs += 4;
-                    if (len < 0) { 
-                        writer.write("null");
+                case ClassDescriptor.TP_ARRAY_OF_DOUBLES: {
+                    int length = Bytes.unpack4(aBody, offset);
+
+                    offset += 4;
+
+                    if (length < 0) {
+                        myWriter.write("null");
                     } else {
-                        writer.write('\n');
-                        while (--len >= 0) { 
-                            indentation(indent+1);
-                            writer.write("<element>" 
-                                         + Double.longBitsToDouble(Bytes.unpack8(body, offs)) 
-                                         + "</element>\n");
-                            offs += 8;
+                        myWriter.write('\n');
+
+                        while (--length >= 0) {
+                            indentation(aIndention + 1);
+                            myWriter.write("<element>" + Double.longBitsToDouble(Bytes.unpack8(aBody, offset)) +
+                                    "</element>\n");
+                            offset += 8;
                         }
-                        indentation(indent);
+
+                        indentation(aIndention);
                     }
+
                     break;
                 }
-                case ClassDescriptor.tpArrayOfDate:
-                {
-                    int len = Bytes.unpack4(body, offs);
-                    offs += 4;
-                    if (len < 0) { 
-                        writer.write("null");
+                case ClassDescriptor.TP_ARRAY_OF_DATES: {
+                    int length = Bytes.unpack4(aBody, offset);
+
+                    offset += 4;
+
+                    if (length < 0) {
+                        myWriter.write("null");
                     } else {
-                        writer.write('\n');
-                        while (--len >= 0) { 
-                            indentation(indent+1);
-                            long msec = Bytes.unpack8(body, offs);
-                            offs += 8;
-                            if (msec >= 0) { 
-                                writer.write("<element>\"");
-                                writer.write(XMLImporter.httpFormatter.format(new Date(msec)));
-                                writer.write("\"</element>\n");
-                            } else { 
-                                writer.write("<element>null</element>\n");
+                        myWriter.write('\n');
+
+                        while (--length >= 0) {
+                            indentation(aIndention + 1);
+
+                            final long msec = Bytes.unpack8(aBody, offset);
+
+                            offset += 8;
+
+                            if (msec >= 0) {
+                                myWriter.write("<element>\"");
+                                myWriter.write(XMLImporter.HTTP_FORMATTER.format(new Date(msec)));
+                                myWriter.write("\"</element>\n");
+                            } else {
+                                myWriter.write("<element>null</element>\n");
                             }
                         }
                     }
+
                     break;
                 }
-                case ClassDescriptor.tpArrayOfString:
-                {
-                    int len = Bytes.unpack4(body, offs);
-                    offs += 4;
-                    if (len < 0) { 
-                        writer.write("null");
+                case ClassDescriptor.TP_ARRAY_OF_STRINGS: {
+                    int length = Bytes.unpack4(aBody, offset);
+
+                    offset += 4;
+
+                    if (length < 0) {
+                        myWriter.write("null");
                     } else {
-                        writer.write('\n');
-                        while (--len >= 0) { 
-                            indentation(indent+1);
-                            writer.write("<element>");
-                            offs = exportString(body, offs);
-                            writer.write("</element>\n");
+                        myWriter.write('\n');
+
+                        while (--length >= 0) {
+                            indentation(aIndention + 1);
+                            myWriter.write("<element>");
+                            offset = exportString(aBody, offset);
+                            myWriter.write("</element>\n");
                         }
-                        indentation(indent);
+
+                        indentation(aIndention);
                     }
+
                     break;
                 }
-                case ClassDescriptor.tpLink:
-                case ClassDescriptor.tpArrayOfObject:
-                {
-                    int len = Bytes.unpack4(body, offs);
-                    offs += 4;
-                    if (len < 0) { 
-                        writer.write("null");
+                case ClassDescriptor.TP_LINK:
+                case ClassDescriptor.TP_ARRAY_OF_OBJECTS: {
+                    int length = Bytes.unpack4(aBody, offset);
+
+                    offset += 4;
+
+                    if (length < 0) {
+                        myWriter.write("null");
                     } else {
-                        writer.write('\n');
-                        while (--len >= 0) { 
-                            indentation(indent+1);
-                            writer.write("<element>");
-                            offs = exportRef(body, offs, indent+1);
-                            writer.write("</element>\n");
+                        myWriter.write('\n');
+
+                        while (--length >= 0) {
+                            indentation(aIndention + 1);
+                            myWriter.write("<element>");
+                            offset = exportRef(aBody, offset, aIndention + 1);
+                            myWriter.write("</element>\n");
                         }
-                        indentation(indent);
+
+                        indentation(aIndention);
                     }
+
                     break;
                 }
-                case ClassDescriptor.tpArrayOfValue:
-                {
-                    int len = Bytes.unpack4(body, offs);
-                    offs += 4;
-                    if (len < 0) { 
-                        writer.write("null");
+                case ClassDescriptor.TP_ARRAY_OF_VALUES: {
+                    int length = Bytes.unpack4(aBody, offset);
+
+                    offset += 4;
+
+                    if (length < 0) {
+                        myWriter.write("null");
                     } else {
-                        writer.write('\n');
-                        while (--len >= 0) { 
-                            indentation(indent+1);
-                            writer.write("<element>\n");
-                            offs = exportObject(fd.valueDesc, body, offs, indent+2);
-                            indentation(indent+1);
-                            writer.write("</element>\n");
+                        myWriter.write('\n');
+
+                        while (--length >= 0) {
+                            indentation(aIndention + 1);
+                            myWriter.write("<element>\n");
+                            offset = exportObject(fieldDescriptor.myClassDescriptor, aBody, offset, aIndention + 2);
+                            indentation(aIndention + 1);
+                            myWriter.write("</element>\n");
                         }
-                        indentation(indent);
+
+                        indentation(aIndention);
                     }
+
                     break;
                 }
+                default:
+                    // FIXME: Do something here
             }
-            writer.write("</" + fieldName + ">\n");
+
+            myWriter.write("</" + fieldName + ">\n");
         }
-        return offs;
+
+        return offset;
     }
-
-
-    private StorageImpl storage;
-    private Writer      writer;
-    private int[]       markedBitmap;
-    private int[]       exportedBitmap;
-    private int[]       compoundKeyTypes;
 }

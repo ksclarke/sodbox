@@ -1,1726 +1,1729 @@
+
 package info.freelibrary.sodbox.impl;
 
-import info.freelibrary.sodbox.*;
-import java.util.*;
+import java.io.IOException;
 import java.lang.reflect.Array;
+import java.util.ArrayList;
+import java.util.ConcurrentModificationException;
+import java.util.Date;
+import java.util.Iterator;
+import java.util.Map;
+import java.util.NoSuchElementException;
+
+import info.freelibrary.sodbox.Assert;
+import info.freelibrary.sodbox.IValue;
+import info.freelibrary.sodbox.Index;
+import info.freelibrary.sodbox.IterableIterator;
+import info.freelibrary.sodbox.Key;
+import info.freelibrary.sodbox.PersistentCollection;
+import info.freelibrary.sodbox.PersistentIterator;
+import info.freelibrary.sodbox.StorageError;
 
 class Btree<T> extends PersistentCollection<T> implements Index<T> {
 
-	static final int sizeof = ObjectHeader.sizeof + 4 * 4 + 1;
-
-	static final int op_done = 0;
-	static final int op_overflow = 1;
-	static final int op_underflow = 2;
-	static final int op_not_found = 3;
-	static final int op_duplicate = 4;
-	static final int op_overwrite = 5;
-
-	transient int updateCounter;
-
-	int root;
-	int height;
-	int type;
-	int nElems;
-	boolean unique;
-
-	Btree() {}
-
-	Btree(byte[] obj, int offs) {
-		height = Bytes.unpack4(obj, offs);
-		offs += 4;
-		nElems = Bytes.unpack4(obj, offs);
-		offs += 4;
-		root = Bytes.unpack4(obj, offs);
-		offs += 4;
-		type = Bytes.unpack4(obj, offs);
-		offs += 4;
-		unique = obj[offs] != 0;
-	}
-
-	static int checkType(Class c) {
-		int elemType = ClassDescriptor.getTypeCode(c);
-
-		if (elemType > ClassDescriptor.tpObject
-				&& elemType != ClassDescriptor.tpEnum
-				&& elemType != ClassDescriptor.tpArrayOfByte) {
-			throw new StorageError(StorageError.UNSUPPORTED_INDEX_TYPE, c);
-		}
-
-		return elemType;
-	}
-
-	int compareByteArrays(byte[] key, byte[] item, int offs, int length) {
-		int n = key.length >= length ? length : key.length;
-
-		for (int i = 0; i < n; i++) {
-			int diff = key[i] - item[i + offs];
-
-			if (diff != 0) {
-				return diff;
-			}
-		}
-
-		return key.length - length;
-	}
-
-	Btree(Class cls, boolean unique) {
-		this.unique = unique;
-		type = checkType(cls);
-	}
-
-	Btree(int type, boolean unique) {
-		this.type = type;
-		this.unique = unique;
-	}
-
-	public Class[] getKeyTypes() {
-		return new Class[] { getKeyType() };
-	}
-
-	public Class getKeyType() {
-		return mapKeyType(type);
-	}
-
-	static Class mapKeyType(int type) {
-		switch (type) {
-		case ClassDescriptor.tpBoolean:
-			return boolean.class;
-		case ClassDescriptor.tpByte:
-			return byte.class;
-		case ClassDescriptor.tpChar:
-			return char.class;
-		case ClassDescriptor.tpShort:
-			return short.class;
-		case ClassDescriptor.tpInt:
-			return int.class;
-		case ClassDescriptor.tpLong:
-			return long.class;
-		case ClassDescriptor.tpFloat:
-			return float.class;
-		case ClassDescriptor.tpDouble:
-			return double.class;
-		case ClassDescriptor.tpEnum:
-			return Enum.class;
-		case ClassDescriptor.tpString:
-			return String.class;
-		case ClassDescriptor.tpDate:
-			return Date.class;
-		case ClassDescriptor.tpObject:
-			return Object.class;
-		case ClassDescriptor.tpArrayOfByte:
-			return byte[].class;
-		default:
-			return Comparable.class;
-		}
-	}
-
-	Key checkKey(Key key) {
-		if (key != null) {
-			if (key.type != type) {
-				throw new StorageError(StorageError.INCOMPATIBLE_KEY_TYPE);
-			}
-
-			if (type == ClassDescriptor.tpObject && key.ival == 0
-					&& key.oval != null) {
-				Object obj = key.oval;
-				key = new Key(obj, getStorage().makePersistent(obj),
-						key.inclusion != 0);
-			}
-
-			if (key.oval instanceof String) {
-				key = new Key(((String) key.oval).toCharArray(),
-						key.inclusion != 0);
-			}
-		}
-
-		return key;
-	}
-
-	public T get(Key key) {
-		key = checkKey(key);
-
-		if (root != 0) {
-			ArrayList list = new ArrayList();
-			BtreePage.find((StorageImpl) getStorage(), root, key, key, this,
-					height, list);
-
-			if (list.size() > 1) {
-				throw new StorageError(StorageError.KEY_NOT_UNIQUE);
-			}
-			else if (list.size() == 0) {
-				return null;
-			}
-			else {
-				return (T) list.get(0);
-			}
-		}
-
-		return null;
-	}
-
-	public ArrayList<T> prefixSearchList(String key) {
-		if (ClassDescriptor.tpString != type) {
-			throw new StorageError(StorageError.INCOMPATIBLE_KEY_TYPE);
-		}
-
-		ArrayList<T> list = new ArrayList<T>();
-
-		if (root != 0) {
-			BtreePage.prefixSearch((StorageImpl) getStorage(), root,
-					key.toCharArray(), height, list);
-		}
-
-		return list;
-	}
-
-	public Object[] prefixSearch(String key) {
-		ArrayList<T> list = prefixSearchList(key);
-		return list.toArray();
-	}
-
-	public ArrayList<T> getList(Key from, Key till) {
-		ArrayList<T> list = new ArrayList<T>();
-
-		if (root != 0) {
-			BtreePage.find((StorageImpl) getStorage(), root, checkKey(from),
-					checkKey(till), this, height, list);
-		}
-
-		return list;
-	}
-
-	public ArrayList<T> getList(Object from, Object till) {
-		return getList(getKeyFromObject(type, from),
-				getKeyFromObject(type, till));
-	}
-
-	public T get(Object key) {
-		return get(getKeyFromObject(type, key));
-	}
-
-	public Object[] get(Key from, Key till) {
-		ArrayList<T> list = getList(from, till);
-		return list.toArray();
-	}
-
-	public Object[] get(Object from, Object till) {
-		return get(getKeyFromObject(type, from), getKeyFromObject(type, till));
-	}
-
-	public boolean put(Key key, T obj) {
-		return insert(key, obj, false) >= 0;
-	}
-
-	public T set(Key key, T obj) {
-		int oid = insert(key, obj, true);
-		return (T) ((oid != 0) ? ((StorageImpl) getStorage()).lookupObject(oid,
-				null) : null);
-	}
-
-	final int insert(Key key, T obj, boolean overwrite) {
-		StorageImpl db = (StorageImpl) getStorage();
-
-		if (db == null) {
-			throw new StorageError(StorageError.DELETED_OBJECT);
-		}
-
-		key = checkKey(key);
-
-		BtreeKey ins = new BtreeKey(key, db.makePersistent(obj));
-
-		if (root == 0) {
-			root = BtreePage.allocate(db, 0, type, ins);
-			height = 1;
-		}
-		else {
-			int result = BtreePage.insert(db, root, this, ins, height, unique,
-					overwrite);
-
-			if (result == op_overflow) {
-				root = BtreePage.allocate(db, root, type, ins);
-				height += 1;
-			}
-			else if (result == op_duplicate) {
-				return -1;
-			}
-			else if (result == op_overwrite) {
-				return ins.oldOid;
-			}
-		}
-
-		updateCounter += 1;
-		nElems += 1;
-		modify();
-
-		return 0;
-	}
-
-	public void remove(Key key, T obj) {
-		remove(new BtreeKey(checkKey(key), getStorage().getOid(obj)));
-	}
-
-	public boolean unlink(Key key, T obj) {
-		return removeIfExists(key, obj);
-	}
-
-	boolean removeIfExists(Key key, Object obj) {
-		return removeIfExists(new BtreeKey(checkKey(key), getStorage().getOid(
-				obj)));
-	}
-
-	void remove(BtreeKey rem) {
-		if (!removeIfExists(rem)) {
-			throw new StorageError(StorageError.KEY_NOT_FOUND);
-		}
-	}
-
-	boolean removeIfExists(BtreeKey rem) {
-		StorageImpl db = (StorageImpl) getStorage();
-
-		if (db == null) {
-			throw new StorageError(StorageError.DELETED_OBJECT);
-		}
-
-		if (root == 0) {
-			return false;
-		}
-
-		int result = BtreePage.remove(db, root, this, rem, height);
-
-		if (result == op_not_found) {
-			return false;
-		}
-
-		nElems -= 1;
-
-		if (result == op_underflow) {
-			Page pg = db.getPage(root);
-
-			if (BtreePage.getnItems(pg) == 0) {
-				int newRoot = 0;
-
-				if (height != 1) {
-					newRoot = (type == ClassDescriptor.tpString || type == ClassDescriptor.tpArrayOfByte) ? BtreePage
-							.getKeyStrOid(pg, 0) : BtreePage.getReference(pg,
-							BtreePage.maxItems - 1);
-				}
-
-				db.freePage(root);
-				root = newRoot;
-				height -= 1;
-			}
-
-			db.pool.unfix(pg);
-		}
-		else if (result == op_overflow) {
-			root = BtreePage.allocate(db, root, type, rem);
-			height += 1;
-		}
-
-		updateCounter += 1;
-		modify();
-
-		return true;
-	}
-
-	public T remove(Key key) {
-		if (!unique) {
-			throw new StorageError(StorageError.KEY_NOT_UNIQUE);
-		}
-
-		BtreeKey rk = new BtreeKey(checkKey(key), 0);
-		StorageImpl db = (StorageImpl) getStorage();
-
-		remove(rk);
-
-		return (T) db.lookupObject(rk.oldOid, null);
-	}
-
-	static Key getKeyFromObject(int type, Object o) {
-		if (o == null) {
-			return null;
-		}
-
-		switch (type) {
-		case ClassDescriptor.tpBoolean:
-			return new Key(((Boolean) o).booleanValue());
-		case ClassDescriptor.tpByte:
-			return new Key(((Number) o).byteValue());
-		case ClassDescriptor.tpChar:
-			return new Key(((Character) o).charValue());
-		case ClassDescriptor.tpShort:
-			return new Key(((Number) o).shortValue());
-		case ClassDescriptor.tpInt:
-			return new Key(((Number) o).intValue());
-		case ClassDescriptor.tpLong:
-			return new Key(((Number) o).longValue());
-		case ClassDescriptor.tpFloat:
-			return new Key(((Number) o).floatValue());
-		case ClassDescriptor.tpDouble:
-			return new Key(((Number) o).doubleValue());
-		case ClassDescriptor.tpString:
-			return new Key((String) o);
-		case ClassDescriptor.tpDate:
-			return new Key((java.util.Date) o);
-		case ClassDescriptor.tpObject:
-			return new Key(o);
-		case ClassDescriptor.tpValue:
-			return new Key((IValue) o);
-		case ClassDescriptor.tpEnum:
-			return new Key((Enum) o);
-		case ClassDescriptor.tpArrayOfByte:
-			return new Key((byte[]) o);
-		default:
-			throw new StorageError(StorageError.UNSUPPORTED_INDEX_TYPE);
-		}
-	}
-
-	static Key getKeyFromObject(Object o) {
-		if (o == null) {
-			return null;
-		}
-		else if (o instanceof Byte) {
-			return new Key(((Byte) o).byteValue());
-		}
-		else if (o instanceof Short) {
-			return new Key(((Short) o).shortValue());
-		}
-		else if (o instanceof Integer) {
-			return new Key(((Integer) o).intValue());
-		}
-		else if (o instanceof Long) {
-			return new Key(((Long) o).longValue());
-		}
-		else if (o instanceof Float) {
-			return new Key(((Float) o).floatValue());
-		}
-		else if (o instanceof Double) {
-			return new Key(((Double) o).doubleValue());
-		}
-		else if (o instanceof Boolean) {
-			return new Key(((Boolean) o).booleanValue());
-		}
-		else if (o instanceof Character) {
-			return new Key(((Character) o).charValue());
-		}
-		else if (o instanceof String) {
-			return new Key((String) o);
-		}
-		else if (o instanceof java.util.Date) {
-			return new Key((java.util.Date) o);
-		}
-		else if (o instanceof byte[]) {
-			return new Key((byte[]) o);
-		}
-		else if (o instanceof Object[]) {
-			return new Key((Object[]) o);
-		}
-		else if (o instanceof Enum) {
-			return new Key((Enum) o);
-		}
-		else if (o instanceof IValue) {
-			return new Key((IValue) o);
-		}
-		else {
-			return new Key(o);
-		}
-	}
-
-	public ArrayList<T> getPrefixList(String prefix) {
-		return getList(new Key(prefix, true), new Key(prefix
-				+ Character.MAX_VALUE, false));
-	}
-
-	public Object[] getPrefix(String prefix) {
-		return get(new Key(prefix, true), new Key(prefix + Character.MAX_VALUE,
-				false));
-	}
-
-	public boolean put(Object key, T obj) {
-		return put(getKeyFromObject(type, key), obj);
-	}
-
-	public T set(Object key, T obj) {
-		return set(getKeyFromObject(type, key), obj);
-	}
-
-	public void remove(Object key, T obj) {
-		remove(getKeyFromObject(type, key), obj);
-	}
-
-	public T removeKey(Object key) {
-		return remove(getKeyFromObject(type, key));
-	}
-
-	public T remove(String key) {
-		return remove(new Key(key));
-	}
-
-	public int size() {
-		return nElems;
-	}
-
-	public void clear() {
-		if (root != 0) {
-			BtreePage.purge((StorageImpl) getStorage(), root, type, height);
-
-			root = 0;
-			nElems = 0;
-			height = 0;
-			updateCounter += 1;
-			modify();
-		}
-	}
-
-	public Object[] toArray() {
-		Object[] arr = new Object[nElems];
-
-		if (root != 0) {
-			BtreePage.traverseForward((StorageImpl) getStorage(), root, type,
-					height, arr, 0);
-		}
-
-		return arr;
-	}
-
-	public <E> E[] toArray(E[] arr) {
-		if (arr.length < nElems) {
-			arr = (E[]) Array.newInstance(arr.getClass().getComponentType(),
-					nElems);
-		}
-
-		if (root != 0) {
-			BtreePage.traverseForward((StorageImpl) getStorage(), root, type,
-					height, arr, 0);
-		}
-
-		if (arr.length > nElems) {
-			arr[nElems] = null;
-		}
-
-		return arr;
-	}
-
-	public void deallocate() {
-		if (root != 0) {
-			BtreePage.purge((StorageImpl) getStorage(), root, type, height);
-		}
-
-		super.deallocate();
-	}
-
-	public int markTree() {
-		if (root != 0) {
-			return BtreePage.markPage((StorageImpl) getStorage(), root, type,
-					height);
-		}
-
-		return 0;
-	}
-
-	protected Object unpackEnum(int val) {
-		// Base B-Tree class has no information about particular enum type
-		// so it is not able to correctly unpack enum key
-		return (Object) val;
-	}
-
-	public void export(XMLExporter exporter) throws java.io.IOException {
-		if (root != 0) {
-			BtreePage.exportPage((StorageImpl) getStorage(), exporter, root,
-					type, height);
-		}
-	}
-
-	static class BtreeEntry<T> implements Map.Entry<Object, T> {
-
-		private Object key;
-		private StorageImpl db;
-		private int oid;
-
-		BtreeEntry(StorageImpl db, Object key, int oid) {
-			this.db = db;
-			this.key = key;
-			this.oid = oid;
-		}
-
-		public Object getKey() {
-			return key;
-		}
-
-		public T getValue() {
-			return (T) db.lookupObject(oid, null);
-		}
-
-		public T setValue(T value) {
-			throw new UnsupportedOperationException();
-		}
-
-		public boolean equals(Object o) {
-			if (!(o instanceof Map.Entry)) {
-				return false;
-			}
-
-			Map.Entry e = (Map.Entry) o;
-
-			return (getKey() == null ? e.getKey() == null : getKey().equals(
-					e.getKey()))
-					&& (getValue() == null ? e.getValue() == null : getValue()
-							.equals(e.getValue()));
-		}
-
-		public int hashCode() {
-			return ((getKey() == null) ? 0 : getKey().hashCode())
-					^ ((getValue() == null) ? 0 : getValue().hashCode());
-		}
-
-		public String toString() {
-			return getKey() + "=" + getValue();
-		}
-
-	}
-
-	Object unpackKey(StorageImpl db, Page pg, int pos) {
-		byte[] data = pg.data;
-		int offs = BtreePage.firstKeyOffs + pos * ClassDescriptor.sizeof[type];
-
-		switch (type) {
-		case ClassDescriptor.tpBoolean:
-			return Boolean.valueOf(data[offs] != 0);
-		case ClassDescriptor.tpByte:
-			return new Byte(data[offs]);
-		case ClassDescriptor.tpShort:
-			return new Short(Bytes.unpack2(data, offs));
-		case ClassDescriptor.tpChar:
-			return new Character((char) Bytes.unpack2(data, offs));
-		case ClassDescriptor.tpInt:
-			return new Integer(Bytes.unpack4(data, offs));
-		case ClassDescriptor.tpObject:
-			return db.lookupObject(Bytes.unpack4(data, offs), null);
-		case ClassDescriptor.tpLong:
-			return new Long(Bytes.unpack8(data, offs));
-		case ClassDescriptor.tpDate:
-			return new Date(Bytes.unpack8(data, offs));
-		case ClassDescriptor.tpFloat:
-			return new Float(Float.intBitsToFloat(Bytes.unpack4(data, offs)));
-		case ClassDescriptor.tpDouble:
-			return new Double(
-					Double.longBitsToDouble(Bytes.unpack8(data, offs)));
-		case ClassDescriptor.tpEnum:
-			return unpackEnum(Bytes.unpack4(data, offs));
-		case ClassDescriptor.tpString:
-			return unpackStrKey(pg, pos);
-		case ClassDescriptor.tpArrayOfByte:
-			return unpackByteArrayKey(pg, pos);
-		default:
-			Assert.failed("Invalid type");
-		}
-
-		return null;
-	}
-
-	static String unpackStrKey(Page pg, int pos) {
-		int len = BtreePage.getKeyStrSize(pg, pos);
-		int offs = BtreePage.firstKeyOffs + BtreePage.getKeyStrOffs(pg, pos);
-		byte[] data = pg.data;
-		char[] sval = new char[len];
-
-		for (int j = 0; j < len; j++) {
-			sval[j] = (char) Bytes.unpack2(data, offs);
-			offs += 2;
-		}
-
-		return new String(sval);
-	}
-
-	Object unpackByteArrayKey(Page pg, int pos) {
-		int len = BtreePage.getKeyStrSize(pg, pos);
-		int offs = BtreePage.firstKeyOffs + BtreePage.getKeyStrOffs(pg, pos);
-		byte[] val = new byte[len];
-
-		System.arraycopy(pg.data, offs, val, 0, len);
-
-		return val;
-	}
-
-	public Iterator<T> iterator() {
-		return iterator(null, null, ASCENT_ORDER);
-	}
-
-	public IterableIterator<Map.Entry<Object, T>> entryIterator() {
-		return entryIterator(null, null, ASCENT_ORDER);
-	}
-
-	final int compareByteArrays(Key key, Page pg, int i) {
-		return compareByteArrays((byte[]) key.oval, pg.data,
-				BtreePage.getKeyStrOffs(pg, i) + BtreePage.firstKeyOffs,
-				BtreePage.getKeyStrSize(pg, i));
-	}
-
-	class BtreeSelectionIterator<E> extends IterableIterator<E> implements
-			PersistentIterator {
-
-		int[] pageStack;
-		int[] posStack;
-		int currPage;
-		int currPos;
-		int sp;
-		int end;
-		Key from;
-		Key till;
-		int order;
-		int counter;
-		BtreeKey nextKey;
-		BtreeKey currKey;
-
-		BtreeSelectionIterator(Key from, Key till, int order) {
-			this.from = from;
-			this.till = till;
-			this.order = order;
-			reset();
-		}
-
-		void reset() {
-			int i, l, r;
-
-			sp = 0;
-			counter = updateCounter;
-
-			if (height == 0) {
-				return;
-			}
-
-			int pageId = root;
-			StorageImpl db = (StorageImpl) getStorage();
-
-			if (db == null) {
-				throw new StorageError(StorageError.DELETED_OBJECT);
-			}
-
-			int h = height;
-
-			pageStack = new int[h];
-			posStack = new int[h];
-
-			if (type == ClassDescriptor.tpString) {
-				if (order == ASCENT_ORDER) {
-					if (from == null) {
-						while (--h >= 0) {
-							posStack[sp] = 0;
-							pageStack[sp] = pageId;
-
-							Page pg = db.getPage(pageId);
-							pageId = BtreePage.getKeyStrOid(pg, 0);
-							end = BtreePage.getnItems(pg);
-							db.pool.unfix(pg);
-							sp += 1;
-						}
-					}
-					else {
-						while (--h > 0) {
-							pageStack[sp] = pageId;
-
-							Page pg = db.getPage(pageId);
-							l = 0;
-							r = BtreePage.getnItems(pg);
-
-							while (l < r) {
-								i = (l + r) >> 1;
-
-								if (BtreePage.compareStr(from, pg, i) >= from.inclusion) {
-									l = i + 1;
-								}
-								else {
-									r = i;
-								}
-							}
-
-							Assert.that(r == l);
-
-							posStack[sp] = r;
-							pageId = BtreePage.getKeyStrOid(pg, r);
-							db.pool.unfix(pg);
-							sp += 1;
-						}
-
-						pageStack[sp] = pageId;
-
-						Page pg = db.getPage(pageId);
-						l = 0;
-						end = r = BtreePage.getnItems(pg);
-
-						while (l < r) {
-							i = (l + r) >> 1;
-
-							if (BtreePage.compareStr(from, pg, i) >= from.inclusion) {
-								l = i + 1;
-							}
-							else {
-								r = i;
-							}
-						}
-
-						Assert.that(r == l);
-
-						if (r == end) {
-							sp += 1;
-							gotoNextItem(pg, r - 1);
-						}
-						else {
-							posStack[sp++] = r;
-							db.pool.unfix(pg);
-						}
-					}
-
-					if (sp != 0 && till != null) {
-						Page pg = db.getPage(pageStack[sp - 1]);
-
-						if (-BtreePage.compareStr(till, pg, posStack[sp - 1]) >= till.inclusion) {
-							sp = 0;
-						}
-
-						db.pool.unfix(pg);
-					}
-				}
-				else { // descent order
-					if (till == null) {
-						while (--h > 0) {
-							pageStack[sp] = pageId;
-
-							Page pg = db.getPage(pageId);
-							posStack[sp] = BtreePage.getnItems(pg);
-							pageId = BtreePage.getKeyStrOid(pg, posStack[sp]);
-							db.pool.unfix(pg);
-							sp += 1;
-						}
-
-						pageStack[sp] = pageId;
-						Page pg = db.getPage(pageId);
-						posStack[sp++] = BtreePage.getnItems(pg) - 1;
-						db.pool.unfix(pg);
-					}
-					else {
-						while (--h > 0) {
-							pageStack[sp] = pageId;
-
-							Page pg = db.getPage(pageId);
-							l = 0;
-							r = BtreePage.getnItems(pg);
-
-							while (l < r) {
-								i = (l + r) >> 1;
-
-								if (BtreePage.compareStr(till, pg, i) >= 1 - till.inclusion) {
-									l = i + 1;
-								}
-								else {
-									r = i;
-								}
-							}
-
-							Assert.that(r == l);
-
-							posStack[sp] = r;
-							pageId = BtreePage.getKeyStrOid(pg, r);
-							db.pool.unfix(pg);
-							sp += 1;
-						}
-
-						pageStack[sp] = pageId;
-
-						Page pg = db.getPage(pageId);
-						l = 0;
-						r = BtreePage.getnItems(pg);
-
-						while (l < r) {
-							i = (l + r) >> 1;
-
-							if (BtreePage.compareStr(till, pg, i) >= 1 - till.inclusion) {
-								l = i + 1;
-							}
-							else {
-								r = i;
-							}
-						}
-
-						Assert.that(r == l);
-
-						if (r == 0) {
-							sp += 1;
-							gotoNextItem(pg, r);
-						}
-						else {
-							posStack[sp++] = r - 1;
-							db.pool.unfix(pg);
-						}
-					}
-
-					if (sp != 0 && from != null) {
-						Page pg = db.getPage(pageStack[sp - 1]);
-
-						if (BtreePage.compareStr(from, pg, posStack[sp - 1]) >= from.inclusion) {
-							sp = 0;
-						}
-
-						db.pool.unfix(pg);
-					}
-				}
-			}
-			else if (type == ClassDescriptor.tpArrayOfByte) {
-				if (order == ASCENT_ORDER) {
-					if (from == null) {
-						while (--h >= 0) {
-							posStack[sp] = 0;
-							pageStack[sp] = pageId;
-
-							Page pg = db.getPage(pageId);
-							pageId = BtreePage.getKeyStrOid(pg, 0);
-							end = BtreePage.getnItems(pg);
-							db.pool.unfix(pg);
-							sp += 1;
-						}
-					}
-					else {
-						while (--h > 0) {
-							pageStack[sp] = pageId;
-
-							Page pg = db.getPage(pageId);
-							l = 0;
-							r = BtreePage.getnItems(pg);
-
-							while (l < r) {
-								i = (l + r) >> 1;
-
-								if (compareByteArrays(from, pg, i) >= from.inclusion) {
-									l = i + 1;
-								}
-								else {
-									r = i;
-								}
-							}
-
-							Assert.that(r == l);
-
-							posStack[sp] = r;
-							pageId = BtreePage.getKeyStrOid(pg, r);
-							db.pool.unfix(pg);
-							sp += 1;
-						}
-
-						pageStack[sp] = pageId;
-
-						Page pg = db.getPage(pageId);
-						l = 0;
-						end = r = BtreePage.getnItems(pg);
-
-						while (l < r) {
-							i = (l + r) >> 1;
-
-							if (compareByteArrays(from, pg, i) >= from.inclusion) {
-								l = i + 1;
-							}
-							else {
-								r = i;
-							}
-						}
-
-						Assert.that(r == l);
-
-						if (r == end) {
-							sp += 1;
-							gotoNextItem(pg, r - 1);
-						}
-						else {
-							posStack[sp++] = r;
-							db.pool.unfix(pg);
-						}
-					}
-
-					if (sp != 0 && till != null) {
-						Page pg = db.getPage(pageStack[sp - 1]);
-
-						if (-compareByteArrays(till, pg, posStack[sp - 1]) >= till.inclusion) {
-							sp = 0;
-						}
-
-						db.pool.unfix(pg);
-					}
-				}
-				else { // descent order
-					if (till == null) {
-						while (--h > 0) {
-							pageStack[sp] = pageId;
-
-							Page pg = db.getPage(pageId);
-							posStack[sp] = BtreePage.getnItems(pg);
-							pageId = BtreePage.getKeyStrOid(pg, posStack[sp]);
-							db.pool.unfix(pg);
-							sp += 1;
-						}
-
-						pageStack[sp] = pageId;
-
-						Page pg = db.getPage(pageId);
-						posStack[sp++] = BtreePage.getnItems(pg) - 1;
-						db.pool.unfix(pg);
-					}
-					else {
-						while (--h > 0) {
-							pageStack[sp] = pageId;
-
-							Page pg = db.getPage(pageId);
-							l = 0;
-							r = BtreePage.getnItems(pg);
-
-							while (l < r) {
-								i = (l + r) >> 1;
-
-								if (compareByteArrays(till, pg, i) >= 1 - till.inclusion) {
-									l = i + 1;
-								}
-								else {
-									r = i;
-								}
-							}
-
-							Assert.that(r == l);
-
-							posStack[sp] = r;
-							pageId = BtreePage.getKeyStrOid(pg, r);
-							db.pool.unfix(pg);
-							sp += 1;
-						}
-
-						pageStack[sp] = pageId;
-
-						Page pg = db.getPage(pageId);
-						l = 0;
-						r = BtreePage.getnItems(pg);
-
-						while (l < r) {
-							i = (l + r) >> 1;
-
-							if (compareByteArrays(till, pg, i) >= 1 - till.inclusion) {
-								l = i + 1;
-							}
-							else {
-								r = i;
-							}
-						}
-
-						Assert.that(r == l);
-
-						if (r == 0) {
-							sp += 1;
-							gotoNextItem(pg, r);
-						}
-						else {
-							posStack[sp++] = r - 1;
-							db.pool.unfix(pg);
-						}
-					}
-
-					if (sp != 0 && from != null) {
-						Page pg = db.getPage(pageStack[sp - 1]);
-
-						if (compareByteArrays(from, pg, posStack[sp - 1]) >= from.inclusion) {
-							sp = 0;
-						}
-
-						db.pool.unfix(pg);
-					}
-				}
-			}
-			else { // scalar type
-				if (order == ASCENT_ORDER) {
-					if (from == null) {
-						while (--h >= 0) {
-							posStack[sp] = 0;
-							pageStack[sp] = pageId;
-
-							Page pg = db.getPage(pageId);
-							pageId = BtreePage.getReference(pg,
-									BtreePage.maxItems - 1);
-							end = BtreePage.getnItems(pg);
-							db.pool.unfix(pg);
-							sp += 1;
-						}
-					}
-					else {
-						while (--h > 0) {
-							pageStack[sp] = pageId;
-
-							Page pg = db.getPage(pageId);
-							l = 0;
-							r = BtreePage.getnItems(pg);
-
-							while (l < r) {
-								i = (l + r) >> 1;
-
-								if (BtreePage.compare(from, pg, i) >= from.inclusion) {
-									l = i + 1;
-								}
-								else {
-									r = i;
-								}
-							}
-
-							Assert.that(r == l);
-
-							posStack[sp] = r;
-							pageId = BtreePage.getReference(pg,
-									BtreePage.maxItems - 1 - r);
-							db.pool.unfix(pg);
-							sp += 1;
-						}
-
-						pageStack[sp] = pageId;
-
-						Page pg = db.getPage(pageId);
-						l = 0;
-						r = end = BtreePage.getnItems(pg);
-
-						while (l < r) {
-							i = (l + r) >> 1;
-
-							if (BtreePage.compare(from, pg, i) >= from.inclusion) {
-								l = i + 1;
-							}
-							else {
-								r = i;
-							}
-						}
-
-						Assert.that(r == l);
-
-						if (r == end) {
-							sp += 1;
-							gotoNextItem(pg, r - 1);
-						}
-						else {
-							posStack[sp++] = r;
-							db.pool.unfix(pg);
-						}
-					}
-
-					if (sp != 0 && till != null) {
-						Page pg = db.getPage(pageStack[sp - 1]);
-
-						if (-BtreePage.compare(till, pg, posStack[sp - 1]) >= till.inclusion) {
-							sp = 0;
-						}
-
-						db.pool.unfix(pg);
-					}
-				}
-				else { // descent order
-					if (till == null) {
-						while (--h > 0) {
-							pageStack[sp] = pageId;
-
-							Page pg = db.getPage(pageId);
-							posStack[sp] = BtreePage.getnItems(pg);
-							pageId = BtreePage.getReference(pg,
-									BtreePage.maxItems - 1 - posStack[sp]);
-							db.pool.unfix(pg);
-							sp += 1;
-						}
-
-						pageStack[sp] = pageId;
-
-						Page pg = db.getPage(pageId);
-						posStack[sp++] = BtreePage.getnItems(pg) - 1;
-						db.pool.unfix(pg);
-					}
-					else {
-						while (--h > 0) {
-							pageStack[sp] = pageId;
-
-							Page pg = db.getPage(pageId);
-							l = 0;
-							r = BtreePage.getnItems(pg);
-
-							while (l < r) {
-								i = (l + r) >> 1;
-
-								if (BtreePage.compare(till, pg, i) >= 1 - till.inclusion) {
-									l = i + 1;
-								}
-								else {
-									r = i;
-								}
-							}
-
-							Assert.that(r == l);
-
-							posStack[sp] = r;
-							pageId = BtreePage.getReference(pg,
-									BtreePage.maxItems - 1 - r);
-							db.pool.unfix(pg);
-							sp += 1;
-						}
-
-						pageStack[sp] = pageId;
-
-						Page pg = db.getPage(pageId);
-						l = 0;
-						r = BtreePage.getnItems(pg);
-
-						while (l < r) {
-							i = (l + r) >> 1;
-
-							if (BtreePage.compare(till, pg, i) >= 1 - till.inclusion) {
-								l = i + 1;
-							}
-							else {
-								r = i;
-							}
-						}
-
-						Assert.that(r == l);
-
-						if (r == 0) {
-							sp += 1;
-							gotoNextItem(pg, r);
-						}
-						else {
-							posStack[sp++] = r - 1;
-							db.pool.unfix(pg);
-						}
-					}
-
-					if (sp != 0 && from != null) {
-						Page pg = db.getPage(pageStack[sp - 1]);
-
-						if (BtreePage.compare(from, pg, posStack[sp - 1]) >= from.inclusion) {
-							sp = 0;
-						}
-
-						db.pool.unfix(pg);
-					}
-				}
-			}
-		}
-
-		public boolean hasNext() {
-			if (counter != updateCounter) {
-				if (((StorageImpl) getStorage()).concurrentIterator) {
-					refresh();
-				}
-				else {
-					throw new ConcurrentModificationException();
-				}
-			}
-
-			return sp != 0;
-		}
-
-		public E next() {
-			if (!hasNext()) {
-				throw new NoSuchElementException();
-			}
-
-			StorageImpl db = (StorageImpl) getStorage();
-			int pos = posStack[sp - 1];
-
-			currPos = pos;
-			currPage = pageStack[sp - 1];
-
-			Page pg = db.getPage(currPage);
-			E curr = (E) getCurrent(pg, pos);
-
-			if (db.concurrentIterator) {
-				currKey = getCurrentKey(pg, pos);
-			}
-
-			gotoNextItem(pg, pos);
-
-			return curr;
-		}
-
-		public int nextOid() {
-			if (!hasNext()) {
-				return 0;
-			}
-
-			StorageImpl db = (StorageImpl) getStorage();
-			int pos = posStack[sp - 1];
-
-			currPos = pos;
-			currPage = pageStack[sp - 1];
-
-			Page pg = db.getPage(currPage);
-			int oid = getReference(pg, pos);
-
-			if (db.concurrentIterator) {
-				currKey = getCurrentKey(pg, pos);
-			}
-
-			gotoNextItem(pg, pos);
-
-			return oid;
-		}
-
-		private int getReference(Page pg, int pos) {
-			return (type == ClassDescriptor.tpString || type == ClassDescriptor.tpArrayOfByte) ? BtreePage
-					.getKeyStrOid(pg, pos) : BtreePage.getReference(pg,
-					BtreePage.maxItems - 1 - pos);
-		}
-
-		protected Object getCurrent(Page pg, int pos) {
-			StorageImpl db = (StorageImpl) getStorage();
-			return db.lookupObject(getReference(pg, pos), null);
-		}
-
-		protected final void gotoNextItem(Page pg, int pos) {
-			StorageImpl db = (StorageImpl) getStorage();
-
-			if (type == ClassDescriptor.tpString) {
-				if (order == ASCENT_ORDER) {
-					if (++pos == end) {
-						while (--sp != 0) {
-							db.pool.unfix(pg);
-							pos = posStack[sp - 1];
-							pg = db.getPage(pageStack[sp - 1]);
-
-							if (++pos <= BtreePage.getnItems(pg)) {
-								posStack[sp - 1] = pos;
-								do {
-									int pageId = BtreePage
-											.getKeyStrOid(pg, pos);
-
-									db.pool.unfix(pg);
-									pg = db.getPage(pageId);
-									end = BtreePage.getnItems(pg);
-									pageStack[sp] = pageId;
-									posStack[sp] = pos = 0;
-								}
-								while (++sp < pageStack.length);
-
-								break;
-							}
-						}
-					}
-					else {
-						posStack[sp - 1] = pos;
-					}
-
-					if (sp != 0
-							&& till != null
-							&& -BtreePage.compareStr(till, pg, pos) >= till.inclusion) {
-						sp = 0;
-					}
-				}
-				else { // descent order
-					if (--pos < 0) {
-						while (--sp != 0) {
-							db.pool.unfix(pg);
-							pos = posStack[sp - 1];
-							pg = db.getPage(pageStack[sp - 1]);
-
-							if (--pos >= 0) {
-								posStack[sp - 1] = pos;
-
-								do {
-									int pageId = BtreePage
-											.getKeyStrOid(pg, pos);
-
-									db.pool.unfix(pg);
-									pg = db.getPage(pageId);
-									pageStack[sp] = pageId;
-									posStack[sp] = pos = BtreePage
-											.getnItems(pg);
-								}
-								while (++sp < pageStack.length);
-
-								posStack[sp - 1] = --pos;
-								break;
-							}
-						}
-					}
-					else {
-						posStack[sp - 1] = pos;
-					}
-
-					if (sp != 0
-							&& from != null
-							&& BtreePage.compareStr(from, pg, pos) >= from.inclusion) {
-						sp = 0;
-					}
-				}
-			}
-			else if (type == ClassDescriptor.tpArrayOfByte) {
-				if (order == ASCENT_ORDER) {
-					if (++pos == end) {
-						while (--sp != 0) {
-							db.pool.unfix(pg);
-							pos = posStack[sp - 1];
-							pg = db.getPage(pageStack[sp - 1]);
-
-							if (++pos <= BtreePage.getnItems(pg)) {
-								posStack[sp - 1] = pos;
-
-								do {
-									int pageId = BtreePage
-											.getKeyStrOid(pg, pos);
-
-									db.pool.unfix(pg);
-									pg = db.getPage(pageId);
-									end = BtreePage.getnItems(pg);
-									pageStack[sp] = pageId;
-									posStack[sp] = pos = 0;
-								}
-								while (++sp < pageStack.length);
-
-								break;
-							}
-						}
-					}
-					else {
-						posStack[sp - 1] = pos;
-					}
-
-					if (sp != 0
-							&& till != null
-							&& -compareByteArrays(till, pg, pos) >= till.inclusion) {
-						sp = 0;
-					}
-				}
-				else { // descent order
-					if (--pos < 0) {
-						while (--sp != 0) {
-							db.pool.unfix(pg);
-							pos = posStack[sp - 1];
-							pg = db.getPage(pageStack[sp - 1]);
-
-							if (--pos >= 0) {
-								posStack[sp - 1] = pos;
-
-								do {
-									int pageId = BtreePage
-											.getKeyStrOid(pg, pos);
-
-									db.pool.unfix(pg);
-									pg = db.getPage(pageId);
-									pageStack[sp] = pageId;
-									posStack[sp] = pos = BtreePage
-											.getnItems(pg);
-								}
-								while (++sp < pageStack.length);
-
-								posStack[sp - 1] = --pos;
-								break;
-							}
-						}
-					}
-					else {
-						posStack[sp - 1] = pos;
-					}
-					if (sp != 0
-							&& from != null
-							&& compareByteArrays(from, pg, pos) >= from.inclusion) {
-						sp = 0;
-					}
-				}
-			}
-			else { // scalar type
-				if (order == ASCENT_ORDER) {
-					if (++pos == end) {
-						while (--sp != 0) {
-							db.pool.unfix(pg);
-							pos = posStack[sp - 1];
-							pg = db.getPage(pageStack[sp - 1]);
-
-							if (++pos <= BtreePage.getnItems(pg)) {
-								posStack[sp - 1] = pos;
-
-								do {
-									int pageId = BtreePage.getReference(pg,
-											BtreePage.maxItems - 1 - pos);
-
-									db.pool.unfix(pg);
-									pg = db.getPage(pageId);
-									end = BtreePage.getnItems(pg);
-									pageStack[sp] = pageId;
-									posStack[sp] = pos = 0;
-								}
-								while (++sp < pageStack.length);
-
-								break;
-							}
-						}
-					}
-					else {
-						posStack[sp - 1] = pos;
-					}
-					if (sp != 0
-							&& till != null
-							&& -BtreePage.compare(till, pg, pos) >= till.inclusion) {
-						sp = 0;
-					}
-				}
-				else { // descent order
-					if (--pos < 0) {
-						while (--sp != 0) {
-							db.pool.unfix(pg);
-							pos = posStack[sp - 1];
-							pg = db.getPage(pageStack[sp - 1]);
-
-							if (--pos >= 0) {
-								posStack[sp - 1] = pos;
-
-								do {
-									int pageId = BtreePage.getReference(pg,
-											BtreePage.maxItems - 1 - pos);
-
-									db.pool.unfix(pg);
-									pg = db.getPage(pageId);
-									pageStack[sp] = pageId;
-									posStack[sp] = pos = BtreePage
-											.getnItems(pg);
-								}
-								while (++sp < pageStack.length);
-
-								posStack[sp - 1] = --pos;
-								break;
-							}
-						}
-					}
-					else {
-						posStack[sp - 1] = pos;
-					}
-
-					if (sp != 0
-							&& from != null
-							&& BtreePage.compare(from, pg, pos) >= from.inclusion) {
-						sp = 0;
-					}
-				}
-			}
-
-			if (db.concurrentIterator && sp != 0) {
-				nextKey = getCurrentKey(pg, pos);
-			}
-
-			db.pool.unfix(pg);
-		}
-
-		private void refresh() {
-			if (sp != 0) {
-				if (nextKey == null) {
-					reset();
-				}
-				else {
-					if (order == ASCENT_ORDER) {
-						from = nextKey.key;
-					}
-					else {
-						till = nextKey.key;
-					}
-
-					int next = nextKey.oid;
-
-					reset();
-
-					StorageImpl db = (StorageImpl) getStorage();
-
-					while (true) {
-						int pos = posStack[sp - 1];
-						Page pg = db.getPage(pageStack[sp - 1]);
-						int oid = type == ClassDescriptor.tpString
-								|| type == ClassDescriptor.tpArrayOfByte ? BtreePage
-								.getKeyStrOid(pg, pos) : BtreePage
-								.getReference(pg, BtreePage.maxItems - 1 - pos);
-
-						if (oid != next) {
-							gotoNextItem(pg, pos);
-						}
-						else {
-							db.pool.unfix(pg);
-							break;
-						}
-					}
-				}
-			}
-
-			counter = updateCounter;
-		}
-
-		BtreeKey getCurrentKey(Page pg, int pos) {
-			BtreeKey key;
-
-			switch (type) {
-			case ClassDescriptor.tpString:
-				key = new BtreeKey(null, BtreePage.getKeyStrOid(pg, pos));
-				key.getStr(pg, pos);
-				break;
-			case ClassDescriptor.tpArrayOfByte:
-				key = new BtreeKey(null, BtreePage.getKeyStrOid(pg, pos));
-				key.getByteArray(pg, pos);
-				break;
-			default:
-				key = new BtreeKey(null, BtreePage.getReference(pg,
-						BtreePage.maxItems - 1 - pos));
-				key.extract(pg, BtreePage.firstKeyOffs + pos
-						* ClassDescriptor.sizeof[type], type);
-			}
-
-			return key;
-		}
-
-		public void remove() {
-			if (currPage == 0) {
-				throw new NoSuchElementException();
-			}
-
-			StorageImpl db = (StorageImpl) getStorage();
-
-			if (!db.concurrentIterator) {
-				if (counter != updateCounter) {
-					throw new ConcurrentModificationException();
-				}
-
-				Page pg = db.getPage(currPage);
-
-				currKey = getCurrentKey(pg, currPos);
-				db.pool.unfix(pg);
-
-				if (sp != 0) {
-					int pos = posStack[sp - 1];
-
-					pg = db.getPage(pageStack[sp - 1]);
-					nextKey = getCurrentKey(pg, pos);
-					db.pool.unfix(pg);
-				}
-			}
-
-			Btree.this.removeIfExists(currKey);
-
-			refresh();
-			currPage = 0;
-		}
-
-	}
-
-	class BtreeSelectionEntryIterator extends
-			BtreeSelectionIterator<Map.Entry<Object, T>> {
-
-		BtreeSelectionEntryIterator(Key from, Key till, int order) {
-			super(from, till, order);
-		}
-
-		protected Object getCurrent(Page pg, int pos) {
-			StorageImpl db = (StorageImpl) getStorage();
-
-			switch (type) {
-			case ClassDescriptor.tpString:
-				return new BtreeEntry<T>(db, unpackStrKey(pg, pos),
-						BtreePage.getKeyStrOid(pg, pos));
-			case ClassDescriptor.tpArrayOfByte:
-				return new BtreeEntry<T>(db, unpackByteArrayKey(pg, pos),
-						BtreePage.getKeyStrOid(pg, pos));
-			default:
-				return new BtreeEntry<T>(db, unpackKey(db, pg, pos),
-						BtreePage
-								.getReference(pg, BtreePage.maxItems - 1 - pos));
-			}
-		}
-	}
-
-	class BtreeEntryStartFromIterator extends BtreeSelectionEntryIterator {
-
-		int start;
-
-		BtreeEntryStartFromIterator(int start, int order) {
-			super(null, null, order);
-			this.start = start;
-			reset();
-		}
-
-		void reset() {
-			super.reset();
-			int skip = (order == ASCENT_ORDER) ? start : nElems - start - 1;
-			while (--skip >= 0 && hasNext()) {
-				next();
-			}
-		}
-
-	}
-
-	public IterableIterator<T> iterator(Key from, Key till, int order) {
-		return new BtreeSelectionIterator<T>(checkKey(from), checkKey(till),
-				order);
-	}
-
-	public IterableIterator<T> prefixIterator(String prefix) {
-		return prefixIterator(prefix, ASCENT_ORDER);
-	}
-
-	public IterableIterator<T> prefixIterator(String prefix, int order) {
-		return iterator(new Key(prefix), new Key(prefix + Character.MAX_VALUE,
-				false), order);
-	}
-
-	public IterableIterator<Map.Entry<Object, T>> entryIterator(Key from,
-			Key till, int order) {
-		return new BtreeSelectionEntryIterator(checkKey(from), checkKey(till),
-				order);
-	}
-
-	public IterableIterator<T> iterator(Object from, Object till, int order) {
-		return new BtreeSelectionIterator<T>(checkKey(getKeyFromObject(type,
-				from)), checkKey(getKeyFromObject(type, till)), order);
-	}
-
-	public IterableIterator<Map.Entry<Object, T>> entryIterator(Object from,
-			Object till, int order) {
-		return new BtreeSelectionEntryIterator(checkKey(getKeyFromObject(type,
-				from)), checkKey(getKeyFromObject(type, till)), order);
-	}
-
-	public int indexOf(Key key) {
-		PersistentIterator iterator = (PersistentIterator) iterator(null, key,
-				DESCENT_ORDER);
-		int i;
-
-		for (i = -1; iterator.nextOid() != 0; i++);
-
-		return i;
-	}
-
-	public T getAt(int i) {
-		IterableIterator<Map.Entry<Object, T>> iterator;
-
-		if (i < 0 || i >= nElems) {
-			throw new IndexOutOfBoundsException("Position " + i
-					+ ", index size " + nElems);
-		}
-
-		if (i <= (nElems / 2)) {
-			iterator = entryIterator(null, null, ASCENT_ORDER);
-
-			while (--i >= 0) {
-				iterator.next();
-			}
-		}
-		else {
-			iterator = entryIterator(null, null, DESCENT_ORDER);
-			i -= nElems;
-
-			while (++i < 0) {
-				iterator.next();
-			}
-		}
-
-		return iterator.next().getValue();
-	}
-
-	public IterableIterator<Map.Entry<Object, T>> entryIterator(int start,
-			int order) {
-		return new BtreeEntryStartFromIterator(start, order);
-	}
-
-	public boolean isUnique() {
-		return unique;
-	}
+    static final int SIZE_OF = ObjectHeader.SIZE_OF + 4 * 4 + 1;
 
+    static final int OP_DONE = 0;
+
+    static final int OP_OVERFLOW = 1;
+
+    static final int OP_UNDERFLOW = 2;
+
+    static final int OP_NOT_FOUND = 3;
+
+    static final int OP_DUPLICATE = 4;
+
+    static final int OP_OVERWRITE = 5;
+
+    transient int myUpdateCounter;
+
+    int myRoot;
+
+    int myHeight;
+
+    int myType;
+
+    int myNumOfElems;
+
+    boolean isUniqueKeyIndex;
+
+    Btree() {
+    }
+
+    Btree(final Class aClass, final boolean aUniqueRestriction) {
+        isUniqueKeyIndex = aUniqueRestriction;
+        myType = checkType(aClass);
+    }
+
+    Btree(final int aType, final boolean aUniqueRestriction) {
+        myType = aType;
+        isUniqueKeyIndex = aUniqueRestriction;
+    }
+
+    Btree(final byte[] aObject, final int aOffset) {
+        int offset = aOffset;
+
+        myHeight = Bytes.unpack4(aObject, offset);
+        offset += 4;
+        myNumOfElems = Bytes.unpack4(aObject, offset);
+        offset += 4;
+        myRoot = Bytes.unpack4(aObject, offset);
+        offset += 4;
+        myType = Bytes.unpack4(aObject, offset);
+        offset += 4;
+        isUniqueKeyIndex = aObject[offset] != 0;
+    }
+
+    static int checkType(final Class aClass) {
+        final int elemType = ClassDescriptor.getTypeCode(aClass);
+
+        if (elemType > ClassDescriptor.TP_OBJECT && elemType != ClassDescriptor.TP_ENUM &&
+                elemType != ClassDescriptor.TP_ARRAY_OF_BYTES) {
+            throw new StorageError(StorageError.UNSUPPORTED_INDEX_TYPE, aClass);
+        }
+
+        return elemType;
+    }
+
+    int compareByteArrays(final byte[] aKey, final byte[] aItem, final int aOffset, final int aLength) {
+        final int n = aKey.length >= aLength ? aLength : aKey.length;
+
+        for (int index = 0; index < n; index++) {
+            final int diff = aKey[index] - aItem[index + aOffset];
+
+            if (diff != 0) {
+                return diff;
+            }
+        }
+
+        return aKey.length - aLength;
+    }
+
+    @Override
+    public Class[] getKeyTypes() {
+        return new Class[] { getKeyType() };
+    }
+
+    @Override
+    public Class getKeyType() {
+        return mapKeyType(myType);
+    }
+
+    static Class mapKeyType(final int aType) {
+        switch (aType) {
+            case ClassDescriptor.TP_BOOLEAN:
+                return boolean.class;
+            case ClassDescriptor.TP_BYTE:
+                return byte.class;
+            case ClassDescriptor.TP_CHAR:
+                return char.class;
+            case ClassDescriptor.TP_SHORT:
+                return short.class;
+            case ClassDescriptor.TP_INT:
+                return int.class;
+            case ClassDescriptor.TP_LONG:
+                return long.class;
+            case ClassDescriptor.TP_FLOAT:
+                return float.class;
+            case ClassDescriptor.TP_DOUBLE:
+                return double.class;
+            case ClassDescriptor.TP_ENUM:
+                return Enum.class;
+            case ClassDescriptor.TP_STRING:
+                return String.class;
+            case ClassDescriptor.TP_DATE:
+                return Date.class;
+            case ClassDescriptor.TP_OBJECT:
+                return Object.class;
+            case ClassDescriptor.TP_ARRAY_OF_BYTES:
+                return byte[].class;
+            default:
+                return Comparable.class;
+        }
+    }
+
+    Key checkKey(final Key aKey) {
+        Key key = aKey;
+
+        if (key != null) {
+            if (key.myType != myType) {
+                throw new StorageError(StorageError.INCOMPATIBLE_KEY_TYPE);
+            }
+
+            if (myType == ClassDescriptor.TP_OBJECT && key.myIntValue == 0 && key.myObjectValue != null) {
+                final Object obj = key.myObjectValue;
+                key = new Key(obj, getStorage().makePersistent(obj), key.myInclusion != 0);
+            }
+
+            if (key.myObjectValue instanceof String) {
+                key = new Key(((String) key.myObjectValue).toCharArray(), key.myInclusion != 0);
+            }
+        }
+
+        return key;
+    }
+
+    @SuppressWarnings("unchecked")
+    @Override
+    public T get(final Key aKey) {
+        Key key = aKey;
+
+        key = checkKey(key);
+
+        if (myRoot != 0) {
+            final ArrayList list = new ArrayList();
+
+            BtreePage.find((StorageImpl) getStorage(), myRoot, key, key, this, myHeight, list);
+
+            if (list.size() > 1) {
+                throw new StorageError(StorageError.KEY_NOT_UNIQUE);
+            } else if (list.size() == 0) {
+                return null;
+            } else {
+                return (T) list.get(0);
+            }
+        }
+
+        return null;
+    }
+
+    @Override
+    public ArrayList<T> prefixSearchList(final String aKey) {
+        if (ClassDescriptor.TP_STRING != myType) {
+            throw new StorageError(StorageError.INCOMPATIBLE_KEY_TYPE);
+        }
+
+        final ArrayList<T> list = new ArrayList<>();
+
+        if (myRoot != 0) {
+            BtreePage.prefixSearch((StorageImpl) getStorage(), myRoot, aKey.toCharArray(), myHeight, list);
+        }
+
+        return list;
+    }
+
+    @Override
+    public Object[] prefixSearch(final String aKey) {
+        final ArrayList<T> list = prefixSearchList(aKey);
+        return list.toArray();
+    }
+
+    @Override
+    public ArrayList<T> getList(final Key aFrom, final Key aTo) {
+        final ArrayList<T> list = new ArrayList<>();
+
+        if (myRoot != 0) {
+            BtreePage.find((StorageImpl) getStorage(), myRoot, checkKey(aFrom), checkKey(aTo), this, myHeight, list);
+        }
+
+        return list;
+    }
+
+    @Override
+    public ArrayList<T> getList(final Object aFrom, final Object aTo) {
+        return getList(getKeyFromObject(myType, aFrom), getKeyFromObject(myType, aTo));
+    }
+
+    @Override
+    public T get(final Object aKey) {
+        return get(getKeyFromObject(myType, aKey));
+    }
+
+    @Override
+    public Object[] get(final Key aFrom, final Key aTo) {
+        final ArrayList<T> list = getList(aFrom, aTo);
+        return list.toArray();
+    }
+
+    @Override
+    public Object[] get(final Object aFrom, final Object aTo) {
+        return get(getKeyFromObject(myType, aFrom), getKeyFromObject(myType, aTo));
+    }
+
+    @Override
+    public boolean put(final Key aKey, final T aObject) {
+        return insert(aKey, aObject, false) >= 0;
+    }
+
+    @SuppressWarnings("unchecked")
+    @Override
+    public T set(final Key aKey, final T aObject) {
+        final int oid = insert(aKey, aObject, true);
+        return (T) (oid != 0 ? ((StorageImpl) getStorage()).lookupObject(oid, null) : null);
+    }
+
+    final int insert(final Key aKey, final T aObject, final boolean aOverwrite) {
+        final StorageImpl db = (StorageImpl) getStorage();
+
+        Key key = aKey;
+
+        if (db == null) {
+            throw new StorageError(StorageError.DELETED_OBJECT);
+        }
+
+        key = checkKey(key);
+
+        final BtreeKey ins = new BtreeKey(key, db.makePersistent(aObject));
+
+        if (myRoot == 0) {
+            myRoot = BtreePage.allocate(db, 0, myType, ins);
+            myHeight = 1;
+        } else {
+            final int result = BtreePage.insert(db, myRoot, this, ins, myHeight, isUniqueKeyIndex, aOverwrite);
+
+            if (result == OP_OVERFLOW) {
+                myRoot = BtreePage.allocate(db, myRoot, myType, ins);
+                myHeight += 1;
+            } else if (result == OP_DUPLICATE) {
+                return -1;
+            } else if (result == OP_OVERWRITE) {
+                return ins.myOldOID;
+            }
+        }
+
+        myUpdateCounter += 1;
+        myNumOfElems += 1;
+        modify();
+
+        return 0;
+    }
+
+    @Override
+    public void remove(final Key aKey, final T aObject) {
+        remove(new BtreeKey(checkKey(aKey), getStorage().getOid(aObject)));
+    }
+
+    @Override
+    public boolean unlink(final Key aKey, final T aObject) {
+        return removeIfExists(aKey, aObject);
+    }
+
+    boolean removeIfExists(final Key aKey, final Object aObject) {
+        return removeIfExists(new BtreeKey(checkKey(aKey), getStorage().getOid(aObject)));
+    }
+
+    void remove(final BtreeKey aRemove) {
+        if (!removeIfExists(aRemove)) {
+            throw new StorageError(StorageError.KEY_NOT_FOUND);
+        }
+    }
+
+    boolean removeIfExists(final BtreeKey aRemove) {
+        final StorageImpl db = (StorageImpl) getStorage();
+
+        if (db == null) {
+            throw new StorageError(StorageError.DELETED_OBJECT);
+        }
+
+        if (myRoot == 0) {
+            return false;
+        }
+
+        final int result = BtreePage.remove(db, myRoot, this, aRemove, myHeight);
+
+        if (result == OP_NOT_FOUND) {
+            return false;
+        }
+
+        myNumOfElems -= 1;
+
+        if (result == OP_UNDERFLOW) {
+            final Page pg = db.getPage(myRoot);
+
+            if (BtreePage.getnItems(pg) == 0) {
+                int newRoot = 0;
+
+                if (myHeight != 1) {
+                    newRoot = myType == ClassDescriptor.TP_STRING || myType == ClassDescriptor.TP_ARRAY_OF_BYTES
+                            ? BtreePage.getKeyStrOid(pg, 0) : BtreePage.getReference(pg, BtreePage.MAX_ITEMS - 1);
+                }
+
+                db.freePage(myRoot);
+                myRoot = newRoot;
+                myHeight -= 1;
+            }
+
+            db.myPool.unfix(pg);
+        } else if (result == OP_OVERFLOW) {
+            myRoot = BtreePage.allocate(db, myRoot, myType, aRemove);
+            myHeight += 1;
+        }
+
+        myUpdateCounter += 1;
+        modify();
+
+        return true;
+    }
+
+    @SuppressWarnings({ "unchecked" })
+    @Override
+    public T remove(final Key aKey) {
+        if (!isUniqueKeyIndex) {
+            throw new StorageError(StorageError.KEY_NOT_UNIQUE);
+        }
+
+        final BtreeKey rk = new BtreeKey(checkKey(aKey), 0);
+        final StorageImpl db = (StorageImpl) getStorage();
+
+        remove(rk);
+
+        return (T) db.lookupObject(rk.myOldOID, null);
+    }
+
+    static Key getKeyFromObject(final int aType, final Object aObject) {
+        if (aObject == null) {
+            return null;
+        }
+
+        switch (aType) {
+            case ClassDescriptor.TP_BOOLEAN:
+                return new Key(((Boolean) aObject).booleanValue());
+            case ClassDescriptor.TP_BYTE:
+                return new Key(((Number) aObject).byteValue());
+            case ClassDescriptor.TP_CHAR:
+                return new Key(((Character) aObject).charValue());
+            case ClassDescriptor.TP_SHORT:
+                return new Key(((Number) aObject).shortValue());
+            case ClassDescriptor.TP_INT:
+                return new Key(((Number) aObject).intValue());
+            case ClassDescriptor.TP_LONG:
+                return new Key(((Number) aObject).longValue());
+            case ClassDescriptor.TP_FLOAT:
+                return new Key(((Number) aObject).floatValue());
+            case ClassDescriptor.TP_DOUBLE:
+                return new Key(((Number) aObject).doubleValue());
+            case ClassDescriptor.TP_STRING:
+                return new Key((String) aObject);
+            case ClassDescriptor.TP_DATE:
+                return new Key((java.util.Date) aObject);
+            case ClassDescriptor.TP_OBJECT:
+                return new Key(aObject);
+            case ClassDescriptor.TP_VALUE:
+                return new Key((IValue) aObject);
+            case ClassDescriptor.TP_ENUM:
+                return new Key((Enum) aObject);
+            case ClassDescriptor.TP_ARRAY_OF_BYTES:
+                return new Key((byte[]) aObject);
+            default:
+                throw new StorageError(StorageError.UNSUPPORTED_INDEX_TYPE);
+        }
+    }
+
+    static Key getKeyFromObject(final Object aObject) {
+        if (aObject == null) {
+            return null;
+        } else if (aObject instanceof Byte) {
+            return new Key(((Byte) aObject).byteValue());
+        } else if (aObject instanceof Short) {
+            return new Key(((Short) aObject).shortValue());
+        } else if (aObject instanceof Integer) {
+            return new Key(((Integer) aObject).intValue());
+        } else if (aObject instanceof Long) {
+            return new Key(((Long) aObject).longValue());
+        } else if (aObject instanceof Float) {
+            return new Key(((Float) aObject).floatValue());
+        } else if (aObject instanceof Double) {
+            return new Key(((Double) aObject).doubleValue());
+        } else if (aObject instanceof Boolean) {
+            return new Key(((Boolean) aObject).booleanValue());
+        } else if (aObject instanceof Character) {
+            return new Key(((Character) aObject).charValue());
+        } else if (aObject instanceof String) {
+            return new Key((String) aObject);
+        } else if (aObject instanceof java.util.Date) {
+            return new Key((java.util.Date) aObject);
+        } else if (aObject instanceof byte[]) {
+            return new Key((byte[]) aObject);
+        } else if (aObject instanceof Object[]) {
+            return new Key((Object[]) aObject);
+        } else if (aObject instanceof Enum) {
+            return new Key((Enum) aObject);
+        } else if (aObject instanceof IValue) {
+            return new Key((IValue) aObject);
+        } else {
+            return new Key(aObject);
+        }
+    }
+
+    @Override
+    public ArrayList<T> getPrefixList(final String aPrefix) {
+        return getList(new Key(aPrefix, true), new Key(aPrefix + Character.MAX_VALUE, false));
+    }
+
+    @Override
+    public Object[] getPrefix(final String aPrefix) {
+        return get(new Key(aPrefix, true), new Key(aPrefix + Character.MAX_VALUE, false));
+    }
+
+    @Override
+    public boolean put(final Object aKey, final T aObject) {
+        return put(getKeyFromObject(myType, aKey), aObject);
+    }
+
+    @Override
+    public T set(final Object aKey, final T aObject) {
+        return set(getKeyFromObject(myType, aKey), aObject);
+    }
+
+    @Override
+    public void remove(final Object aKey, final T aObject) {
+        remove(getKeyFromObject(myType, aKey), aObject);
+    }
+
+    @Override
+    public T removeKey(final Object aKey) {
+        return remove(getKeyFromObject(myType, aKey));
+    }
+
+    @Override
+    public T remove(final String aKey) {
+        return remove(new Key(aKey));
+    }
+
+    @Override
+    public int size() {
+        return myNumOfElems;
+    }
+
+    @Override
+    public void clear() {
+        if (myRoot != 0) {
+            BtreePage.purge((StorageImpl) getStorage(), myRoot, myType, myHeight);
+
+            myRoot = 0;
+            myNumOfElems = 0;
+            myHeight = 0;
+            myUpdateCounter += 1;
+            modify();
+        }
+    }
+
+    @Override
+    public Object[] toArray() {
+        final Object[] array = new Object[myNumOfElems];
+
+        if (myRoot != 0) {
+            BtreePage.traverseForward((StorageImpl) getStorage(), myRoot, myType, myHeight, array, 0);
+        }
+
+        return array;
+    }
+
+    @SuppressWarnings("unchecked")
+    @Override
+    public <E> E[] toArray(final E[] aArray) {
+        E[] array = aArray;
+
+        if (array.length < myNumOfElems) {
+            array = (E[]) Array.newInstance(array.getClass().getComponentType(), myNumOfElems);
+        }
+
+        if (myRoot != 0) {
+            BtreePage.traverseForward((StorageImpl) getStorage(), myRoot, myType, myHeight, array, 0);
+        }
+
+        if (array.length > myNumOfElems) {
+            array[myNumOfElems] = null;
+        }
+
+        return array;
+    }
+
+    @Override
+    public void deallocate() {
+        if (myRoot != 0) {
+            BtreePage.purge((StorageImpl) getStorage(), myRoot, myType, myHeight);
+        }
+
+        super.deallocate();
+    }
+
+    public int markTree() {
+        if (myRoot != 0) {
+            return BtreePage.markPage((StorageImpl) getStorage(), myRoot, myType, myHeight);
+        }
+
+        return 0;
+    }
+
+    protected Object unpackEnum(final int aValue) {
+        // Base B-Tree class has no info about particular enum type so it is not able to correctly unpack enum key
+        return aValue;
+    }
+
+    public void export(final XMLExporter aExporter) throws IOException {
+        if (myRoot != 0) {
+            BtreePage.exportPage((StorageImpl) getStorage(), aExporter, myRoot, myType, myHeight);
+        }
+    }
+
+    Object unpackKey(final StorageImpl aStorage, final Page aPage, final int aPosition) {
+        final byte[] data = aPage.myData;
+        final int offs = BtreePage.FIRST_KEY_OFFSET + aPosition * ClassDescriptor.SIZE_OF[myType];
+
+        switch (myType) {
+            case ClassDescriptor.TP_BOOLEAN:
+                return Boolean.valueOf(data[offs] != 0);
+            case ClassDescriptor.TP_BYTE:
+                return Byte.valueOf(data[offs]);
+            case ClassDescriptor.TP_SHORT:
+                return Short.valueOf(Bytes.unpack2(data, offs));
+            case ClassDescriptor.TP_CHAR:
+                return Character.valueOf((char) Bytes.unpack2(data, offs));
+            case ClassDescriptor.TP_INT:
+                return Integer.valueOf(Bytes.unpack4(data, offs));
+            case ClassDescriptor.TP_OBJECT:
+                return aStorage.lookupObject(Bytes.unpack4(data, offs), null);
+            case ClassDescriptor.TP_LONG:
+                return Long.valueOf(Bytes.unpack8(data, offs));
+            case ClassDescriptor.TP_DATE:
+                return new Date(Bytes.unpack8(data, offs));
+            case ClassDescriptor.TP_FLOAT:
+                return Float.valueOf(Float.intBitsToFloat(Bytes.unpack4(data, offs)));
+            case ClassDescriptor.TP_DOUBLE:
+                return Double.valueOf(Double.longBitsToDouble(Bytes.unpack8(data, offs)));
+            case ClassDescriptor.TP_ENUM:
+                return unpackEnum(Bytes.unpack4(data, offs));
+            case ClassDescriptor.TP_STRING:
+                return unpackStrKey(aPage, aPosition);
+            case ClassDescriptor.TP_ARRAY_OF_BYTES:
+                return unpackByteArrayKey(aPage, aPosition);
+            default:
+                Assert.failed("Invalid type");
+        }
+
+        return null;
+    }
+
+    static String unpackStrKey(final Page aPage, final int aPosition) {
+        final int length = BtreePage.getKeyStrSize(aPage, aPosition);
+
+        int offset = BtreePage.FIRST_KEY_OFFSET + BtreePage.getKeyStrOffs(aPage, aPosition);
+
+        final byte[] data = aPage.myData;
+        final char[] stringVal = new char[length];
+
+        for (int index = 0; index < length; index++) {
+            stringVal[index] = (char) Bytes.unpack2(data, offset);
+            offset += 2;
+        }
+
+        return new String(stringVal);
+    }
+
+    Object unpackByteArrayKey(final Page aPage, final int aPosition) {
+        final int length = BtreePage.getKeyStrSize(aPage, aPosition);
+        final int offset = BtreePage.FIRST_KEY_OFFSET + BtreePage.getKeyStrOffs(aPage, aPosition);
+        final byte[] bytes = new byte[length];
+
+        System.arraycopy(aPage.myData, offset, bytes, 0, length);
+
+        return bytes;
+    }
+
+    @Override
+    public Iterator<T> iterator() {
+        return iterator(null, null, ASCENT_ORDER);
+    }
+
+    @Override
+    public IterableIterator<Map.Entry<Object, T>> entryIterator() {
+        return entryIterator(null, null, ASCENT_ORDER);
+    }
+
+    final int compareByteArrays(final Key aKey, final Page aPage, final int aIndex) {
+        return compareByteArrays((byte[]) aKey.myObjectValue, aPage.myData, BtreePage.getKeyStrOffs(aPage, aIndex) +
+                BtreePage.FIRST_KEY_OFFSET, BtreePage.getKeyStrSize(aPage, aIndex));
+    }
+
+    @Override
+    public IterableIterator<T> iterator(final Key aFrom, final Key aTo, final int aOrder) {
+        return new BtreeSelectionIterator<>(checkKey(aFrom), checkKey(aTo), aOrder);
+    }
+
+    @Override
+    public IterableIterator<T> prefixIterator(final String aPrefix) {
+        return prefixIterator(aPrefix, ASCENT_ORDER);
+    }
+
+    @Override
+    public IterableIterator<T> prefixIterator(final String aPrefix, final int aOrder) {
+        return iterator(new Key(aPrefix), new Key(aPrefix + Character.MAX_VALUE, false), aOrder);
+    }
+
+    @Override
+    public IterableIterator<Map.Entry<Object, T>> entryIterator(final Key aFrom, final Key aTo, final int aOrder) {
+        return new BtreeSelectionEntryIterator(checkKey(aFrom), checkKey(aTo), aOrder);
+    }
+
+    @Override
+    public IterableIterator<T> iterator(final Object aFrom, final Object aTo, final int aOrder) {
+        return new BtreeSelectionIterator<>(checkKey(getKeyFromObject(myType, aFrom)), checkKey(getKeyFromObject(
+                myType, aTo)), aOrder);
+    }
+
+    @Override
+    public IterableIterator<Map.Entry<Object, T>> entryIterator(final Object aFrom, final Object aTo,
+            final int aOrder) {
+        return new BtreeSelectionEntryIterator(checkKey(getKeyFromObject(myType, aFrom)), checkKey(getKeyFromObject(
+                myType, aTo)), aOrder);
+    }
+
+    @Override
+    public int indexOf(final Key aKey) {
+        final PersistentIterator iterator = (PersistentIterator) iterator(null, aKey, DESCENT_ORDER);
+        int i;
+
+        for (i = -1; iterator.nextOID() != 0; i++) {
+        }
+
+        return i;
+    }
+
+    @Override
+    public T getAt(final int aIndex) {
+        final IterableIterator<Map.Entry<Object, T>> iterator;
+
+        int index = aIndex;
+
+        if (index < 0 || index >= myNumOfElems) {
+            throw new IndexOutOfBoundsException("Position " + index + ", index size " + myNumOfElems);
+        }
+
+        if (index <= myNumOfElems / 2) {
+            iterator = entryIterator(null, null, ASCENT_ORDER);
+
+            while (--index >= 0) {
+                iterator.next();
+            }
+        } else {
+            iterator = entryIterator(null, null, DESCENT_ORDER);
+            index -= myNumOfElems;
+
+            while (++index < 0) {
+                iterator.next();
+            }
+        }
+
+        return iterator.next().getValue();
+    }
+
+    @Override
+    public IterableIterator<Map.Entry<Object, T>> entryIterator(final int aStart, final int aOrder) {
+        return new BtreeEntryStartFromIterator(aStart, aOrder);
+    }
+
+    @Override
+    public boolean isUnique() {
+        return isUniqueKeyIndex;
+    }
+
+    class BtreeSelectionIterator<E> extends IterableIterator<E> implements PersistentIterator {
+
+        int[] myPageStack;
+
+        int[] myPositionStack;
+
+        int myCurrentPage;
+
+        int myCurrentPosition;
+
+        int myStackPosition;
+
+        int myEnd;
+
+        Key myFrom;
+
+        Key myTo;
+
+        int myOrder;
+
+        int myCounter;
+
+        BtreeKey myNextKey;
+
+        BtreeKey myCurrentKey;
+
+        BtreeSelectionIterator(final Key aFrom, final Key aTo, final int aOrder) {
+            myFrom = aFrom;
+            myTo = aTo;
+            myOrder = aOrder;
+            reset();
+        }
+
+        void reset() {
+            int i;
+            int l;
+            int r;
+
+            myStackPosition = 0;
+            myCounter = myUpdateCounter;
+
+            if (myHeight == 0) {
+                return;
+            }
+
+            int pageId = myRoot;
+            final StorageImpl db = (StorageImpl) getStorage();
+
+            if (db == null) {
+                throw new StorageError(StorageError.DELETED_OBJECT);
+            }
+
+            int height = myHeight;
+
+            myPageStack = new int[height];
+            myPositionStack = new int[height];
+
+            if (myType == ClassDescriptor.TP_STRING) {
+                if (myOrder == ASCENT_ORDER) {
+                    if (myFrom == null) {
+                        while (--height >= 0) {
+                            final Page page = db.getPage(pageId);
+
+                            myPositionStack[myStackPosition] = 0;
+                            myPageStack[myStackPosition] = pageId;
+
+                            pageId = BtreePage.getKeyStrOid(page, 0);
+                            myEnd = BtreePage.getnItems(page);
+                            db.myPool.unfix(page);
+                            myStackPosition += 1;
+                        }
+                    } else {
+                        while (--height > 0) {
+                            final Page page = db.getPage(pageId);
+
+                            myPageStack[myStackPosition] = pageId;
+
+                            l = 0;
+                            r = BtreePage.getnItems(page);
+
+                            while (l < r) {
+                                i = l + r >> 1;
+
+                                if (BtreePage.compareStr(myFrom, page, i) >= myFrom.myInclusion) {
+                                    l = i + 1;
+                                } else {
+                                    r = i;
+                                }
+                            }
+
+                            Assert.that(r == l);
+
+                            myPositionStack[myStackPosition] = r;
+                            pageId = BtreePage.getKeyStrOid(page, r);
+                            db.myPool.unfix(page);
+                            myStackPosition += 1;
+                        }
+
+                        final Page page = db.getPage(pageId);
+
+                        myPageStack[myStackPosition] = pageId;
+                        l = 0;
+                        myEnd = r = BtreePage.getnItems(page);
+
+                        while (l < r) {
+                            i = l + r >> 1;
+
+                            if (BtreePage.compareStr(myFrom, page, i) >= myFrom.myInclusion) {
+                                l = i + 1;
+                            } else {
+                                r = i;
+                            }
+                        }
+
+                        Assert.that(r == l);
+
+                        if (r == myEnd) {
+                            myStackPosition += 1;
+                            gotoNextItem(page, r - 1);
+                        } else {
+                            myPositionStack[myStackPosition++] = r;
+                            db.myPool.unfix(page);
+                        }
+                    }
+
+                    if (myStackPosition != 0 && myTo != null) {
+                        final Page pg = db.getPage(myPageStack[myStackPosition - 1]);
+
+                        if (-BtreePage.compareStr(myTo, pg, myPositionStack[myStackPosition -
+                                1]) >= myTo.myInclusion) {
+                            myStackPosition = 0;
+                        }
+
+                        db.myPool.unfix(pg);
+                    }
+                } else { // descent order
+                    if (myTo == null) {
+                        while (--height > 0) {
+                            final Page page = db.getPage(pageId);
+
+                            myPageStack[myStackPosition] = pageId;
+                            myPositionStack[myStackPosition] = BtreePage.getnItems(page);
+                            pageId = BtreePage.getKeyStrOid(page, myPositionStack[myStackPosition]);
+                            db.myPool.unfix(page);
+                            myStackPosition += 1;
+                        }
+
+                        final Page page = db.getPage(pageId);
+
+                        myPageStack[myStackPosition] = pageId;
+                        myPositionStack[myStackPosition++] = BtreePage.getnItems(page) - 1;
+                        db.myPool.unfix(page);
+                    } else {
+                        while (--height > 0) {
+                            final Page page = db.getPage(pageId);
+
+                            myPageStack[myStackPosition] = pageId;
+                            l = 0;
+                            r = BtreePage.getnItems(page);
+
+                            while (l < r) {
+                                i = l + r >> 1;
+
+                                if (BtreePage.compareStr(myTo, page, i) >= 1 - myTo.myInclusion) {
+                                    l = i + 1;
+                                } else {
+                                    r = i;
+                                }
+                            }
+
+                            Assert.that(r == l);
+
+                            myPositionStack[myStackPosition] = r;
+                            pageId = BtreePage.getKeyStrOid(page, r);
+                            db.myPool.unfix(page);
+                            myStackPosition += 1;
+                        }
+
+                        final Page page = db.getPage(pageId);
+
+                        myPageStack[myStackPosition] = pageId;
+                        l = 0;
+                        r = BtreePage.getnItems(page);
+
+                        while (l < r) {
+                            i = l + r >> 1;
+
+                            if (BtreePage.compareStr(myTo, page, i) >= 1 - myTo.myInclusion) {
+                                l = i + 1;
+                            } else {
+                                r = i;
+                            }
+                        }
+
+                        Assert.that(r == l);
+
+                        if (r == 0) {
+                            myStackPosition += 1;
+                            gotoNextItem(page, r);
+                        } else {
+                            myPositionStack[myStackPosition++] = r - 1;
+                            db.myPool.unfix(page);
+                        }
+                    }
+
+                    if (myStackPosition != 0 && myFrom != null) {
+                        final Page pg = db.getPage(myPageStack[myStackPosition - 1]);
+
+                        if (BtreePage.compareStr(myFrom, pg, myPositionStack[myStackPosition -
+                                1]) >= myFrom.myInclusion) {
+                            myStackPosition = 0;
+                        }
+
+                        db.myPool.unfix(pg);
+                    }
+                }
+            } else if (myType == ClassDescriptor.TP_ARRAY_OF_BYTES) {
+                if (myOrder == ASCENT_ORDER) {
+                    if (myFrom == null) {
+                        while (--height >= 0) {
+                            final Page pg = db.getPage(pageId);
+
+                            myPositionStack[myStackPosition] = 0;
+                            myPageStack[myStackPosition] = pageId;
+                            pageId = BtreePage.getKeyStrOid(pg, 0);
+                            myEnd = BtreePage.getnItems(pg);
+                            db.myPool.unfix(pg);
+                            myStackPosition += 1;
+                        }
+                    } else {
+                        while (--height > 0) {
+                            final Page page = db.getPage(pageId);
+
+                            myPageStack[myStackPosition] = pageId;
+                            l = 0;
+                            r = BtreePage.getnItems(page);
+
+                            while (l < r) {
+                                i = l + r >> 1;
+
+                                if (compareByteArrays(myFrom, page, i) >= myFrom.myInclusion) {
+                                    l = i + 1;
+                                } else {
+                                    r = i;
+                                }
+                            }
+
+                            Assert.that(r == l);
+
+                            myPositionStack[myStackPosition] = r;
+                            pageId = BtreePage.getKeyStrOid(page, r);
+                            db.myPool.unfix(page);
+                            myStackPosition += 1;
+                        }
+
+                        final Page page = db.getPage(pageId);
+
+                        myPageStack[myStackPosition] = pageId;
+                        l = 0;
+                        myEnd = r = BtreePage.getnItems(page);
+
+                        while (l < r) {
+                            i = l + r >> 1;
+
+                            if (compareByteArrays(myFrom, page, i) >= myFrom.myInclusion) {
+                                l = i + 1;
+                            } else {
+                                r = i;
+                            }
+                        }
+
+                        Assert.that(r == l);
+
+                        if (r == myEnd) {
+                            myStackPosition += 1;
+                            gotoNextItem(page, r - 1);
+                        } else {
+                            myPositionStack[myStackPosition++] = r;
+                            db.myPool.unfix(page);
+                        }
+                    }
+
+                    if (myStackPosition != 0 && myTo != null) {
+                        final Page page = db.getPage(myPageStack[myStackPosition - 1]);
+
+                        if (-compareByteArrays(myTo, page, myPositionStack[myStackPosition -
+                                1]) >= myTo.myInclusion) {
+                            myStackPosition = 0;
+                        }
+
+                        db.myPool.unfix(page);
+                    }
+                } else { // descent order
+                    if (myTo == null) {
+                        while (--height > 0) {
+                            final Page page = db.getPage(pageId);
+
+                            myPageStack[myStackPosition] = pageId;
+                            myPositionStack[myStackPosition] = BtreePage.getnItems(page);
+                            pageId = BtreePage.getKeyStrOid(page, myPositionStack[myStackPosition]);
+                            db.myPool.unfix(page);
+                            myStackPosition += 1;
+                        }
+
+                        final Page page = db.getPage(pageId);
+
+                        myPageStack[myStackPosition] = pageId;
+                        myPositionStack[myStackPosition++] = BtreePage.getnItems(page) - 1;
+                        db.myPool.unfix(page);
+                    } else {
+                        while (--height > 0) {
+                            final Page page = db.getPage(pageId);
+
+                            myPageStack[myStackPosition] = pageId;
+                            l = 0;
+                            r = BtreePage.getnItems(page);
+
+                            while (l < r) {
+                                i = l + r >> 1;
+
+                                if (compareByteArrays(myTo, page, i) >= 1 - myTo.myInclusion) {
+                                    l = i + 1;
+                                } else {
+                                    r = i;
+                                }
+                            }
+
+                            Assert.that(r == l);
+
+                            myPositionStack[myStackPosition] = r;
+                            pageId = BtreePage.getKeyStrOid(page, r);
+                            db.myPool.unfix(page);
+                            myStackPosition += 1;
+                        }
+
+                        final Page page = db.getPage(pageId);
+
+                        myPageStack[myStackPosition] = pageId;
+                        l = 0;
+                        r = BtreePage.getnItems(page);
+
+                        while (l < r) {
+                            i = l + r >> 1;
+
+                            if (compareByteArrays(myTo, page, i) >= 1 - myTo.myInclusion) {
+                                l = i + 1;
+                            } else {
+                                r = i;
+                            }
+                        }
+
+                        Assert.that(r == l);
+
+                        if (r == 0) {
+                            myStackPosition += 1;
+                            gotoNextItem(page, r);
+                        } else {
+                            myPositionStack[myStackPosition++] = r - 1;
+                            db.myPool.unfix(page);
+                        }
+                    }
+
+                    if (myStackPosition != 0 && myFrom != null) {
+                        final Page page = db.getPage(myPageStack[myStackPosition - 1]);
+
+                        if (compareByteArrays(myFrom, page, myPositionStack[myStackPosition -
+                                1]) >= myFrom.myInclusion) {
+                            myStackPosition = 0;
+                        }
+
+                        db.myPool.unfix(page);
+                    }
+                }
+            } else { // scalar type
+                if (myOrder == ASCENT_ORDER) {
+                    if (myFrom == null) {
+                        while (--height >= 0) {
+                            final Page page = db.getPage(pageId);
+
+                            myPositionStack[myStackPosition] = 0;
+                            myPageStack[myStackPosition] = pageId;
+                            pageId = BtreePage.getReference(page, BtreePage.MAX_ITEMS - 1);
+                            myEnd = BtreePage.getnItems(page);
+                            db.myPool.unfix(page);
+                            myStackPosition += 1;
+                        }
+                    } else {
+                        while (--height > 0) {
+                            final Page page = db.getPage(pageId);
+
+                            myPageStack[myStackPosition] = pageId;
+                            l = 0;
+                            r = BtreePage.getnItems(page);
+
+                            while (l < r) {
+                                i = l + r >> 1;
+
+                                if (BtreePage.compare(myFrom, page, i) >= myFrom.myInclusion) {
+                                    l = i + 1;
+                                } else {
+                                    r = i;
+                                }
+                            }
+
+                            Assert.that(r == l);
+
+                            myPositionStack[myStackPosition] = r;
+                            pageId = BtreePage.getReference(page, BtreePage.MAX_ITEMS - 1 - r);
+                            db.myPool.unfix(page);
+                            myStackPosition += 1;
+                        }
+
+                        final Page page = db.getPage(pageId);
+
+                        myPageStack[myStackPosition] = pageId;
+                        l = 0;
+                        r = myEnd = BtreePage.getnItems(page);
+
+                        while (l < r) {
+                            i = l + r >> 1;
+
+                            if (BtreePage.compare(myFrom, page, i) >= myFrom.myInclusion) {
+                                l = i + 1;
+                            } else {
+                                r = i;
+                            }
+                        }
+
+                        Assert.that(r == l);
+
+                        if (r == myEnd) {
+                            myStackPosition += 1;
+                            gotoNextItem(page, r - 1);
+                        } else {
+                            myPositionStack[myStackPosition++] = r;
+                            db.myPool.unfix(page);
+                        }
+                    }
+
+                    if (myStackPosition != 0 && myTo != null) {
+                        final Page pg = db.getPage(myPageStack[myStackPosition - 1]);
+
+                        if (-BtreePage.compare(myTo, pg, myPositionStack[myStackPosition - 1]) >= myTo.myInclusion) {
+                            myStackPosition = 0;
+                        }
+
+                        db.myPool.unfix(pg);
+                    }
+                } else { // descent order
+                    if (myTo == null) {
+                        while (--height > 0) {
+                            final Page page = db.getPage(pageId);
+
+                            myPageStack[myStackPosition] = pageId;
+                            myPositionStack[myStackPosition] = BtreePage.getnItems(page);
+                            pageId = BtreePage.getReference(page, BtreePage.MAX_ITEMS - 1 -
+                                    myPositionStack[myStackPosition]);
+                            db.myPool.unfix(page);
+                            myStackPosition += 1;
+                        }
+
+                        final Page page = db.getPage(pageId);
+
+                        myPageStack[myStackPosition] = pageId;
+                        myPositionStack[myStackPosition++] = BtreePage.getnItems(page) - 1;
+                        db.myPool.unfix(page);
+                    } else {
+                        while (--height > 0) {
+                            final Page page = db.getPage(pageId);
+
+                            myPageStack[myStackPosition] = pageId;
+                            l = 0;
+                            r = BtreePage.getnItems(page);
+
+                            while (l < r) {
+                                i = l + r >> 1;
+
+                                if (BtreePage.compare(myTo, page, i) >= 1 - myTo.myInclusion) {
+                                    l = i + 1;
+                                } else {
+                                    r = i;
+                                }
+                            }
+
+                            Assert.that(r == l);
+
+                            myPositionStack[myStackPosition] = r;
+                            pageId = BtreePage.getReference(page, BtreePage.MAX_ITEMS - 1 - r);
+                            db.myPool.unfix(page);
+                            myStackPosition += 1;
+                        }
+
+                        final Page page = db.getPage(pageId);
+
+                        myPageStack[myStackPosition] = pageId;
+                        l = 0;
+                        r = BtreePage.getnItems(page);
+
+                        while (l < r) {
+                            i = l + r >> 1;
+
+                            if (BtreePage.compare(myTo, page, i) >= 1 - myTo.myInclusion) {
+                                l = i + 1;
+                            } else {
+                                r = i;
+                            }
+                        }
+
+                        Assert.that(r == l);
+
+                        if (r == 0) {
+                            myStackPosition += 1;
+                            gotoNextItem(page, r);
+                        } else {
+                            myPositionStack[myStackPosition++] = r - 1;
+                            db.myPool.unfix(page);
+                        }
+                    }
+
+                    if (myStackPosition != 0 && myFrom != null) {
+                        final Page page = db.getPage(myPageStack[myStackPosition - 1]);
+
+                        if (BtreePage.compare(myFrom, page, myPositionStack[myStackPosition -
+                                1]) >= myFrom.myInclusion) {
+                            myStackPosition = 0;
+                        }
+
+                        db.myPool.unfix(page);
+                    }
+                }
+            }
+        }
+
+        @Override
+        public boolean hasNext() {
+            if (myCounter != myUpdateCounter) {
+                if (((StorageImpl) getStorage()).myConcurrentIterator) {
+                    refresh();
+                } else {
+                    throw new ConcurrentModificationException();
+                }
+            }
+
+            return myStackPosition != 0;
+        }
+
+        @SuppressWarnings("unchecked")
+        @Override
+        public E next() {
+            if (!hasNext()) {
+                throw new NoSuchElementException();
+            }
+
+            final StorageImpl db = (StorageImpl) getStorage();
+            final int position = myPositionStack[myStackPosition - 1];
+
+            myCurrentPosition = position;
+            myCurrentPage = myPageStack[myStackPosition - 1];
+
+            final Page page = db.getPage(myCurrentPage);
+            final E current = (E) getCurrent(page, position);
+
+            if (db.myConcurrentIterator) {
+                myCurrentKey = getCurrentKey(page, position);
+            }
+
+            gotoNextItem(page, position);
+
+            return current;
+        }
+
+        @Override
+        public int nextOID() {
+            if (!hasNext()) {
+                return 0;
+            }
+
+            final StorageImpl db = (StorageImpl) getStorage();
+            final int position = myPositionStack[myStackPosition - 1];
+
+            myCurrentPosition = position;
+            myCurrentPage = myPageStack[myStackPosition - 1];
+
+            final Page page = db.getPage(myCurrentPage);
+            final int oid = getReference(page, position);
+
+            if (db.myConcurrentIterator) {
+                myCurrentKey = getCurrentKey(page, position);
+            }
+
+            gotoNextItem(page, position);
+
+            return oid;
+        }
+
+        private int getReference(final Page aPage, final int aPosition) {
+            return myType == ClassDescriptor.TP_STRING || myType == ClassDescriptor.TP_ARRAY_OF_BYTES ? BtreePage
+                    .getKeyStrOid(aPage, aPosition) : BtreePage.getReference(aPage, BtreePage.MAX_ITEMS - 1 -
+                            aPosition);
+        }
+
+        protected Object getCurrent(final Page aPage, final int aPosition) {
+            final StorageImpl db = (StorageImpl) getStorage();
+            return db.lookupObject(getReference(aPage, aPosition), null);
+        }
+
+        protected final void gotoNextItem(final Page aPage, final int aPosition) {
+            final StorageImpl db = (StorageImpl) getStorage();
+
+            Page page = aPage;
+            int position = aPosition;
+
+            if (myType == ClassDescriptor.TP_STRING) {
+                if (myOrder == ASCENT_ORDER) {
+                    if (++position == myEnd) {
+                        while (--myStackPosition != 0) {
+                            db.myPool.unfix(page);
+                            position = myPositionStack[myStackPosition - 1];
+                            page = db.getPage(myPageStack[myStackPosition - 1]);
+
+                            if (++position <= BtreePage.getnItems(page)) {
+                                myPositionStack[myStackPosition - 1] = position;
+
+                                do {
+                                    final int pageId = BtreePage.getKeyStrOid(page, position);
+
+                                    db.myPool.unfix(page);
+                                    page = db.getPage(pageId);
+                                    myEnd = BtreePage.getnItems(page);
+                                    myPageStack[myStackPosition] = pageId;
+                                    myPositionStack[myStackPosition] = position = 0;
+                                } while (++myStackPosition < myPageStack.length);
+
+                                break;
+                            }
+                        }
+                    } else {
+                        myPositionStack[myStackPosition - 1] = position;
+                    }
+
+                    if (myStackPosition != 0 && myTo != null && -BtreePage.compareStr(myTo, page,
+                            position) >= myTo.myInclusion) {
+                        myStackPosition = 0;
+                    }
+                } else { // descent order
+                    if (--position < 0) {
+                        while (--myStackPosition != 0) {
+                            db.myPool.unfix(page);
+                            position = myPositionStack[myStackPosition - 1];
+                            page = db.getPage(myPageStack[myStackPosition - 1]);
+
+                            if (--position >= 0) {
+                                myPositionStack[myStackPosition - 1] = position;
+
+                                do {
+                                    final int pageId = BtreePage.getKeyStrOid(page, position);
+
+                                    db.myPool.unfix(page);
+                                    page = db.getPage(pageId);
+                                    myPageStack[myStackPosition] = pageId;
+                                    myPositionStack[myStackPosition] = position = BtreePage.getnItems(page);
+                                } while (++myStackPosition < myPageStack.length);
+
+                                myPositionStack[myStackPosition - 1] = --position;
+                                break;
+                            }
+                        }
+                    } else {
+                        myPositionStack[myStackPosition - 1] = position;
+                    }
+
+                    if (myStackPosition != 0 && myFrom != null && BtreePage.compareStr(myFrom, page,
+                            position) >= myFrom.myInclusion) {
+                        myStackPosition = 0;
+                    }
+                }
+            } else if (myType == ClassDescriptor.TP_ARRAY_OF_BYTES) {
+                if (myOrder == ASCENT_ORDER) {
+                    if (++position == myEnd) {
+                        while (--myStackPosition != 0) {
+                            db.myPool.unfix(page);
+                            position = myPositionStack[myStackPosition - 1];
+                            page = db.getPage(myPageStack[myStackPosition - 1]);
+
+                            if (++position <= BtreePage.getnItems(page)) {
+                                myPositionStack[myStackPosition - 1] = position;
+
+                                do {
+                                    final int pageId = BtreePage.getKeyStrOid(page, position);
+
+                                    db.myPool.unfix(page);
+                                    page = db.getPage(pageId);
+                                    myEnd = BtreePage.getnItems(page);
+                                    myPageStack[myStackPosition] = pageId;
+                                    myPositionStack[myStackPosition] = position = 0;
+                                } while (++myStackPosition < myPageStack.length);
+
+                                break;
+                            }
+                        }
+                    } else {
+                        myPositionStack[myStackPosition - 1] = position;
+                    }
+
+                    if (myStackPosition != 0 && myTo != null && -compareByteArrays(myTo, page,
+                            position) >= myTo.myInclusion) {
+                        myStackPosition = 0;
+                    }
+                } else { // descent order
+                    if (--position < 0) {
+                        while (--myStackPosition != 0) {
+                            db.myPool.unfix(page);
+                            position = myPositionStack[myStackPosition - 1];
+                            page = db.getPage(myPageStack[myStackPosition - 1]);
+
+                            if (--position >= 0) {
+                                myPositionStack[myStackPosition - 1] = position;
+
+                                do {
+                                    final int pageId = BtreePage.getKeyStrOid(page, position);
+
+                                    db.myPool.unfix(page);
+                                    page = db.getPage(pageId);
+                                    myPageStack[myStackPosition] = pageId;
+                                    myPositionStack[myStackPosition] = position = BtreePage.getnItems(page);
+                                } while (++myStackPosition < myPageStack.length);
+
+                                myPositionStack[myStackPosition - 1] = --position;
+                                break;
+                            }
+                        }
+                    } else {
+                        myPositionStack[myStackPosition - 1] = position;
+                    }
+                    if (myStackPosition != 0 && myFrom != null && compareByteArrays(myFrom, page,
+                            position) >= myFrom.myInclusion) {
+                        myStackPosition = 0;
+                    }
+                }
+            } else { // scalar type
+                if (myOrder == ASCENT_ORDER) {
+                    if (++position == myEnd) {
+                        while (--myStackPosition != 0) {
+                            db.myPool.unfix(page);
+                            position = myPositionStack[myStackPosition - 1];
+                            page = db.getPage(myPageStack[myStackPosition - 1]);
+
+                            if (++position <= BtreePage.getnItems(page)) {
+                                myPositionStack[myStackPosition - 1] = position;
+
+                                do {
+                                    final int pageId = BtreePage.getReference(page, BtreePage.MAX_ITEMS - 1 -
+                                            position);
+
+                                    db.myPool.unfix(page);
+                                    page = db.getPage(pageId);
+                                    myEnd = BtreePage.getnItems(page);
+                                    myPageStack[myStackPosition] = pageId;
+                                    myPositionStack[myStackPosition] = position = 0;
+                                } while (++myStackPosition < myPageStack.length);
+
+                                break;
+                            }
+                        }
+                    } else {
+                        myPositionStack[myStackPosition - 1] = position;
+                    }
+                    if (myStackPosition != 0 && myTo != null && -BtreePage.compare(myTo, page,
+                            position) >= myTo.myInclusion) {
+                        myStackPosition = 0;
+                    }
+                } else { // descent order
+                    if (--position < 0) {
+                        while (--myStackPosition != 0) {
+                            db.myPool.unfix(page);
+                            position = myPositionStack[myStackPosition - 1];
+                            page = db.getPage(myPageStack[myStackPosition - 1]);
+
+                            if (--position >= 0) {
+                                myPositionStack[myStackPosition - 1] = position;
+
+                                do {
+                                    final int pageId = BtreePage.getReference(page, BtreePage.MAX_ITEMS - 1 -
+                                            position);
+
+                                    db.myPool.unfix(page);
+                                    page = db.getPage(pageId);
+                                    myPageStack[myStackPosition] = pageId;
+                                    myPositionStack[myStackPosition] = position = BtreePage.getnItems(page);
+                                } while (++myStackPosition < myPageStack.length);
+
+                                myPositionStack[myStackPosition - 1] = --position;
+                                break;
+                            }
+                        }
+                    } else {
+                        myPositionStack[myStackPosition - 1] = position;
+                    }
+
+                    if (myStackPosition != 0 && myFrom != null && BtreePage.compare(myFrom, page,
+                            position) >= myFrom.myInclusion) {
+                        myStackPosition = 0;
+                    }
+                }
+            }
+
+            if (db.myConcurrentIterator && myStackPosition != 0) {
+                myNextKey = getCurrentKey(page, position);
+            }
+
+            db.myPool.unfix(page);
+        }
+
+        private void refresh() {
+            if (myStackPosition != 0) {
+                if (myNextKey == null) {
+                    reset();
+                } else {
+                    if (myOrder == ASCENT_ORDER) {
+                        myFrom = myNextKey.myKey;
+                    } else {
+                        myTo = myNextKey.myKey;
+                    }
+
+                    final int next = myNextKey.myOID;
+
+                    reset();
+
+                    final StorageImpl db = (StorageImpl) getStorage();
+
+                    while (true) {
+                        final int position = myPositionStack[myStackPosition - 1];
+                        final Page page = db.getPage(myPageStack[myStackPosition - 1]);
+                        final int oid = myType == ClassDescriptor.TP_STRING ||
+                                myType == ClassDescriptor.TP_ARRAY_OF_BYTES ? BtreePage.getKeyStrOid(page, position)
+                                        : BtreePage.getReference(page, BtreePage.MAX_ITEMS - 1 - position);
+
+                        if (oid != next) {
+                            gotoNextItem(page, position);
+                        } else {
+                            db.myPool.unfix(page);
+                            break;
+                        }
+                    }
+                }
+            }
+
+            myCounter = myUpdateCounter;
+        }
+
+        BtreeKey getCurrentKey(final Page aPage, final int aPosition) {
+            final BtreeKey key;
+
+            switch (myType) {
+                case ClassDescriptor.TP_STRING:
+                    key = new BtreeKey(null, BtreePage.getKeyStrOid(aPage, aPosition));
+                    key.getStr(aPage, aPosition);
+                    break;
+                case ClassDescriptor.TP_ARRAY_OF_BYTES:
+                    key = new BtreeKey(null, BtreePage.getKeyStrOid(aPage, aPosition));
+                    key.getByteArray(aPage, aPosition);
+                    break;
+                default:
+                    key = new BtreeKey(null, BtreePage.getReference(aPage, BtreePage.MAX_ITEMS - 1 - aPosition));
+                    key.extract(aPage, BtreePage.FIRST_KEY_OFFSET + aPosition * ClassDescriptor.SIZE_OF[myType],
+                            myType);
+            }
+
+            return key;
+        }
+
+        @Override
+        public void remove() {
+            if (myCurrentPage == 0) {
+                throw new NoSuchElementException();
+            }
+
+            final StorageImpl db = (StorageImpl) getStorage();
+
+            if (!db.myConcurrentIterator) {
+                if (myCounter != myUpdateCounter) {
+                    throw new ConcurrentModificationException();
+                }
+
+                Page page = db.getPage(myCurrentPage);
+
+                myCurrentKey = getCurrentKey(page, myCurrentPosition);
+                db.myPool.unfix(page);
+
+                if (myStackPosition != 0) {
+                    final int position = myPositionStack[myStackPosition - 1];
+
+                    page = db.getPage(myPageStack[myStackPosition - 1]);
+                    myNextKey = getCurrentKey(page, position);
+                    db.myPool.unfix(page);
+                }
+            }
+
+            Btree.this.removeIfExists(myCurrentKey);
+
+            refresh();
+            myCurrentPage = 0;
+        }
+
+    }
+
+    class BtreeSelectionEntryIterator extends BtreeSelectionIterator<Map.Entry<Object, T>> {
+
+        BtreeSelectionEntryIterator(final Key aFrom, final Key aTo, final int aOrder) {
+            super(aFrom, aTo, aOrder);
+        }
+
+        @Override
+        protected Object getCurrent(final Page aPage, final int aPosition) {
+            final StorageImpl storage = (StorageImpl) getStorage();
+
+            switch (myType) {
+                case ClassDescriptor.TP_STRING:
+                    return new BtreeEntry<T>(storage, unpackStrKey(aPage, aPosition), BtreePage.getKeyStrOid(aPage,
+                            aPosition));
+                case ClassDescriptor.TP_ARRAY_OF_BYTES:
+                    return new BtreeEntry<T>(storage, unpackByteArrayKey(aPage, aPosition), BtreePage.getKeyStrOid(
+                            aPage, aPosition));
+                default:
+                    return new BtreeEntry<T>(storage, unpackKey(storage, aPage, aPosition), BtreePage.getReference(
+                            aPage, BtreePage.MAX_ITEMS - 1 - aPosition));
+            }
+        }
+    }
+
+    class BtreeEntryStartFromIterator extends BtreeSelectionEntryIterator {
+
+        int myStart;
+
+        BtreeEntryStartFromIterator(final int aStart, final int aOrder) {
+            super(null, null, aOrder);
+
+            myStart = aStart;
+
+            reset();
+        }
+
+        @Override
+        void reset() {
+            super.reset();
+
+            int skip = myOrder == ASCENT_ORDER ? myStart : myNumOfElems - myStart - 1;
+
+            while (--skip >= 0 && hasNext()) {
+                next();
+            }
+        }
+
+    }
+
+    static class BtreeEntry<T> implements Map.Entry<Object, T> {
+
+        private final Object myKey;
+
+        private final StorageImpl myStorage;
+
+        private final int myOID;
+
+        BtreeEntry(final StorageImpl aStorage, final Object aKey, final int aOID) {
+            myStorage = aStorage;
+            myKey = aKey;
+            myOID = aOID;
+        }
+
+        @Override
+        public Object getKey() {
+            return myKey;
+        }
+
+        @SuppressWarnings("unchecked")
+        @Override
+        public T getValue() {
+            return (T) myStorage.lookupObject(myOID, null);
+        }
+
+        @Override
+        public T setValue(final T aValue) {
+            throw new UnsupportedOperationException();
+        }
+
+        @Override
+        public boolean equals(final Object aObject) {
+            if (!(aObject instanceof Map.Entry)) {
+                return false;
+            }
+
+            final Map.Entry entry = (Map.Entry) aObject;
+
+            return (getKey() == null ? entry.getKey() == null : getKey().equals(entry.getKey())) &&
+                    (getValue() == null ? entry.getValue() == null : getValue().equals(entry.getValue()));
+        }
+
+        @Override
+        public int hashCode() {
+            return (getKey() == null ? 0 : getKey().hashCode()) ^ (getValue() == null ? 0 : getValue().hashCode());
+        }
+
+        @Override
+        public String toString() {
+            return getKey() + "=" + getValue();
+        }
+
+    }
 }

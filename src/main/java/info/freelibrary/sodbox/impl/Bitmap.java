@@ -1,118 +1,172 @@
+
 package info.freelibrary.sodbox.impl;
 
-public class Bitmap
-{
-    final static byte firstHoleSize [] = 
-    {
-        8,0,1,0,2,0,1,0,3,0,1,0,2,0,1,0,4,0,1,0,2,0,1,0,3,0,1,0,2,0,1,0,
-        5,0,1,0,2,0,1,0,3,0,1,0,2,0,1,0,4,0,1,0,2,0,1,0,3,0,1,0,2,0,1,0,
-        6,0,1,0,2,0,1,0,3,0,1,0,2,0,1,0,4,0,1,0,2,0,1,0,3,0,1,0,2,0,1,0,
-        5,0,1,0,2,0,1,0,3,0,1,0,2,0,1,0,4,0,1,0,2,0,1,0,3,0,1,0,2,0,1,0,
-        7,0,1,0,2,0,1,0,3,0,1,0,2,0,1,0,4,0,1,0,2,0,1,0,3,0,1,0,2,0,1,0,
-        5,0,1,0,2,0,1,0,3,0,1,0,2,0,1,0,4,0,1,0,2,0,1,0,3,0,1,0,2,0,1,0,
-        6,0,1,0,2,0,1,0,3,0,1,0,2,0,1,0,4,0,1,0,2,0,1,0,3,0,1,0,2,0,1,0,
-        5,0,1,0,2,0,1,0,3,0,1,0,2,0,1,0,4,0,1,0,2,0,1,0,3,0,1,0,2,0,1,0
-    };
+/**
+ * A bitmap.
+ */
+public final class Bitmap {
 
-    final static byte lastHoleSize [] = 
-    {
-        8,7,6,6,5,5,5,5,4,4,4,4,4,4,4,4,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,
-        2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,
-        1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,
-        1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,
-        0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
-        0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
-        0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
-        0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
-    };
+    static final byte FIRST_HOLE_SIZE[] = { 8, 0, 1, 0, 2, 0, 1, 0, 3, 0, 1, 0, 2, 0, 1, 0, 4, 0, 1, 0, 2, 0, 1, 0, 3,
+        0, 1, 0, 2, 0, 1, 0, 5, 0, 1, 0, 2, 0, 1, 0, 3, 0, 1, 0, 2, 0, 1, 0, 4, 0, 1, 0, 2, 0, 1, 0, 3, 0, 1, 0, 2, 0,
+        1, 0, 6, 0, 1, 0, 2, 0, 1, 0, 3, 0, 1, 0, 2, 0, 1, 0, 4, 0, 1, 0, 2, 0, 1, 0, 3, 0, 1, 0, 2, 0, 1, 0, 5, 0, 1,
+        0, 2, 0, 1, 0, 3, 0, 1, 0, 2, 0, 1, 0, 4, 0, 1, 0, 2, 0, 1, 0, 3, 0, 1, 0, 2, 0, 1, 0, 7, 0, 1, 0, 2, 0, 1, 0,
+        3, 0, 1, 0, 2, 0, 1, 0, 4, 0, 1, 0, 2, 0, 1, 0, 3, 0, 1, 0, 2, 0, 1, 0, 5, 0, 1, 0, 2, 0, 1, 0, 3, 0, 1, 0, 2,
+        0, 1, 0, 4, 0, 1, 0, 2, 0, 1, 0, 3, 0, 1, 0, 2, 0, 1, 0, 6, 0, 1, 0, 2, 0, 1, 0, 3, 0, 1, 0, 2, 0, 1, 0, 4, 0,
+        1, 0, 2, 0, 1, 0, 3, 0, 1, 0, 2, 0, 1, 0, 5, 0, 1, 0, 2, 0, 1, 0, 3, 0, 1, 0, 2, 0, 1, 0, 4, 0, 1, 0, 2, 0, 1,
+        0, 3, 0, 1, 0, 2, 0, 1, 0 };
 
-    final static byte maxHoleSize [] = {
-        8,7,6,6,5,5,5,5,4,4,4,4,4,4,4,4,4,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,
-        5,4,3,3,2,2,2,2,3,2,2,2,2,2,2,2,4,3,2,2,2,2,2,2,3,2,2,2,2,2,2,2,
-        6,5,4,4,3,3,3,3,3,2,2,2,2,2,2,2,4,3,2,2,2,1,1,1,3,2,1,1,2,1,1,1,
-        5,4,3,3,2,2,2,2,3,2,1,1,2,1,1,1,4,3,2,2,2,1,1,1,3,2,1,1,2,1,1,1,
-        7,6,5,5,4,4,4,4,3,3,3,3,3,3,3,3,4,3,2,2,2,2,2,2,3,2,2,2,2,2,2,2,
-        5,4,3,3,2,2,2,2,3,2,1,1,2,1,1,1,4,3,2,2,2,1,1,1,3,2,1,1,2,1,1,1,
-        6,5,4,4,3,3,3,3,3,2,2,2,2,2,2,2,4,3,2,2,2,1,1,1,3,2,1,1,2,1,1,1,
-        5,4,3,3,2,2,2,2,3,2,1,1,2,1,1,1,4,3,2,2,2,1,1,1,3,2,1,1,2,1,1,0
-    };
+    static final byte LAST_HOLE_SIZE[] = { 8, 7, 6, 6, 5, 5, 5, 5, 4, 4, 4, 4, 4, 4, 4, 4, 3, 3, 3, 3, 3, 3, 3, 3, 3,
+        3, 3, 3, 3, 3, 3, 3, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2,
+        2, 2, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
+        1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0,
+        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+        0, 0, 0, 0, 0, 0, 0, 0, 0 };
 
-    final static byte maxHoleOffset [] = 
-    {
-        0,1,2,2,3,3,3,3,4,4,4,4,4,4,4,4,0,1,5,5,5,5,5,5,0,5,5,5,5,5,5,5,
-        0,1,2,2,0,3,3,3,0,1,6,6,0,6,6,6,0,1,2,2,0,6,6,6,0,1,6,6,0,6,6,6,
-        0,1,2,2,3,3,3,3,0,1,4,4,0,4,4,4,0,1,2,2,0,1,0,3,0,1,0,2,0,1,0,5,
-        0,1,2,2,0,3,3,3,0,1,0,2,0,1,0,4,0,1,2,2,0,1,0,3,0,1,0,2,0,1,0,7,
-        0,1,2,2,3,3,3,3,0,4,4,4,4,4,4,4,0,1,2,2,0,5,5,5,0,1,5,5,0,5,5,5,
-        0,1,2,2,0,3,3,3,0,1,0,2,0,1,0,4,0,1,2,2,0,1,0,3,0,1,0,2,0,1,0,6,
-        0,1,2,2,3,3,3,3,0,1,4,4,0,4,4,4,0,1,2,2,0,1,0,3,0,1,0,2,0,1,0,5,
-        0,1,2,2,0,3,3,3,0,1,0,2,0,1,0,4,0,1,2,2,0,1,0,3,0,1,0,2,0,1,0,0
-    };
+    static final byte MAX_HOLE_SIZE[] = { 8, 7, 6, 6, 5, 5, 5, 5, 4, 4, 4, 4, 4, 4, 4, 4, 4, 3, 3, 3, 3, 3, 3, 3, 3,
+        3, 3, 3, 3, 3, 3, 3, 5, 4, 3, 3, 2, 2, 2, 2, 3, 2, 2, 2, 2, 2, 2, 2, 4, 3, 2, 2, 2, 2, 2, 2, 3, 2, 2, 2, 2, 2,
+        2, 2, 6, 5, 4, 4, 3, 3, 3, 3, 3, 2, 2, 2, 2, 2, 2, 2, 4, 3, 2, 2, 2, 1, 1, 1, 3, 2, 1, 1, 2, 1, 1, 1, 5, 4, 3,
+        3, 2, 2, 2, 2, 3, 2, 1, 1, 2, 1, 1, 1, 4, 3, 2, 2, 2, 1, 1, 1, 3, 2, 1, 1, 2, 1, 1, 1, 7, 6, 5, 5, 4, 4, 4, 4,
+        3, 3, 3, 3, 3, 3, 3, 3, 4, 3, 2, 2, 2, 2, 2, 2, 3, 2, 2, 2, 2, 2, 2, 2, 5, 4, 3, 3, 2, 2, 2, 2, 3, 2, 1, 1, 2,
+        1, 1, 1, 4, 3, 2, 2, 2, 1, 1, 1, 3, 2, 1, 1, 2, 1, 1, 1, 6, 5, 4, 4, 3, 3, 3, 3, 3, 2, 2, 2, 2, 2, 2, 2, 4, 3,
+        2, 2, 2, 1, 1, 1, 3, 2, 1, 1, 2, 1, 1, 1, 5, 4, 3, 3, 2, 2, 2, 2, 3, 2, 1, 1, 2, 1, 1, 1, 4, 3, 2, 2, 2, 1, 1,
+        1, 3, 2, 1, 1, 2, 1, 1, 0 };
 
-    public static long allocate(byte[] bitmap, int begin, int end, long objBitSize) 
-    {
+    static final byte MAX_HOLE_OFFSET[] = { 0, 1, 2, 2, 3, 3, 3, 3, 4, 4, 4, 4, 4, 4, 4, 4, 0, 1, 5, 5, 5, 5, 5, 5, 0,
+        5, 5, 5, 5, 5, 5, 5, 0, 1, 2, 2, 0, 3, 3, 3, 0, 1, 6, 6, 0, 6, 6, 6, 0, 1, 2, 2, 0, 6, 6, 6, 0, 1, 6, 6, 0, 6,
+        6, 6, 0, 1, 2, 2, 3, 3, 3, 3, 0, 1, 4, 4, 0, 4, 4, 4, 0, 1, 2, 2, 0, 1, 0, 3, 0, 1, 0, 2, 0, 1, 0, 5, 0, 1, 2,
+        2, 0, 3, 3, 3, 0, 1, 0, 2, 0, 1, 0, 4, 0, 1, 2, 2, 0, 1, 0, 3, 0, 1, 0, 2, 0, 1, 0, 7, 0, 1, 2, 2, 3, 3, 3, 3,
+        0, 4, 4, 4, 4, 4, 4, 4, 0, 1, 2, 2, 0, 5, 5, 5, 0, 1, 5, 5, 0, 5, 5, 5, 0, 1, 2, 2, 0, 3, 3, 3, 0, 1, 0, 2, 0,
+        1, 0, 4, 0, 1, 2, 2, 0, 1, 0, 3, 0, 1, 0, 2, 0, 1, 0, 6, 0, 1, 2, 2, 3, 3, 3, 3, 0, 1, 4, 4, 0, 4, 4, 4, 0, 1,
+        2, 2, 0, 1, 0, 3, 0, 1, 0, 2, 0, 1, 0, 5, 0, 1, 2, 2, 0, 3, 3, 3, 0, 1, 0, 2, 0, 1, 0, 4, 0, 1, 2, 2, 0, 1, 0,
+        3, 0, 1, 0, 2, 0, 1, 0, 0 };
+
+    private Bitmap() {
+        super();
+    }
+
+    /**
+     * Allocate for supplied bitmap.
+     *
+     * @param aBitmap A bitmap for which to allocate.
+     * @param aBegin A beginning point
+     * @param aEnd An ending point
+     * @param aObjBitSize The object bit size
+     * @return Amount allocated
+     */
+    public static long allocate(final byte[] aBitmap, final int aBegin, final int aEnd, final long aObjBitSize) {
         long holeBitSize = 0;
-        for (int i = begin; i < end; i++) { 
-            int mask = bitmap[i] & 0xFF; 
-            if (holeBitSize + firstHoleSize[mask] >= objBitSize) { 
-                bitmap[i] |= (byte)((1 << (int)(objBitSize - holeBitSize)) - 1); 
-                long pos = (long)i*8 - holeBitSize;
-                if (holeBitSize != 0) { 
-                    while ((holeBitSize -= 8) > 0) { 
-                        bitmap[--i] = (byte)0xFF;
+
+        for (int i = aBegin; i < aEnd; i++) {
+            final int mask = aBitmap[i] & 0xFF;
+
+            if (holeBitSize + FIRST_HOLE_SIZE[mask] >= aObjBitSize) {
+                aBitmap[i] |= (byte) ((1 << (int) (aObjBitSize - holeBitSize)) - 1);
+
+                final long pos = (long) i * 8 - holeBitSize;
+
+                if (holeBitSize != 0) {
+                    while ((holeBitSize -= 8) > 0) {
+                        aBitmap[--i] = (byte) 0xFF;
                     }
-                    bitmap[i-1] |= (byte)~((1 << -(int)holeBitSize) - 1);
+
+                    aBitmap[i - 1] |= (byte) ~((1 << -(int) holeBitSize) - 1);
                 }
+
                 return pos;
-            } else if (Bitmap.maxHoleSize[mask] >= objBitSize) {
-                int holeBitOffset = maxHoleOffset[mask]; 
-                bitmap[i] |= (byte)(((1<<(int)objBitSize) - 1) << holeBitOffset);
-                return (long)i*8 + holeBitOffset;
+            } else if (Bitmap.MAX_HOLE_SIZE[mask] >= aObjBitSize) {
+                final int holeBitOffset = MAX_HOLE_OFFSET[mask];
+
+                aBitmap[i] |= (byte) ((1 << (int) aObjBitSize) - 1 << holeBitOffset);
+
+                return (long) i * 8 + holeBitOffset;
             } else {
-                if (lastHoleSize[mask] == 8) { 
+                if (LAST_HOLE_SIZE[mask] == 8) {
                     holeBitSize += 8;
-                } else { 
-                    holeBitSize = lastHoleSize[mask];
+                } else {
+                    holeBitSize = LAST_HOLE_SIZE[mask];
                 }
             }
         }
+
         return -1;
     }
 
-    public static int locateBitmapEnd(byte[] bitmap, int offs) 
-    { 
-        while (offs != 0 && bitmap[--offs] == 0);
-        return offs;
+    /**
+     * Locate end for bitmap.
+     *
+     * @param aBitmap A bitmap
+     * @param aOffset An offset
+     * @return The end for bitmap
+     */
+    public static int locateBitmapEnd(final byte[] aBitmap, final int aOffset) {
+        int offset = aOffset;
+
+        while (offset != 0 && aBitmap[--offset] == 0) {
+        }
+
+        return offset;
     }
 
-    public static int locateHoleEnd(byte[] bitmap, int offs) 
-    { 
-        while (offs < bitmap.length && bitmap[offs++] == -1);
-        return offs < bitmap.length ? offs : bitmap.length;
+    /**
+     * Locate the hole's end.
+     *
+     * @param aBitmap A bitmap
+     * @param aOffset An offset
+     * @return The end of the hole
+     */
+    public static int locateHoleEnd(final byte[] aBitmap, final int aOffset) {
+        int offset = aOffset;
+
+        while (offset < aBitmap.length && aBitmap[offset++] == -1) {
+        }
+
+        return offset < aBitmap.length ? offset : aBitmap.length;
     }
 
-    public static void free(byte[] bitmap, long objBitPos, long objBitSize) 
-    { 
-        int bitOffs = (int)objBitPos & 7;
-        int offs = (int)(objBitPos >>> 3);
+    /**
+     * Free space.
+     *
+     * @param aBitmap A bitmap
+     * @param aObjBitPosition A object bit position
+     * @param aObjBitSize A object bit size
+     */
+    public static void free(final byte[] aBitmap, final long aObjBitPosition, final long aObjBitSize) {
+        final int bitOffs = (int) aObjBitPosition & 7;
 
-        if (objBitSize > 8 - bitOffs) { 
+        long objBitSize = aObjBitSize;
+        int offs = (int) (aObjBitPosition >>> 3);
+
+        if (objBitSize > 8 - bitOffs) {
             objBitSize -= 8 - bitOffs;
-            bitmap[offs++] &= (1 << bitOffs) - 1;
-            while ((objBitSize -= 8) > 0) { 
-                bitmap[offs++] = (byte)0;
+            aBitmap[offs++] &= (1 << bitOffs) - 1;
+
+            while ((objBitSize -= 8) > 0) {
+                aBitmap[offs++] = (byte) 0;
             }
-            bitmap[offs] &= (byte)~((1 << ((int)objBitSize + 8)) - 1);
-        } else { 
-            bitmap[offs] &= (byte)~(((1 << (int)objBitSize) - 1) << bitOffs); 
+
+            aBitmap[offs] &= (byte) ~((1 << (int) objBitSize + 8) - 1);
+        } else {
+            aBitmap[offs] &= (byte) ~((1 << (int) objBitSize) - 1 << bitOffs);
         }
     }
 
-    public static void reserve(byte[] bitmap, long objBitPos, long objBitSize) 
-    { 
-        while (--objBitSize >= 0) { 
-            bitmap[(int)(objBitPos >>> 3)] |= 1 << (int)(objBitPos & 7);
-            objBitPos += 1;
+    /**
+     * Reserve space.
+     *
+     * @param aBitmap A bitmap
+     * @param aObjBitPosition A object bit position
+     * @param aObjBitSize A object bit size
+     */
+    public static void reserve(final byte[] aBitmap, final long aObjBitPosition, final long aObjBitSize) {
+        long objBitPosition = aObjBitPosition;
+        long objBitSize = aObjBitSize;
+
+        while (--objBitSize >= 0) {
+            aBitmap[(int) (objBitPosition >>> 3)] |= 1 << (int) (objBitPosition & 7);
+            objBitPosition += 1;
         }
     }
+
 }

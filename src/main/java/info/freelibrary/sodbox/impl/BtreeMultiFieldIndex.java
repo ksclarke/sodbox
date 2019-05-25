@@ -1,628 +1,734 @@
+
 package info.freelibrary.sodbox.impl;
-import info.freelibrary.sodbox.*;
 
-import java.lang.reflect.*;
-import java.util.*;
+import java.lang.reflect.Array;
+import java.lang.reflect.Field;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Collection;
+import java.util.Date;
+import java.util.Iterator;
+import java.util.Map;
 
-class MultiFieldValue implements Comparable<MultiFieldValue> { 
-    Comparable[] values;
-    Object       obj;
-    
-    public int compareTo(MultiFieldValue f) { 
-        for (int i = 0; i < values.length; i++) {
-            int diff = values[i].compareTo(f.values[i]);
-            if (diff != 0) { 
+import info.freelibrary.sodbox.Assert;
+import info.freelibrary.sodbox.FieldIndex;
+import info.freelibrary.sodbox.IterableIterator;
+import info.freelibrary.sodbox.Key;
+import info.freelibrary.sodbox.StorageError;
+
+class MultiFieldValue implements Comparable<MultiFieldValue> {
+
+    Comparable[] myValues;
+
+    Object myObject;
+
+    MultiFieldValue(final Object aObject, final Comparable[] aValues) {
+        myObject = aObject;
+        myValues = aValues;
+    }
+
+    @SuppressWarnings("unchecked")
+    @Override
+    public int compareTo(final MultiFieldValue aMultiFieldValue) {
+        for (int index = 0; index < myValues.length; index++) {
+            final int diff = myValues[index].compareTo(aMultiFieldValue.myValues[index]);
+
+            if (diff != 0) {
                 return diff;
             }
         }
+
         return 0;
     }
-    
-    MultiFieldValue(Object obj, Comparable[] values) { 
-        this.obj = obj;
-        this.values = values;
-    }
+
 }
- 
-class BtreeMultiFieldIndex<T> extends Btree<T> implements FieldIndex<T> { 
-    String   className;
-    String[] fieldName;
-    int[]    types;
 
-    transient Class   cls;
-    transient Field[] fld;
+class BtreeMultiFieldIndex<T> extends Btree<T> implements FieldIndex<T> {
 
-    BtreeMultiFieldIndex() {}
-    
-    BtreeMultiFieldIndex(Class cls, String[] fieldName, boolean unique) {
-        this.cls = cls;
-        this.unique = unique;
-        this.fieldName = fieldName;        
-        this.className = ClassDescriptor.getClassName(cls);
+    String myClassName;
+
+    String[] myFieldName;
+
+    int[] myTypes;
+
+    transient Class myClass;
+
+    transient Field[] myField;
+
+    BtreeMultiFieldIndex() {
+    }
+
+    BtreeMultiFieldIndex(final Class aClass, final String[] aFieldName, final boolean aUniqueRestriction) {
+        myClass = aClass;
+        isUniqueKeyIndex = aUniqueRestriction;
+        myFieldName = aFieldName;
+        myClassName = ClassDescriptor.getClassName(aClass);
         locateFields();
-        type = ClassDescriptor.tpArrayOfByte;        
-        types = new int[fieldName.length];
-        for (int i = 0; i < types.length; i++) {
-            types[i] = checkType(fld[i].getType());
+        myType = ClassDescriptor.TP_ARRAY_OF_BYTES;
+        myTypes = new int[aFieldName.length];
+
+        for (int i = 0; i < myTypes.length; i++) {
+            myTypes[i] = checkType(myField[i].getType());
         }
     }
 
-    private final void locateFields() 
-    {
-        fld = new Field[fieldName.length];
-        for (int i = 0; i < fieldName.length; i++) {
-            fld[i] = ClassDescriptor.locateField(cls, fieldName[i]);
-            if (fld[i] == null) { 
-                throw new StorageError(StorageError.INDEXED_FIELD_NOT_FOUND, className + "." + fieldName[i]);
+    private void locateFields() {
+        myField = new Field[myFieldName.length];
+
+        for (int i = 0; i < myFieldName.length; i++) {
+            myField[i] = ClassDescriptor.locateField(myClass, myFieldName[i]);
+
+            if (myField[i] == null) {
+                throw new StorageError(StorageError.INDEXED_FIELD_NOT_FOUND, myClassName + "." + myFieldName[i]);
             }
         }
     }
 
-    public Class getIndexedClass() { 
-        return cls;
+    @Override
+    public Class getIndexedClass() {
+        return myClass;
     }
 
-    public Field[] getKeyFields() { 
-        return fld;
+    @Override
+    public Field[] getKeyFields() {
+        return myField;
     }
 
-    public void onLoad()
-    {
-        cls = ClassDescriptor.loadClass(getStorage(), className);
+    @Override
+    public void onLoad() {
+        myClass = ClassDescriptor.loadClass(getStorage(), myClassName);
         locateFields();
     }
 
-    int compareByteArrays(byte[] key, byte[] item, int offs, int lengtn) { 
+    @Override
+    int compareByteArrays(final byte[] aKey, final byte[] aItem, final int aOffset, final int aLength) {
+        final byte[] a1 = aKey;
+        final byte[] a2 = aItem;
+
         int o1 = 0;
-        int o2 = offs;
-        byte[] a1 = key;
-        byte[] a2 = item;
-        for (int i = 0; i < fld.length && o1 < key.length; i++) {
+        int o2 = aOffset;
+
+        for (int index = 0; index < myField.length && o1 < aKey.length; index++) {
             int diff = 0;
-            switch (types[i]) { 
-              case ClassDescriptor.tpBoolean:
-              case ClassDescriptor.tpByte:
-                diff = a1[o1++] - a2[o2++];
-                break;
-              case ClassDescriptor.tpShort:
-                diff = Bytes.unpack2(a1, o1) - Bytes.unpack2(a2, o2);
-                o1 += 2;
-                o2 += 2;
-                break;
-              case ClassDescriptor.tpChar:
-                diff = (char)Bytes.unpack2(a1, o1) - (char)Bytes.unpack2(a2, o2);
-                o1 += 2;
-                o2 += 2;
-                break;
-              case ClassDescriptor.tpInt:
-              case ClassDescriptor.tpObject:
-              case ClassDescriptor.tpEnum:
-              {
-                  int i1 = Bytes.unpack4(a1, o1);
-                  int i2 = Bytes.unpack4(a2, o2);
-                  diff = i1 < i2 ? -1 : i1 == i2 ? 0 : 1;
-                  o1 += 4;
-                  o2 += 4;
-                  break;
-              }
-              case ClassDescriptor.tpLong:
-              case ClassDescriptor.tpDate:
-              {
-                  long l1 = Bytes.unpack8(a1, o1);
-                  long l2 = Bytes.unpack8(a2, o2);
-                  diff = l1 < l2 ? -1 : l1 == l2 ? 0 : 1;
-                  o1 += 8;
-                  o2 += 8;
-                  break;
-              }
-              case ClassDescriptor.tpFloat:
-              {
-                  float f1 = Float.intBitsToFloat(Bytes.unpack4(a1, o1));
-                  float f2 = Float.intBitsToFloat(Bytes.unpack4(a2, o2));
-                  diff = f1 < f2 ? -1 : f1 == f2 ? 0 : 1;
-                  o1 += 4;
-                  o2 += 4;
-                  break;
-              }
-              case ClassDescriptor.tpDouble:
-              {
-                  double d1 = Double.longBitsToDouble(Bytes.unpack8(a1, o1));
-                  double d2 = Double.longBitsToDouble(Bytes.unpack8(a2, o2));
-                  diff = d1 < d2 ? -1 : d1 == d2 ? 0 : 1;
-                  o1 += 8;
-                  o2 += 8;
-                  break;
-              }
-              case ClassDescriptor.tpString:
-              {
-                  int len1 = Bytes.unpack4(a1, o1);
-                  int len2 = Bytes.unpack4(a2, o2);
-                  o1 += 4;
-                  o2 += 4;
-                  int len = len1 < len2 ? len1 : len2;
-                  while (--len >= 0) { 
-                      diff = (char)Bytes.unpack2(a1, o1) - (char)Bytes.unpack2(a2, o2);
-                      if (diff != 0) { 
-                          return diff;
-                      }
-                      o1 += 2;
-                      o2 += 2;
-                  }
-                  diff = len1 - len2;
-                  break;
-              }
-              case ClassDescriptor.tpArrayOfByte:
-              {
-                  int len1 = Bytes.unpack4(a1, o1);
-                  int len2 = Bytes.unpack4(a2, o2);
-                  o1 += 4;
-                  o2 += 4;
-                  int len = len1 < len2 ? len1 : len2;
-                  while (--len >= 0) { 
-                      diff = a1[o1++] - a2[o2++];
-                      if (diff != 0) { 
-                          return diff;
-                      }
-                  }
-                  diff = len1 - len2;
-                  break;
-              }
-              default:
-                Assert.failed("Invalid type");
+
+            switch (myTypes[index]) {
+                case ClassDescriptor.TP_BOOLEAN:
+                case ClassDescriptor.TP_BYTE:
+                    diff = a1[o1++] - a2[o2++];
+                    break;
+                case ClassDescriptor.TP_SHORT:
+                    diff = Bytes.unpack2(a1, o1) - Bytes.unpack2(a2, o2);
+                    o1 += 2;
+                    o2 += 2;
+                    break;
+                case ClassDescriptor.TP_CHAR:
+                    diff = (char) Bytes.unpack2(a1, o1) - (char) Bytes.unpack2(a2, o2);
+                    o1 += 2;
+                    o2 += 2;
+                    break;
+                case ClassDescriptor.TP_INT:
+                case ClassDescriptor.TP_OBJECT:
+                case ClassDescriptor.TP_ENUM: {
+                    final int i1 = Bytes.unpack4(a1, o1);
+                    final int i2 = Bytes.unpack4(a2, o2);
+
+                    diff = i1 < i2 ? -1 : i1 == i2 ? 0 : 1;
+                    o1 += 4;
+                    o2 += 4;
+                    break;
+                }
+                case ClassDescriptor.TP_LONG:
+                case ClassDescriptor.TP_DATE: {
+                    final long l1 = Bytes.unpack8(a1, o1);
+                    final long l2 = Bytes.unpack8(a2, o2);
+
+                    diff = l1 < l2 ? -1 : l1 == l2 ? 0 : 1;
+                    o1 += 8;
+                    o2 += 8;
+                    break;
+                }
+                case ClassDescriptor.TP_FLOAT: {
+                    final float f1 = Float.intBitsToFloat(Bytes.unpack4(a1, o1));
+                    final float f2 = Float.intBitsToFloat(Bytes.unpack4(a2, o2));
+
+                    diff = f1 < f2 ? -1 : f1 == f2 ? 0 : 1;
+                    o1 += 4;
+                    o2 += 4;
+                    break;
+                }
+                case ClassDescriptor.TP_DOUBLE: {
+                    final double d1 = Double.longBitsToDouble(Bytes.unpack8(a1, o1));
+                    final double d2 = Double.longBitsToDouble(Bytes.unpack8(a2, o2));
+
+                    diff = d1 < d2 ? -1 : d1 == d2 ? 0 : 1;
+                    o1 += 8;
+                    o2 += 8;
+                    break;
+                }
+                case ClassDescriptor.TP_STRING: {
+                    final int len1 = Bytes.unpack4(a1, o1);
+                    final int len2 = Bytes.unpack4(a2, o2);
+
+                    o1 += 4;
+                    o2 += 4;
+
+                    int len = len1 < len2 ? len1 : len2;
+
+                    while (--len >= 0) {
+                        diff = (char) Bytes.unpack2(a1, o1) - (char) Bytes.unpack2(a2, o2);
+
+                        if (diff != 0) {
+                            return diff;
+                        }
+
+                        o1 += 2;
+                        o2 += 2;
+                    }
+
+                    diff = len1 - len2;
+                    break;
+                }
+                case ClassDescriptor.TP_ARRAY_OF_BYTES: {
+                    final int length1 = Bytes.unpack4(a1, o1);
+                    final int length2 = Bytes.unpack4(a2, o2);
+
+                    o1 += 4;
+                    o2 += 4;
+
+                    int length = length1 < length2 ? length1 : length2;
+
+                    while (--length >= 0) {
+                        diff = a1[o1++] - a2[o2++];
+
+                        if (diff != 0) {
+                            return diff;
+                        }
+                    }
+
+                    diff = length1 - length2;
+                    break;
+                }
+                default:
+                    Assert.failed("Invalid type ");
             }
-            if (diff != 0) { 
+
+            if (diff != 0) {
                 return diff;
             }
         }
+
         return 0;
     }
 
-    String convertString(Object s) { 
-        return (String)s;
+    String convertString(final Object aStrValue) {
+        return (String) aStrValue;
     }
 
-    Object unpackByteArrayKey(Page pg, int pos) {
-        int offs = BtreePage.firstKeyOffs + BtreePage.getKeyStrOffs(pg, pos);
-        byte[] data = pg.data;
-        Object values[] = new Object[fld.length];
+    @Override
+    Object unpackByteArrayKey(final Page aPage, final int aPosition) {
+        int offs = BtreePage.FIRST_KEY_OFFSET + BtreePage.getKeyStrOffs(aPage, aPosition);
 
-        for (int i = 0; i < fld.length; i++) {
-            Object v = null;
-            switch (types[i]) { 
-              case ClassDescriptor.tpBoolean:
-                v = Boolean.valueOf(data[offs++] != 0);
-                break;
-              case ClassDescriptor.tpByte:
-                v = new Byte(data[offs++]);
-                break;
-              case ClassDescriptor.tpShort:
-                v = new Short(Bytes.unpack2(data, offs));
-                offs += 2;
-                break;
-              case ClassDescriptor.tpChar:
-                v = new Character((char)Bytes.unpack2(data, offs));
-                offs += 2;
-                break;
-              case ClassDescriptor.tpInt:
-                v = new Integer(Bytes.unpack4(data, offs));
-                offs += 4;
-                break;
-              case ClassDescriptor.tpObject:
-              {
-                  int oid = Bytes.unpack4(data, offs);
-                  v = oid == 0 ? null : ((StorageImpl)getStorage()).lookupObject(oid, null);
-                  offs += 4;
-                  break;
-              }
-              case ClassDescriptor.tpLong:
-                v = new Long(Bytes.unpack8(data, offs));
-                offs += 8;
-                break;
-              case ClassDescriptor.tpEnum:
-                v = fld[i].getType().getEnumConstants()[Bytes.unpack4(data, offs)];
-                offs += 4;
-                break;
-              case ClassDescriptor.tpDate:
-              {
-                  long msec = Bytes.unpack8(data, offs);
-                  v = msec == -1 ? null : new Date(msec);
-                  offs += 8;
-                  break;
-              }
-              case ClassDescriptor.tpFloat:
-                v = new Float(Float.intBitsToFloat(Bytes.unpack4(data, offs)));
-                offs += 4;
-                break;
-              case ClassDescriptor.tpDouble:
-                v = new Double(Double.longBitsToDouble(Bytes.unpack8(data, offs)));
-                offs += 8;
-                break;
-              case ClassDescriptor.tpString:
-              {
-                  int len = Bytes.unpack4(data, offs);
-                  offs += 4;
-                  char[] sval = new char[len];
-                  for (int j = 0; j < len; j++) { 
-                      sval[j] = (char)Bytes.unpack2(data, offs);
-                      offs += 2;
-                  }
-                  v = new String(sval);
-                  break;
-              }
-              case ClassDescriptor.tpArrayOfByte:
-              {
-                  int len = Bytes.unpack4(data, offs);
-                  offs += 4;
-                  byte[] bval = new byte[len];
-                  System.arraycopy(data, offs, bval, 0, len);
-                  offs += len;
-                  break;
-              }
-              default:
-                Assert.failed("Invalid type");
+        final byte[] data = aPage.myData;
+        final Object values[] = new Object[myField.length];
+
+        for (int index = 0; index < myField.length; index++) {
+            Object value = null;
+
+            switch (myTypes[index]) {
+                case ClassDescriptor.TP_BOOLEAN:
+                    value = Boolean.valueOf(data[offs++] != 0);
+                    break;
+                case ClassDescriptor.TP_BYTE:
+                    value = new Byte(data[offs++]);
+                    break;
+                case ClassDescriptor.TP_SHORT:
+                    value = new Short(Bytes.unpack2(data, offs));
+                    offs += 2;
+                    break;
+                case ClassDescriptor.TP_CHAR:
+                    value = new Character((char) Bytes.unpack2(data, offs));
+                    offs += 2;
+                    break;
+                case ClassDescriptor.TP_INT:
+                    value = new Integer(Bytes.unpack4(data, offs));
+                    offs += 4;
+                    break;
+                case ClassDescriptor.TP_OBJECT: {
+                    final int oid = Bytes.unpack4(data, offs);
+                    value = oid == 0 ? null : ((StorageImpl) getStorage()).lookupObject(oid, null);
+                    offs += 4;
+                    break;
+                }
+                case ClassDescriptor.TP_LONG:
+                    value = new Long(Bytes.unpack8(data, offs));
+                    offs += 8;
+                    break;
+                case ClassDescriptor.TP_ENUM:
+                    value = myField[index].getType().getEnumConstants()[Bytes.unpack4(data, offs)];
+                    offs += 4;
+                    break;
+                case ClassDescriptor.TP_DATE: {
+                    final long msec = Bytes.unpack8(data, offs);
+                    value = msec == -1 ? null : new Date(msec);
+                    offs += 8;
+                    break;
+                }
+                case ClassDescriptor.TP_FLOAT:
+                    value = new Float(Float.intBitsToFloat(Bytes.unpack4(data, offs)));
+                    offs += 4;
+                    break;
+                case ClassDescriptor.TP_DOUBLE:
+                    value = new Double(Double.longBitsToDouble(Bytes.unpack8(data, offs)));
+                    offs += 8;
+                    break;
+                case ClassDescriptor.TP_STRING: {
+                    final int length = Bytes.unpack4(data, offs);
+                    final char[] chars = new char[length];
+
+                    offs += 4;
+
+                    for (int j = 0; j < length; j++) {
+                        chars[j] = (char) Bytes.unpack2(data, offs);
+                        offs += 2;
+                    }
+
+                    value = new String(chars);
+                    break;
+                }
+                case ClassDescriptor.TP_ARRAY_OF_BYTES: {
+                    final int length = Bytes.unpack4(data, offs);
+                    final byte[] bytes = new byte[length];
+
+                    offs += 4;
+
+                    System.arraycopy(data, offs, bytes, 0, length);
+                    offs += length;
+                    break;
+                }
+                default:
+                    Assert.failed("Invalid type  ");
             }
-            values[i] = v;
+
+            values[index] = value;
         }
+
         return values;
     }
 
+    private Key extractKey(final Object aObject) {
+        try {
+            final ByteBuffer buf = new ByteBuffer();
 
-    private Key extractKey(Object obj) { 
-        try { 
-            ByteBuffer buf = new ByteBuffer();
-            int dst = 0;
-            for (int i = 0; i < fld.length; i++) { 
-                Field f = (Field)fld[i];
-                switch (types[i]) {
-                  case ClassDescriptor.tpBoolean:
-                    buf.extend(dst+1);
-                    buf.arr[dst++] = (byte)(f.getBoolean(obj) ? 1 : 0);
-                    break;
-                  case ClassDescriptor.tpByte:
-                    buf.extend(dst+1);
-                    buf.arr[dst++] = f.getByte(obj);
-                    break;
-                  case ClassDescriptor.tpShort:
-                    buf.extend(dst+2);
-                    Bytes.pack2(buf.arr, dst, f.getShort(obj));
-                    dst += 2;
-                    break;
-                  case ClassDescriptor.tpChar:
-                    buf.extend(dst+2);
-                    Bytes.pack2(buf.arr, dst, (short)f.getChar(obj));
-                    dst += 2;
-                    break;
-                  case ClassDescriptor.tpInt:
-                    buf.extend(dst+4);
-                    Bytes.pack4(buf.arr, dst, f.getInt(obj));
-                    dst += 4;
-                    break;
-                  case ClassDescriptor.tpObject:
-                  {
-                      Object p = f.get(obj);
-                      buf.extend(dst+4);
-                      Bytes.pack4(buf.arr, dst, getStorage().makePersistent(p));
-                      dst += 4;
-                      break;
-                  }
-                  case ClassDescriptor.tpLong:
-                    buf.extend(dst+8);
-                    Bytes.pack8(buf.arr, dst, f.getLong(obj));
-                    dst += 8;
-                    break;
-                  case ClassDescriptor.tpDate:
-                  {
-                      Date d = (Date)f.get(obj);
-                      buf.extend(dst+8);
-                      Bytes.pack8(buf.arr, dst, d == null ? -1 : d.getTime());
-                      dst += 8;
-                      break;
-                  }
-                  case ClassDescriptor.tpFloat:
-                    buf.extend(dst+4);
-                    Bytes.pack4(buf.arr, dst, Float.floatToIntBits(f.getFloat(obj)));
-                    dst += 4;
-                    break;
-                  case ClassDescriptor.tpDouble:
-                    buf.extend(dst+8);
-                    Bytes.pack8(buf.arr, dst, Double.doubleToLongBits(f.getDouble(obj)));
-                    dst += 8;
-                    break;
-                  case ClassDescriptor.tpEnum:
-                    buf.extend(dst+4);
-                    Bytes.pack4(buf.arr, dst, ((Enum)f.get(obj)).ordinal());
-                    dst += 4;
-                    break;
-                  case ClassDescriptor.tpString:
-                  {
-                      buf.extend(dst+4);
-                      String str = convertString(f.get(obj));
-                      if (str != null) { 
-                          int len = str.length();
-                          Bytes.pack4(buf.arr, dst, len);
-                          dst += 4;
-                          buf.extend(dst + len*2);
-                          for (int j = 0; j < len; j++) { 
-                              Bytes.pack2(buf.arr, dst, (short)str.charAt(j));
-                              dst += 2;
-                          }
-                      } else { 
-                          Bytes.pack4(buf.arr, dst, 0);
-                          dst += 4;
-                      }
-                      break;
-                  }
-                  case ClassDescriptor.tpArrayOfByte:
-                  {
-                      buf.extend(dst+4);
-                      byte[] arr = (byte[])f.get(obj);
-                      if (arr != null) { 
-                          int len = arr.length;
-                          Bytes.pack4(buf.arr, dst, len);
-                          dst += 4;                          
-                          buf.extend(dst + len);
-                          System.arraycopy(arr, 0, buf.arr, dst, len);
-                          dst += len;
-                      } else { 
-                          Bytes.pack4(buf.arr, dst, 0);
-                          dst += 4;
-                      }
-                      break;
-                  }
-                  default:
-                    Assert.failed("Invalid type");
+            int dest = 0;
+
+            for (int index = 0; index < myField.length; index++) {
+                final Field field = myField[index];
+
+                switch (myTypes[index]) {
+                    case ClassDescriptor.TP_BOOLEAN:
+                        buf.extend(dest + 1);
+                        buf.myByteArray[dest++] = (byte) (field.getBoolean(aObject) ? 1 : 0);
+                        break;
+                    case ClassDescriptor.TP_BYTE:
+                        buf.extend(dest + 1);
+                        buf.myByteArray[dest++] = field.getByte(aObject);
+                        break;
+                    case ClassDescriptor.TP_SHORT:
+                        buf.extend(dest + 2);
+                        Bytes.pack2(buf.myByteArray, dest, field.getShort(aObject));
+                        dest += 2;
+                        break;
+                    case ClassDescriptor.TP_CHAR:
+                        buf.extend(dest + 2);
+                        Bytes.pack2(buf.myByteArray, dest, (short) field.getChar(aObject));
+                        dest += 2;
+                        break;
+                    case ClassDescriptor.TP_INT:
+                        buf.extend(dest + 4);
+                        Bytes.pack4(buf.myByteArray, dest, field.getInt(aObject));
+                        dest += 4;
+                        break;
+                    case ClassDescriptor.TP_OBJECT: {
+                        final Object obj = field.get(aObject);
+
+                        buf.extend(dest + 4);
+                        Bytes.pack4(buf.myByteArray, dest, getStorage().makePersistent(obj));
+                        dest += 4;
+                        break;
+                    }
+                    case ClassDescriptor.TP_LONG:
+                        buf.extend(dest + 8);
+                        Bytes.pack8(buf.myByteArray, dest, field.getLong(aObject));
+                        dest += 8;
+                        break;
+                    case ClassDescriptor.TP_DATE: {
+                        final Date date = (Date) field.get(aObject);
+                        buf.extend(dest + 8);
+                        Bytes.pack8(buf.myByteArray, dest, date == null ? -1 : date.getTime());
+                        dest += 8;
+                        break;
+                    }
+                    case ClassDescriptor.TP_FLOAT:
+                        buf.extend(dest + 4);
+                        Bytes.pack4(buf.myByteArray, dest, Float.floatToIntBits(field.getFloat(aObject)));
+                        dest += 4;
+                        break;
+                    case ClassDescriptor.TP_DOUBLE:
+                        buf.extend(dest + 8);
+                        Bytes.pack8(buf.myByteArray, dest, Double.doubleToLongBits(field.getDouble(aObject)));
+                        dest += 8;
+                        break;
+                    case ClassDescriptor.TP_ENUM:
+                        buf.extend(dest + 4);
+                        Bytes.pack4(buf.myByteArray, dest, ((Enum) field.get(aObject)).ordinal());
+                        dest += 4;
+                        break;
+                    case ClassDescriptor.TP_STRING: {
+                        buf.extend(dest + 4);
+
+                        final String str = convertString(field.get(aObject));
+
+                        if (str != null) {
+                            final int len = str.length();
+
+                            Bytes.pack4(buf.myByteArray, dest, len);
+                            dest += 4;
+                            buf.extend(dest + len * 2);
+
+                            for (int j = 0; j < len; j++) {
+                                Bytes.pack2(buf.myByteArray, dest, (short) str.charAt(j));
+                                dest += 2;
+                            }
+                        } else {
+                            Bytes.pack4(buf.myByteArray, dest, 0);
+                            dest += 4;
+                        }
+
+                        break;
+                    }
+                    case ClassDescriptor.TP_ARRAY_OF_BYTES: {
+                        buf.extend(dest + 4);
+
+                        final byte[] arr = (byte[]) field.get(aObject);
+
+                        if (arr != null) {
+                            final int len = arr.length;
+
+                            Bytes.pack4(buf.myByteArray, dest, len);
+                            dest += 4;
+                            buf.extend(dest + len);
+                            System.arraycopy(arr, 0, buf.myByteArray, dest, len);
+                            dest += len;
+                        } else {
+                            Bytes.pack4(buf.myByteArray, dest, 0);
+                            dest += 4;
+                        }
+
+                        break;
+                    }
+                    default:
+                        Assert.failed("Invalid  type");
                 }
             }
+
             return new Key(buf.toArray());
-        } catch (Exception x) { 
-            throw new StorageError(StorageError.ACCESS_VIOLATION, x);
+        } catch (final Exception details) {
+            throw new StorageError(StorageError.ACCESS_VIOLATION, details);
         }
     }
-            
 
-    private Key convertKey(Key key) { 
-        if (key == null) { 
+    private Key convertKey(final Key aKey) {
+        if (aKey == null) {
             return null;
         }
-        if (key.type != ClassDescriptor.tpArrayOfObject) { 
+
+        if (aKey.myType != ClassDescriptor.TP_ARRAY_OF_OBJECTS) {
             throw new StorageError(StorageError.INCOMPATIBLE_KEY_TYPE);
         }
-        Object[] values = (Object[])key.oval;
-        ByteBuffer buf = new ByteBuffer();
-        int dst = 0;
-        for (int i = 0; i < values.length; i++) { 
-            Object v = values[i];
-            switch (types[i]) {
-              case ClassDescriptor.tpBoolean:
-                buf.extend(dst+1);
-                buf.arr[dst++] = (byte)(((Boolean)v).booleanValue() ? 1 : 0);
-                break;
-              case ClassDescriptor.tpByte:
-                buf.extend(dst+1);
-                buf.arr[dst++] = ((Number)v).byteValue();
-                break;
-              case ClassDescriptor.tpShort:
-                buf.extend(dst+2);
-                Bytes.pack2(buf.arr, dst, ((Number)v).shortValue());
-                dst += 2;
-                break;
-              case ClassDescriptor.tpChar:
-                buf.extend(dst+2);
-                Bytes.pack2(buf.arr, dst, (v instanceof Number) ? ((Number)v).shortValue() : (short)((Character)v).charValue());
-                dst += 2;
-                break;
-              case ClassDescriptor.tpInt:
-                buf.extend(dst+4);
-                Bytes.pack4(buf.arr, dst, ((Number)v).intValue());
-                dst += 4;
-                break;
-              case ClassDescriptor.tpObject:
-                buf.extend(dst+4);
-                Bytes.pack4(buf.arr, dst, getStorage().getOid(v));
-                dst += 4;
-                break;
-              case ClassDescriptor.tpLong:
-                buf.extend(dst+8);
-                Bytes.pack8(buf.arr, dst, ((Number)v).longValue());
-                dst += 8;
-                break;
-              case ClassDescriptor.tpDate:
-                buf.extend(dst+8);
-                Bytes.pack8(buf.arr, dst, v == null ? -1 : ((Date)v).getTime());
-                dst += 8;
-                break;
-              case ClassDescriptor.tpFloat:
-                buf.extend(dst+4);
-                Bytes.pack4(buf.arr, dst, Float.floatToIntBits(((Number)v).floatValue()));
-                dst += 4;
-                break;
-              case ClassDescriptor.tpDouble:
-                buf.extend(dst+8);
-                Bytes.pack8(buf.arr, dst, Double.doubleToLongBits(((Number)v).doubleValue()));
-                dst += 8;
-                break;
-              case ClassDescriptor.tpEnum:
-                buf.extend(dst+4);
-                Bytes.pack4(buf.arr, dst, ((Enum)v).ordinal());
-                dst += 4;
-                break;
-              case ClassDescriptor.tpString:
-              {
-                  buf.extend(dst+4);
-                  if (v != null) { 
-                      String str = convertString(v);
-                      int len = str.length();
-                      Bytes.pack4(buf.arr, dst, len);
-                      dst += 4;
-                      buf.extend(dst + len*2);
-                      for (int j = 0; j < len; j++) { 
-                          Bytes.pack2(buf.arr, dst, (short)str.charAt(j));
-                          dst += 2;
-                      }
-                  } else { 
-                      Bytes.pack4(buf.arr, dst, 0);
-                      dst += 4;
-                  }
-                  break;
-              }
-              case ClassDescriptor.tpArrayOfByte:
-              {
-                  buf.extend(dst+4);
-                  if (v != null) { 
-                      byte[] arr = (byte[])v;
-                      int len = arr.length;
-                      Bytes.pack4(buf.arr, dst, len);
-                      dst += 4;                          
-                      buf.extend(dst + len);
-                      System.arraycopy(arr, 0, buf.arr, dst, len);
-                      dst += len;
-                  } else { 
-                      Bytes.pack4(buf.arr, dst, 0);
-                      dst += 4;
-                  }
-                  break;
-              }
-              default:
-                Assert.failed("Invalid type");
-            }
-        }
-        return new Key(buf.toArray(), key.inclusion != 0);
-    }
-            
 
-    public boolean put(T obj) {
-        return super.put(extractKey(obj), obj);
-    }
+        final Object[] values = (Object[]) aKey.myObjectValue;
+        final ByteBuffer buf = new ByteBuffer();
 
-    public T set(T obj) {
-         return super.set(extractKey(obj), obj);
-    }
+        int dest = 0;
 
-    public boolean addAll(Collection<? extends T> c) {
-        MultiFieldValue[] arr = new MultiFieldValue[c.size()];
-	Iterator<? extends T> e = c.iterator();
-        try { 
-            for (int i = 0; e.hasNext(); i++) {
-                T obj = e.next();
-                Comparable[] values = new Comparable[fld.length];
-                for (int j = 0; j < values.length; j++) { 
-                    values[j] = (Comparable)fld[j].get(obj);
+        for (int index = 0; index < values.length; index++) {
+            final Object value = values[index];
+
+            switch (myTypes[index]) {
+                case ClassDescriptor.TP_BOOLEAN:
+                    buf.extend(dest + 1);
+                    buf.myByteArray[dest++] = (byte) (((Boolean) value).booleanValue() ? 1 : 0);
+                    break;
+                case ClassDescriptor.TP_BYTE:
+                    buf.extend(dest + 1);
+                    buf.myByteArray[dest++] = ((Number) value).byteValue();
+                    break;
+                case ClassDescriptor.TP_SHORT:
+                    buf.extend(dest + 2);
+                    Bytes.pack2(buf.myByteArray, dest, ((Number) value).shortValue());
+                    dest += 2;
+                    break;
+                case ClassDescriptor.TP_CHAR:
+                    buf.extend(dest + 2);
+                    Bytes.pack2(buf.myByteArray, dest, value instanceof Number ? ((Number) value).shortValue()
+                            : (short) ((Character) value).charValue());
+                    dest += 2;
+                    break;
+                case ClassDescriptor.TP_INT:
+                    buf.extend(dest + 4);
+                    Bytes.pack4(buf.myByteArray, dest, ((Number) value).intValue());
+                    dest += 4;
+                    break;
+                case ClassDescriptor.TP_OBJECT:
+                    buf.extend(dest + 4);
+                    Bytes.pack4(buf.myByteArray, dest, getStorage().getOid(value));
+                    dest += 4;
+                    break;
+                case ClassDescriptor.TP_LONG:
+                    buf.extend(dest + 8);
+                    Bytes.pack8(buf.myByteArray, dest, ((Number) value).longValue());
+                    dest += 8;
+                    break;
+                case ClassDescriptor.TP_DATE:
+                    buf.extend(dest + 8);
+                    Bytes.pack8(buf.myByteArray, dest, value == null ? -1 : ((Date) value).getTime());
+                    dest += 8;
+                    break;
+                case ClassDescriptor.TP_FLOAT:
+                    buf.extend(dest + 4);
+                    Bytes.pack4(buf.myByteArray, dest, Float.floatToIntBits(((Number) value).floatValue()));
+                    dest += 4;
+                    break;
+                case ClassDescriptor.TP_DOUBLE:
+                    buf.extend(dest + 8);
+                    Bytes.pack8(buf.myByteArray, dest, Double.doubleToLongBits(((Number) value).doubleValue()));
+                    dest += 8;
+                    break;
+                case ClassDescriptor.TP_ENUM:
+                    buf.extend(dest + 4);
+                    Bytes.pack4(buf.myByteArray, dest, ((Enum) value).ordinal());
+                    dest += 4;
+                    break;
+                case ClassDescriptor.TP_STRING: {
+                    buf.extend(dest + 4);
+
+                    if (value != null) {
+                        final String str = convertString(value);
+                        final int len = str.length();
+
+                        Bytes.pack4(buf.myByteArray, dest, len);
+                        dest += 4;
+                        buf.extend(dest + len * 2);
+
+                        for (int j = 0; j < len; j++) {
+                            Bytes.pack2(buf.myByteArray, dest, (short) str.charAt(j));
+                            dest += 2;
+                        }
+                    } else {
+                        Bytes.pack4(buf.myByteArray, dest, 0);
+                        dest += 4;
+                    }
+
+                    break;
                 }
-                arr[i] = new MultiFieldValue(obj, values);
+                case ClassDescriptor.TP_ARRAY_OF_BYTES: {
+                    buf.extend(dest + 4);
+
+                    if (value != null) {
+                        final byte[] arr = (byte[]) value;
+                        final int len = arr.length;
+
+                        Bytes.pack4(buf.myByteArray, dest, len);
+                        dest += 4;
+                        buf.extend(dest + len);
+                        System.arraycopy(arr, 0, buf.myByteArray, dest, len);
+                        dest += len;
+                    } else {
+                        Bytes.pack4(buf.myByteArray, dest, 0);
+                        dest += 4;
+                    }
+
+                    break;
+                }
+                default:
+                    Assert.failed("Invalid type");
             }
-        } catch (Exception x) { 
-            throw new StorageError(StorageError.ACCESS_VIOLATION, x);
         }
-        Arrays.sort(arr);
-	for (int i = 0; i < arr.length; i++) {
-            add((T)arr[i].obj);
-        }
-	return arr.length > 0;
+
+        return new Key(buf.toArray(), aKey.myInclusion != 0);
     }
 
-    public boolean remove(Object obj) {
-        return super.removeIfExists(extractKey(obj), obj);
+    @Override
+    public boolean put(final T aObject) {
+        return super.put(extractKey(aObject), aObject);
     }
 
-    public T remove(Key key) {
-        return super.remove(convertKey(key));
+    @Override
+    public T set(final T aObject) {
+        return super.set(extractKey(aObject), aObject);
     }
-    
-    public boolean containsObject(T obj) {
-        Key key = extractKey(obj);
-        if (unique) { 
+
+    @SuppressWarnings("unchecked")
+    @Override
+    public boolean addAll(final Collection<? extends T> aCollection) {
+        final MultiFieldValue[] array = new MultiFieldValue[aCollection.size()];
+        final Iterator<? extends T> iterator = aCollection.iterator();
+        try {
+            for (int index = 0; iterator.hasNext(); index++) {
+                final T obj = iterator.next();
+                final Comparable[] values = new Comparable[myField.length];
+
+                for (int j = 0; j < values.length; j++) {
+                    values[j] = (Comparable) myField[j].get(obj);
+                }
+
+                array[index] = new MultiFieldValue(obj, values);
+            }
+        } catch (final Exception details) {
+            throw new StorageError(StorageError.ACCESS_VIOLATION, details);
+        }
+
+        Arrays.sort(array);
+
+        for (int index = 0; index < array.length; index++) {
+            add((T) array[index].myObject);
+        }
+
+        return array.length > 0;
+    }
+
+    @Override
+    public boolean remove(final Object aObject) {
+        return super.removeIfExists(extractKey(aObject), aObject);
+    }
+
+    @Override
+    public T remove(final Key aKey) {
+        return super.remove(convertKey(aKey));
+    }
+
+    @Override
+    public boolean containsObject(final T aObject) {
+        final Key key = extractKey(aObject);
+
+        if (isUniqueKeyIndex) {
             return super.get(key) != null;
-        } else { 
-            Object[] mbrs = get(key, key);
-            for (int i = 0; i < mbrs.length; i++) { 
-                if (mbrs[i] == obj) { 
+        } else {
+            final Object[] mbrs = get(key, key);
+
+            for (int i = 0; i < mbrs.length; i++) {
+                if (mbrs[i] == aObject) {
                     return true;
                 }
             }
+
             return false;
         }
     }
 
-    public boolean contains(Object obj) {
-        Key key = extractKey(obj);
-        if (unique) { 
+    @Override
+    public boolean contains(final Object aObject) {
+        final Key key = extractKey(aObject);
+
+        if (isUniqueKeyIndex) {
             return super.get(key) != null;
-        } else { 
-            Object[] mbrs = get(key, key);
-            for (int i = 0; i < mbrs.length; i++) { 
-                if (mbrs[i].equals(obj)) { 
+        } else {
+            final Object[] mbrs = get(key, key);
+
+            for (int i = 0; i < mbrs.length; i++) {
+                if (mbrs[i].equals(aObject)) {
                     return true;
                 }
             }
+
             return false;
         }
     }
 
-    public void append(T obj) {
+    @Override
+    public void append(final T aObject) {
         throw new StorageError(StorageError.UNSUPPORTED_INDEX_TYPE);
     }
 
-    public T[] get(Key from, Key till) {
-        ArrayList list = new ArrayList();
-        if (root != 0) { 
-            BtreePage.find((StorageImpl)getStorage(), root, convertKey(from), convertKey(till), this, height, list);
+    @SuppressWarnings("unchecked")
+    @Override
+    public T[] get(final Key aFrom, final Key aTo) {
+        final ArrayList list = new ArrayList();
+
+        if (myRoot != 0) {
+            BtreePage.find((StorageImpl) getStorage(), myRoot, convertKey(aFrom), convertKey(aTo), this, myHeight,
+                    list);
         }
-        return (T[])list.toArray((T[])Array.newInstance(cls, list.size()));
+
+        return (T[]) list.toArray((T[]) Array.newInstance(myClass, list.size()));
     }
 
-    public T[] getPrefix(String prefix) {
+    @Override
+    public T[] getPrefix(final String aPrefix) {
         throw new StorageError(StorageError.INCOMPATIBLE_KEY_TYPE);
     }
-        
 
-    public T[] prefixSearch(String key) {
+    @Override
+    public T[] prefixSearch(final String aKey) {
         throw new StorageError(StorageError.INCOMPATIBLE_KEY_TYPE);
     }
-        
 
+    @SuppressWarnings("unchecked")
+    @Override
     public T[] toArray() {
-        T[] arr = (T[])Array.newInstance(cls, nElems);
-        if (root != 0) { 
-            BtreePage.traverseForward((StorageImpl)getStorage(), root, type, height, arr, 0);
+        final T[] arr = (T[]) Array.newInstance(myClass, myNumOfElems);
+
+        if (myRoot != 0) {
+            BtreePage.traverseForward((StorageImpl) getStorage(), myRoot, myType, myHeight, arr, 0);
         }
+
         return arr;
     }
 
-    public T get(Key key) {
-        return super.get(convertKey(key));
+    @Override
+    public T get(final Key aKey) {
+        return super.get(convertKey(aKey));
     }
 
-    public IterableIterator<T> iterator(Key from, Key till, int order) {
-        return super.iterator(convertKey(from), convertKey(till), order);
+    @Override
+    public IterableIterator<T> iterator(final Key aFrom, final Key aTo, final int aOrder) {
+        return super.iterator(convertKey(aFrom), convertKey(aTo), aOrder);
     }
 
-    public IterableIterator<Map.Entry<Object,T>> entryIterator(Key from, Key till, int order) {
-        return super.entryIterator(convertKey(from), convertKey(till), order);
+    @Override
+    public IterableIterator<Map.Entry<Object, T>> entryIterator(final Key aFrom, final Key aTo, final int aOrder) {
+        return super.entryIterator(convertKey(aFrom), convertKey(aTo), aOrder);
     }
 
-    public IterableIterator<T> queryByExample(T obj) {
-        Key key = extractKey(obj);
+    public IterableIterator<T> queryByExample(final T aObject) {
+        final Key key = extractKey(aObject);
         return iterator(key, key, ASCENT_ORDER);
     }
 
-    public boolean isCaseInsensitive() { 
+    @Override
+    public boolean isCaseInsensitive() {
         return false;
     }
 }
 
+class BtreeCaseInsensitiveMultiFieldIndex<T> extends BtreeMultiFieldIndex<T> {
 
-class BtreeCaseInsensitiveMultiFieldIndex<T> extends BtreeMultiFieldIndex<T> {    
-    BtreeCaseInsensitiveMultiFieldIndex() {}
-
-    BtreeCaseInsensitiveMultiFieldIndex(Class cls, String[] fieldNames, boolean unique) {
-        super(cls, fieldNames, unique);
+    BtreeCaseInsensitiveMultiFieldIndex() {
     }
 
-    String convertString(Object s) { 
-        return ((String)s).toLowerCase();
+    BtreeCaseInsensitiveMultiFieldIndex(final Class aClass, final String[] aFieldNames,
+            final boolean aUniqueRestriction) {
+        super(aClass, aFieldNames, aUniqueRestriction);
     }
 
-    public boolean isCaseInsensitive() { 
+    @Override
+    String convertString(final Object aStringValue) {
+        return ((String) aStringValue).toLowerCase();
+    }
+
+    @Override
+    public boolean isCaseInsensitive() {
         return true;
     }
+
 }

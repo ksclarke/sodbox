@@ -1,30 +1,45 @@
+
 package info.freelibrary.sodbox.impl;
 
-import info.freelibrary.sodbox.*;
+import info.freelibrary.sodbox.IFile;
+import info.freelibrary.sodbox.ReplicationMasterStorage;
 
+public class ReplicationMasterStorageImpl extends StorageImpl implements ReplicationMasterStorage {
 
-public class ReplicationMasterStorageImpl extends StorageImpl implements ReplicationMasterStorage
-{ 
-    public ReplicationMasterStorageImpl(int port, String[] hosts, int asyncBufSize, String pageTimestampFile) { 
-        this.port = port;
-        this.hosts = hosts;
-        this.asyncBufSize = asyncBufSize;
-        this.pageTimestampFile =  pageTimestampFile;
+    int myPort;
+
+    String[] myHosts;
+
+    int myAsyncBufSize;
+
+    String myPageTimestampFilePath;
+
+    /**
+     * Creates a master storage.
+     *
+     * @param aPort A port
+     * @param aHosts A host array
+     * @param aAsyncBufferSize A asynchronous buffer size
+     * @param aPageTimestampFilePath A page timestamp file path
+     */
+    public ReplicationMasterStorageImpl(final int aPort, final String[] aHosts, final int aAsyncBufferSize,
+            final String aPageTimestampFilePath) {
+        myPort = aPort;
+        myHosts = aHosts;
+        myAsyncBufSize = aAsyncBufferSize;
+        myPageTimestampFilePath = aPageTimestampFilePath;
     }
-    
-    public void open(IFile file, long pagePoolSize) {
-        super.open(asyncBufSize != 0 
-                   ? (ReplicationMasterFile)new AsyncReplicationMasterFile(this, file, asyncBufSize, pageTimestampFile)
-                   : new ReplicationMasterFile(this, file, pageTimestampFile),
-                   pagePoolSize);
+
+    @Override
+    public void open(final IFile aFile, final long aPagePoolSize) {
+        super.open(myAsyncBufSize != 0 ? (ReplicationMasterFile) new AsyncReplicationMasterFile(this, aFile,
+                myAsyncBufSize, myPageTimestampFilePath) : new ReplicationMasterFile(this, aFile,
+                        myPageTimestampFilePath), aPagePoolSize);
     }
 
-    public int getNumberOfAvailableHosts() { 
-        return ((ReplicationMasterFile)pool.file).getNumberOfAvailableHosts();
+    @Override
+    public int getNumberOfAvailableHosts() {
+        return ((ReplicationMasterFile) myPool.myFile).getNumberOfAvailableHosts();
     }
 
-    int      port;
-    String[] hosts;
-    int      asyncBufSize;
-    String   pageTimestampFile;
 }

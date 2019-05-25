@@ -1,282 +1,360 @@
+
 package info.freelibrary.sodbox.impl;
-import info.freelibrary.sodbox.*;
 
-import java.lang.reflect.*;
-import java.util.*;
+import java.lang.reflect.Array;
+import java.lang.reflect.Field;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Collection;
+import java.util.Date;
+import java.util.Iterator;
+import java.util.Map;
 
-class ThickFieldIndex<T> extends ThickIndex<T> implements FieldIndex<T> 
-{
-    String fieldName;
-    int type;
-    Class cls;
-    transient Field fld;
-    
-    static Field locateField(Class cls, String fieldName) {
-        Field fld = ClassDescriptor.locateField(cls, fieldName);
-        if (fld == null) { 
-            throw new StorageError(StorageError.INDEXED_FIELD_NOT_FOUND, cls.getName() + "." + fieldName);
+import info.freelibrary.sodbox.Assert;
+import info.freelibrary.sodbox.Constants;
+import info.freelibrary.sodbox.FieldIndex;
+import info.freelibrary.sodbox.IterableIterator;
+import info.freelibrary.sodbox.Key;
+import info.freelibrary.sodbox.MessageCodes;
+import info.freelibrary.sodbox.StorageError;
+import info.freelibrary.util.Logger;
+import info.freelibrary.util.LoggerFactory;
+
+class ThickFieldIndex<T> extends ThickIndex<T> implements FieldIndex<T> {
+
+    private static final Logger LOGGER = LoggerFactory.getLogger(ThickFieldIndex.class, Constants.MESSAGES);
+
+    String myFieldName;
+
+    int myType;
+
+    Class myClass;
+
+    transient Field myField;
+
+    ThickFieldIndex() {
+    }
+
+    ThickFieldIndex(final StorageImpl aStorageImpl, final Class aClass, final String aFieldName) {
+        this(aStorageImpl, aClass, aFieldName, locateField(aClass, aFieldName));
+    }
+
+    ThickFieldIndex(final StorageImpl aStorageImpl, final Class aClass, final String aFieldName, final Field aField) {
+        super(aStorageImpl, aField.getType());
+
+        myType = Btree.checkType(aField.getType());
+        myClass = aClass;
+        myField = aField;
+        myFieldName = aFieldName;
+    }
+
+    static Field locateField(final Class aClass, final String aFieldName) {
+        final Field field = ClassDescriptor.locateField(aClass, aFieldName);
+
+        if (field == null) {
+            throw new StorageError(StorageError.INDEXED_FIELD_NOT_FOUND, aClass.getName() + "." + aFieldName);
         }
-        return fld;
+
+        return field;
     }
 
-    private final void locateField() {
-        fld = locateField(cls, fieldName);
-    }
-    
-    public Class getIndexedClass() { 
-        return cls;
+    private void locateField() {
+        myField = locateField(myClass, myFieldName);
     }
 
-    public Field[] getKeyFields() { 
-        return new Field[]{fld};
+    @Override
+    public Class getIndexedClass() {
+        return myClass;
     }
 
-    public void onLoad()
-    {
+    @Override
+    public Field[] getKeyFields() {
+        return new Field[] { myField };
+    }
+
+    @Override
+    public void onLoad() {
         locateField();
     }
 
-    ThickFieldIndex() {}
-
-    ThickFieldIndex(StorageImpl db, Class cls, String fieldName) {
-        this(db, cls, fieldName, locateField(cls, fieldName));
+    protected String transformStringKey(final String aKey) {
+        return aKey;
     }
 
-    ThickFieldIndex(StorageImpl db, Class cls, String fieldName, Field fld) {
-        super(db, fld.getType());
-        type = Btree.checkType(fld.getType());
-        this.cls = cls;
-        this.fld = fld;
-        this.fieldName = fieldName;
+    protected Key transformKey(final Key aKey) {
+        return aKey;
     }
 
-    protected String transformStringKey(String key) { 
-        return key;
-    }
+    private Key extractKey(final Object aObj) {
+        try {
+            final Field field = myField;
 
-    protected Key transformKey(Key key) { 
-        return key;
-    }  
-
-    private Key extractKey(Object obj) { 
-        try { 
-            Field f = fld;
             Key key = null;
-            switch (type) {
-              case ClassDescriptor.tpBoolean:
-                key = new Key(f.getBoolean(obj));
-                break;
-              case ClassDescriptor.tpByte:
-                key = new Key(f.getByte(obj));
-                break;
-              case ClassDescriptor.tpShort:
-                key = new Key(f.getShort(obj));
-                break;
-              case ClassDescriptor.tpChar:
-                key = new Key(f.getChar(obj));
-                break;
-              case ClassDescriptor.tpInt:
-                key = new Key(f.getInt(obj));
-                break;            
-              case ClassDescriptor.tpObject:
-                {
-                    Object val = f.get(obj);
-                    key = new Key(val, getStorage().makePersistent(val), true);
+
+            switch (myType) {
+                case ClassDescriptor.TP_BOOLEAN:
+                    key = new Key(field.getBoolean(aObj));
+                    break;
+                case ClassDescriptor.TP_BYTE:
+                    key = new Key(field.getByte(aObj));
+                    break;
+                case ClassDescriptor.TP_SHORT:
+                    key = new Key(field.getShort(aObj));
+                    break;
+                case ClassDescriptor.TP_CHAR:
+                    key = new Key(field.getChar(aObj));
+                    break;
+                case ClassDescriptor.TP_INT:
+                    key = new Key(field.getInt(aObj));
+                    break;
+                case ClassDescriptor.TP_OBJECT: {
+                    final Object value = field.get(aObj);
+
+                    key = new Key(value, getStorage().makePersistent(value), true);
                     break;
                 }
-              case ClassDescriptor.tpLong:
-                key = new Key(f.getLong(obj));
-                break;            
-              case ClassDescriptor.tpDate:
-                key = new Key((Date)f.get(obj));
-                break;
-              case ClassDescriptor.tpFloat:
-                key = new Key(f.getFloat(obj));
-                break;
-              case ClassDescriptor.tpDouble:
-                key = new Key(f.getDouble(obj));
-                break;
-              case ClassDescriptor.tpEnum:
-                key = new Key((Enum)f.get(obj));
-                break;
-              case ClassDescriptor.tpString:
-                {
-                    Object val = f.get(obj);
-                    if (val != null) { 
-                        key = new Key(transformStringKey((String)val));
+                case ClassDescriptor.TP_LONG:
+                    key = new Key(field.getLong(aObj));
+                    break;
+                case ClassDescriptor.TP_DATE:
+                    key = new Key((Date) field.get(aObj));
+                    break;
+                case ClassDescriptor.TP_FLOAT:
+                    key = new Key(field.getFloat(aObj));
+                    break;
+                case ClassDescriptor.TP_DOUBLE:
+                    key = new Key(field.getDouble(aObj));
+                    break;
+                case ClassDescriptor.TP_ENUM:
+                    key = new Key((Enum) field.get(aObj));
+                    break;
+                case ClassDescriptor.TP_STRING: {
+                    final Object value = field.get(aObj);
+
+                    if (value != null) {
+                        key = new Key(transformStringKey((String) value));
                     }
                 }
-                break;
-              default:
-                Assert.failed("Invalid type");
+                    break;
+                default:
+                    Assert.failed(LOGGER.getMessage(MessageCodes.SB_027));
             }
             return key;
-        } catch (Exception x) { 
+        } catch (final Exception x) {
             throw new StorageError(StorageError.ACCESS_VIOLATION, x);
         }
     }
-            
-    public boolean add(T obj) {
-        return put(obj);
+
+    @Override
+    public boolean add(final T aObj) {
+        return put(aObj);
     }
 
-    public boolean put(T obj) { 
-        Key key = extractKey(obj);
-        return key != null && super.put(key, obj);
+    @Override
+    public boolean put(final T aObj) {
+        final Key key = extractKey(aObj);
+        return key != null && super.put(key, aObj);
     }
 
-    public T set(T obj) {
-        Key key = extractKey(obj);
+    @Override
+    public T set(final T aObj) {
+        final Key key = extractKey(aObj);
+
         if (key == null) {
             throw new StorageError(StorageError.KEY_IS_NULL);
         }
-        return super.set(key, obj);
+
+        return super.set(key, aObj);
     }
 
-    public boolean addAll(Collection<? extends T> c) {
-        FieldValue[] arr = new FieldValue[c.size()];
-	Iterator<? extends T> e = c.iterator();
-        try { 
-            for (int i = 0; e.hasNext(); i++) {
-                T obj = e.next();
-                arr[i] = new FieldValue(obj, fld.get(obj));
+    @Override
+    public boolean addAll(final Collection<? extends T> aCollection) {
+        final FieldValue[] array = new FieldValue[aCollection.size()];
+        final Iterator<? extends T> iterator = aCollection.iterator();
+
+        try {
+            for (int index = 0; iterator.hasNext(); index++) {
+                final T obj = iterator.next();
+
+                array[index] = new FieldValue(obj, myField.get(obj));
             }
-        } catch (Exception x) { 
-            throw new StorageError(StorageError.ACCESS_VIOLATION, x);
+        } catch (final Exception details) {
+            throw new StorageError(StorageError.ACCESS_VIOLATION, details);
         }
-        Arrays.sort(arr);
-	for (int i = 0; i < arr.length; i++) {
-            add((T)arr[i].obj);
+
+        Arrays.sort(array);
+
+        for (int index = 0; index < array.length; index++) {
+            add((T) array[index].myObject);
         }
-	return arr.length > 0;
+
+        return array.length > 0;
     }
 
-    public boolean remove(Object obj) {
-        Key key = extractKey(obj);
-        return key != null && super.removeIfExists(key, (T)obj);
+    @Override
+    public boolean remove(final Object aObj) {
+        final Key key = extractKey(aObj);
+        return key != null && super.removeIfExists(key, (T) aObj);
     }
 
-    public boolean containsObject(T obj) {
-        Key key = extractKey(obj);
-        if (key == null) { 
+    @Override
+    public boolean containsObject(final T aObj) {
+        final Key key = extractKey(aObj);
+
+        if (key == null) {
             return false;
         }
-        Object[] mbrs = get(key, key);
-        for (int i = 0; i < mbrs.length; i++) { 
-            if (mbrs[i] == obj) { 
+
+        final Object[] members = get(key, key);
+
+        for (int index = 0; index < members.length; index++) {
+            if (members[index] == aObj) {
                 return true;
             }
         }
+
         return false;
     }
 
-    public boolean contains(Object obj) {
-        Key key = extractKey(obj);
-        if (key == null) { 
+    @Override
+    public boolean contains(final Object aObj) {
+        final Key key = extractKey(aObj);
+
+        if (key == null) {
             return false;
         }
-        Object[] mbrs = get(key, key);
-        for (int i = 0; i < mbrs.length; i++) { 
-            if (mbrs[i].equals(obj)) { 
+
+        final Object[] members = get(key, key);
+
+        for (int index = 0; index < members.length; index++) {
+            if (members[index].equals(aObj)) {
                 return true;
             }
         }
+
         return false;
     }
 
-    public void append(T obj) {
+    @Override
+    public void append(final T aObj) {
         throw new UnsupportedOperationException();
-    }   
-
-    public T[] getPrefix(String prefix) { 
-        return (T[])super.getPrefix(transformStringKey(prefix));
     }
 
-    protected Object[] extend(Object[] s) { 
-        ArrayList list = new ArrayList();
-        for (int i = 0; i < s.length; i++) { 
-            list.addAll((Collection)s[i]);
+    @Override
+    public T[] getPrefix(final String aPrefix) {
+        return (T[]) super.getPrefix(transformStringKey(aPrefix));
+    }
+
+    @Override
+    protected Object[] extend(final Object[] aArray) {
+        final ArrayList list = new ArrayList();
+
+        for (int index = 0; index < aArray.length; index++) {
+            list.addAll((Collection) aArray[index]);
         }
-        return list.toArray((T[])Array.newInstance(cls, list.size()));        
-    }
-         
-    public T[] prefixSearch(String key) { 
-        return (T[])super.prefixSearch(transformStringKey(key));
+
+        return list.toArray((T[]) Array.newInstance(myClass, list.size()));
     }
 
-    public T[] get(Key from, Key till) {
-        return (T[])super.get(transformKey(from), transformKey(till));
+    @Override
+    public T[] prefixSearch(final String aKey) {
+        return (T[]) super.prefixSearch(transformStringKey(aKey));
     }
 
-    public T[] get(Object from, Object till) {
-        return (T[])super.get(from, till);
+    @Override
+    public T[] get(final Key aFrom, final Key aTo) {
+        return (T[]) super.get(transformKey(aFrom), transformKey(aTo));
     }
 
+    @Override
+    public T[] get(final Object aFrom, final Object aTo) {
+        return (T[]) super.get(aFrom, aTo);
+    }
+
+    @Override
     public T[] toArray() {
-        return (T[])super.toArray();
+        return (T[]) super.toArray();
     }
 
-    public IterableIterator<T> queryByExample(T obj) {
-        Key key = extractKey(obj);
+    public IterableIterator<T> queryByExample(final T aObj) {
+        final Key key = extractKey(aObj);
         return iterator(key, key, ASCENT_ORDER);
     }
 
-    public boolean isCaseInsensitive() { 
+    @Override
+    public boolean isCaseInsensitive() {
         return false;
     }
 }
 
-class ThickCaseInsensitiveFieldIndex<T>  extends ThickFieldIndex<T> {    
-    ThickCaseInsensitiveFieldIndex() {}
+class ThickCaseInsensitiveFieldIndex<T> extends ThickFieldIndex<T> {
 
-    ThickCaseInsensitiveFieldIndex(StorageImpl db, Class cls, String fieldName) {
-        super(db, cls, fieldName);
+    ThickCaseInsensitiveFieldIndex() {
     }
 
-    protected String transformStringKey(String key) { 
-        return key.toLowerCase();
+    ThickCaseInsensitiveFieldIndex(final StorageImpl aStorageImpl, final Class aClass, final String aFieldName) {
+        super(aStorageImpl, aClass, aFieldName);
     }
 
-    protected Key transformKey(Key key) { 
-        if (key != null && key.oval instanceof String) { 
-            key = new Key(((String)key.oval).toLowerCase(), key.inclusion != 0);
+    @Override
+    protected String transformStringKey(final String aKey) {
+        return aKey.toLowerCase();
+    }
+
+    @Override
+    protected Key transformKey(final Key aKey) {
+        Key key = aKey;
+
+        if (key != null && key.myObjectValue instanceof String) {
+            key = new Key(((String) key.myObjectValue).toLowerCase(), key.myInclusion != 0);
         }
+
         return key;
-    }  
-
-    public T get(Key key) {
-        return super.get(transformKey(key));
     }
 
-    public ArrayList<T> getList(Key from, Key till) { 
-        return super.getList(transformKey(from), transformKey(till));
+    @Override
+    public T get(final Key aKey) {
+        return super.get(transformKey(aKey));
     }
 
-    public ArrayList<T> getPrefixList(String prefix) { 
-        return super.getPrefixList(transformStringKey(prefix));
+    @Override
+    public ArrayList<T> getList(final Key aFrom, final Key aTo) {
+        return super.getList(transformKey(aFrom), transformKey(aTo));
     }
 
-    public ArrayList<T> prefixSearchList(String word) { 
-        return super.prefixSearchList(transformStringKey(word));
+    @Override
+    public ArrayList<T> getPrefixList(final String aPrefix) {
+        return super.getPrefixList(transformStringKey(aPrefix));
     }
 
-    public IterableIterator<T> iterator(Key from, Key till, int order) { 
-        return super.iterator(transformKey(from), transformKey(till), order);
+    @Override
+    public ArrayList<T> prefixSearchList(final String aWord) {
+        return super.prefixSearchList(transformStringKey(aWord));
     }
 
-    public  IterableIterator<Map.Entry<Object,T>> entryIterator(Key from, Key till, int order) { 
-        return super.entryIterator(transformKey(from), transformKey(till), order);
+    @Override
+    public IterableIterator<T> iterator(final Key aFrom, final Key aTo, final int aOrder) {
+        return super.iterator(transformKey(aFrom), transformKey(aTo), aOrder);
     }
 
-    public IterableIterator<T> prefixIterator(String prefix, int order) { 
-        return super.prefixIterator(transformStringKey(prefix), order);
+    @Override
+    public IterableIterator<Map.Entry<Object, T>> entryIterator(final Key aFrom, final Key aTo, final int aOrder) {
+        return super.entryIterator(transformKey(aFrom), transformKey(aTo), aOrder);
     }
 
-    public int indexOf(Key key) { 
-        return super.indexOf(transformKey(key));
+    @Override
+    public IterableIterator<T> prefixIterator(final String aPrefix, final int aOrder) {
+        return super.prefixIterator(transformStringKey(aPrefix), aOrder);
     }
 
-    public boolean isCaseInsensitive() { 
+    @Override
+    public int indexOf(final Key aKey) {
+        return super.indexOf(transformKey(aKey));
+    }
+
+    @Override
+    public boolean isCaseInsensitive() {
         return true;
     }
+
 }

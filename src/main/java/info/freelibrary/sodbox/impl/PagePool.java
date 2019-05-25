@@ -1,308 +1,387 @@
+
 package info.freelibrary.sodbox.impl;
-import info.freelibrary.sodbox.*;
 
-class PagePool { 
-    LRU     lru;
-    Page    freePages;
-    Page    hashTable[];
-    int     poolSize;
-    boolean autoExtended;
-    IFile   file;
-    long    lruLimit;
+import java.util.Arrays;
 
-    int     nDirtyPages;
-    Page    dirtyPages[];
-    
-    boolean flushing;
+import info.freelibrary.sodbox.Assert;
+import info.freelibrary.sodbox.IFile;
+
+class PagePool {
 
     static final int INFINITE_POOL_INITIAL_SIZE = 8;
 
-    PagePool(int poolSize, long lruLimit) { 
-        if (poolSize == 0) { 
-            autoExtended = true;
-            poolSize = INFINITE_POOL_INITIAL_SIZE;
-        }            
-        this.poolSize = poolSize;
-        this.lruLimit = lruLimit;
+    LRU myLRU;
+
+    Page myFreePages;
+
+    Page myHashTable[];
+
+    int myPoolSize;
+
+    boolean isAutoExtended;
+
+    IFile myFile;
+
+    long myLruLimit;
+
+    int myDirtyPagesCount;
+
+    Page myDirtyPages[];
+
+    boolean isFlushing;
+
+    /**
+     * Creates a page pool.
+     *
+     * @param poolSize
+     * @param aLruLimit
+     */
+    PagePool(final int aPoolSize, final long aLruLimit) {
+        if (aPoolSize == 0) {
+            isAutoExtended = true;
+            myPoolSize = INFINITE_POOL_INITIAL_SIZE;
+        } else {
+            myPoolSize = aPoolSize;
+        }
+
+        myLruLimit = aLruLimit;
     }
 
-    final Page find(long addr, int state) {     
-        //Assert.that((addr & (Page.pageSize-1)) == 0);
-        Page pg;
-        int pageNo = (int)(addr >>> Page.pageSizeLog);
-        int hashCode = pageNo % poolSize;
+    final Page find(final long aAddress, final int aState) {
+        final int pageNo = (int) (aAddress >>> Page.PAGE_SIZE_LOG);
 
-        synchronized (this) {           
-            for (pg = hashTable[hashCode]; pg != null; pg = pg.collisionChain) 
-            { 
-                if (pg.offs == addr) {
-                    if (pg.accessCount++ == 0) { 
-                        pg.unlink();
+        int hashCode = pageNo % myPoolSize;
+        Page page;
+
+        synchronized (this) {
+            for (page = myHashTable[hashCode]; page != null; page = page.myCollisionChain) {
+                if (page.myOffset == aAddress) {
+                    if (page.myAccessCount++ == 0) {
+                        page.unlink();
                     }
+
                     break;
                 }
             }
-            if (pg == null) { 
-                pg = freePages;
-                if (pg != null) { 
-                    if (pg.data == null) {
-                        pg.data = new byte[Page.pageSize];
+
+            if (page == null) {
+                page = myFreePages;
+
+                if (page != null) {
+                    if (page.myData == null) {
+                        page.myData = new byte[Page.PAGE_SIZE];
                     }
-                    freePages = (Page)pg.next;
-                } else if (autoExtended) { 
-                    if (pageNo >= poolSize) {
-                        int newPoolSize = pageNo >= poolSize*2 ? pageNo+1 : poolSize*2;
-                        Page[] newHashTable = new Page[newPoolSize];
-                        System.arraycopy(hashTable, 0, newHashTable, 0, hashTable.length);
-                        hashTable = newHashTable;
-                        poolSize = newPoolSize;
+
+                    myFreePages = (Page) page.myNext;
+                } else if (isAutoExtended) {
+                    if (pageNo >= myPoolSize) {
+                        final int newPoolSize = pageNo >= myPoolSize * 2 ? pageNo + 1 : myPoolSize * 2;
+                        final Page[] newHashTable = new Page[newPoolSize];
+
+                        System.arraycopy(myHashTable, 0, newHashTable, 0, myHashTable.length);
+
+                        myHashTable = newHashTable;
+                        myPoolSize = newPoolSize;
                     }
-                    pg = new Page();
-                    pg.data = new byte[Page.pageSize];
+
+                    page = new Page();
+                    page.myData = new byte[Page.PAGE_SIZE];
                     hashCode = pageNo;
-                } else { 
-                    Assert.that("unfixed page available", lru.prev != lru);
-                    pg = (Page)lru.prev;
-                    pg.unlink();
-                    synchronized (pg) { 
-                        if ((pg.state & Page.psDirty) != 0) { 
-                            pg.state = 0;
-                            file.write(pg.offs, pg.data);
-                            if (!flushing) { 
-                                dirtyPages[pg.writeQueueIndex] = dirtyPages[--nDirtyPages];
-                                dirtyPages[pg.writeQueueIndex].writeQueueIndex = pg.writeQueueIndex;
+                } else {
+                    Assert.that("unfixed page available", myLRU.myPrevious != myLRU);
+
+                    page = (Page) myLRU.myPrevious;
+                    page.unlink();
+
+                    synchronized (page) {
+                        if ((page.myState & Page.PS_DIRTY) != 0) {
+                            page.myState = 0;
+                            myFile.write(page.myOffset, page.myData);
+
+                            if (!isFlushing) {
+                                myDirtyPages[page.myWriteQueueIndex] = myDirtyPages[--myDirtyPagesCount];
+                                myDirtyPages[page.myWriteQueueIndex].myWriteQueueIndex = page.myWriteQueueIndex;
                             }
                         }
                     }
-                    int h = (int)(pg.offs >> Page.pageSizeLog) % poolSize;
-                    Page curr = hashTable[h], prev = null;
-                    while (curr != pg) { 
-                        prev = curr;
-                        curr = curr.collisionChain;
+
+                    final int h = (int) (page.myOffset >> Page.PAGE_SIZE_LOG) % myPoolSize;
+
+                    Page current = myHashTable[h];
+                    Page previous = null;
+
+                    while (current != page) {
+                        previous = current;
+                        current = current.myCollisionChain;
                     }
-                    if (prev == null) { 
-                        hashTable[h] = pg.collisionChain;
-                    } else { 
-                        prev.collisionChain = pg.collisionChain;
+
+                    if (previous == null) {
+                        myHashTable[h] = page.myCollisionChain;
+                    } else {
+                        previous.myCollisionChain = page.myCollisionChain;
                     }
                 }
-                pg.accessCount = 1;
-                pg.offs = addr;
-                pg.state = Page.psRaw;
-                pg.collisionChain = hashTable[hashCode];
-                hashTable[hashCode] = pg;
+
+                page.myAccessCount = 1;
+                page.myOffset = aAddress;
+                page.myState = Page.PS_RAW;
+                page.myCollisionChain = myHashTable[hashCode];
+                myHashTable[hashCode] = page;
             }
-            if ((pg.state & Page.psDirty) == 0 && (state & Page.psDirty) != 0)
-            {
-                Assert.that(!flushing);
-                if (nDirtyPages >= dirtyPages.length) {                     
-                    Page[] newDirtyPages = new Page[nDirtyPages*2];
-                    System.arraycopy(dirtyPages, 0, newDirtyPages, 0, dirtyPages.length);
-                    dirtyPages = newDirtyPages;
+
+            if ((page.myState & Page.PS_DIRTY) == 0 && (aState & Page.PS_DIRTY) != 0) {
+                Assert.that(!isFlushing);
+
+                if (myDirtyPagesCount >= myDirtyPages.length) {
+                    final Page[] newDirtyPages = new Page[myDirtyPagesCount * 2];
+
+                    System.arraycopy(myDirtyPages, 0, newDirtyPages, 0, myDirtyPages.length);
+
+                    myDirtyPages = newDirtyPages;
                 }
-                dirtyPages[nDirtyPages] = pg;
-                pg.writeQueueIndex = nDirtyPages++;
-                pg.state |= Page.psDirty;
+
+                myDirtyPages[myDirtyPagesCount] = page;
+                page.myWriteQueueIndex = myDirtyPagesCount++;
+                page.myState |= Page.PS_DIRTY;
             }
-            if ((pg.state & Page.psRaw) != 0) {
-                if (file.read(pg.offs, pg.data) < Page.pageSize) {
-                    for (int i = 0; i < Page.pageSize; i++) { 
-                        pg.data[i] = 0;
+
+            if ((page.myState & Page.PS_RAW) != 0) {
+                if (myFile.read(page.myOffset, page.myData) < Page.PAGE_SIZE) {
+                    for (int i = 0; i < Page.PAGE_SIZE; i++) {
+                        page.myData[i] = 0;
                     }
                 }
-                pg.state &= ~Page.psRaw;
-            }           
+
+                page.myState &= ~Page.PS_RAW;
+            }
         }
-        return pg;
+
+        return page;
     }
 
+    final synchronized void copy(final long aDest, final long aSrc, final long aSize) {
+        long dest = aDest;
+        long src = aSrc;
+        long size = aSize;
+        int dstOffs = (int) dest & Page.PAGE_SIZE - 1;
+        int srcOffs = (int) src & Page.PAGE_SIZE - 1;
 
-    final synchronized void copy(long dst, long src, long size) 
-    {
-        int dstOffs = (int)dst & (Page.pageSize-1);
-        int srcOffs = (int)src & (Page.pageSize-1);
-        dst -= dstOffs;
+        dest -= dstOffs;
         src -= srcOffs;
-        Page dstPage = find(dst, Page.psDirty);
+
+        Page dstPage = find(dest, Page.PS_DIRTY);
         Page srcPage = find(src, 0);
-        do { 
-            if (dstOffs == Page.pageSize) { 
+
+        do {
+            if (dstOffs == Page.PAGE_SIZE) {
                 unfix(dstPage);
-                dst += Page.pageSize;
-                dstPage = find(dst, Page.psDirty);
+
+                dest += Page.PAGE_SIZE;
+                dstPage = find(dest, Page.PS_DIRTY);
                 dstOffs = 0;
             }
-            if (srcOffs == Page.pageSize) { 
+
+            if (srcOffs == Page.PAGE_SIZE) {
                 unfix(srcPage);
-                src += Page.pageSize;
+
+                src += Page.PAGE_SIZE;
                 srcPage = find(src, 0);
                 srcOffs = 0;
             }
+
             long len = size;
-            if (len > Page.pageSize - srcOffs) { 
-                len = Page.pageSize - srcOffs; 
+
+            if (len > Page.PAGE_SIZE - srcOffs) {
+                len = Page.PAGE_SIZE - srcOffs;
             }
-            if (len > Page.pageSize - dstOffs) { 
-                len = Page.pageSize - dstOffs; 
+
+            if (len > Page.PAGE_SIZE - dstOffs) {
+                len = Page.PAGE_SIZE - dstOffs;
             }
-            System.arraycopy(srcPage.data, srcOffs, dstPage.data, dstOffs, (int)len);
+
+            System.arraycopy(srcPage.myData, srcOffs, dstPage.myData, dstOffs, (int) len);
+
             srcOffs += len;
             dstOffs += len;
             size -= len;
         } while (size != 0);
+
         unfix(dstPage);
         unfix(srcPage);
     }
 
-    final void write(long dstPos, byte[] src) 
-    {
-        Assert.that((dstPos & (Page.pageSize-1)) == 0);
-        Assert.that((src.length & (Page.pageSize-1)) == 0);
-        for (int i = 0; i < src.length;) { 
-            Page pg = find(dstPos, Page.psDirty);
-            byte[] dst = pg.data;
-            for (int j = 0; j < Page.pageSize; j++) { 
-                dst[j] = src[i++];
+    final void write(final long aDestPosition, final byte[] aSrc) {
+        Assert.that((aDestPosition & Page.PAGE_SIZE - 1) == 0);
+        Assert.that((aSrc.length & Page.PAGE_SIZE - 1) == 0);
+
+        long destPosition = aDestPosition;
+
+        for (int index = 0; index < aSrc.length;) {
+            final Page page = find(destPosition, Page.PS_DIRTY);
+            final byte[] dest = page.myData;
+
+            for (int j = 0; j < Page.PAGE_SIZE; j++) {
+                dest[j] = aSrc[index++];
             }
-            unfix(pg);
-            dstPos += Page.pageSize;
+
+            unfix(page);
+            destPosition += Page.PAGE_SIZE;
         }
     }
 
-    final void open(IFile f) 
-    {
-        file = f;
+    final void open(final IFile aFile) {
+        myFile = aFile;
         reset();
     }
 
-    final void reset() { 
-        lru = new LRU();
-        freePages = null;
-        hashTable = new Page[poolSize];
-        dirtyPages = new Page[poolSize];
-        nDirtyPages = 0;
-        if (!autoExtended) { 
-            for (int i = poolSize; --i >= 0; ) { 
-                Page pg = new Page();
-                pg.next = freePages;
-                freePages = pg;
+    final void reset() {
+        myLRU = new LRU();
+        myFreePages = null;
+        myHashTable = new Page[myPoolSize];
+        myDirtyPages = new Page[myPoolSize];
+        myDirtyPagesCount = 0;
+
+        if (!isAutoExtended) {
+            for (int i = myPoolSize; --i >= 0;) {
+                final Page page = new Page();
+
+                page.myNext = myFreePages;
+                myFreePages = page;
             }
         }
     }
 
-    final void clear() { 
-        Assert.that(nDirtyPages == 0);
+    final void clear() {
+        Assert.that(myDirtyPagesCount == 0);
         reset();
     }
 
     final synchronized void close() {
-        file.close();
-        hashTable = null;
-        dirtyPages = null;
-        lru = null;
-        freePages = null;
+        myFile.close();
+        myHashTable = null;
+        myDirtyPages = null;
+        myLRU = null;
+        myFreePages = null;
     }
 
-    final synchronized void unfix(Page pg) { 
-        Assert.that(pg.accessCount > 0);
-        if (--pg.accessCount == 0) { 
-            if (pg.offs <= lruLimit) { 
-                lru.link(pg);
-            } else { 
-                lru.prev.link(pg);
+    final synchronized void unfix(final Page aPage) {
+        Assert.that(aPage.myAccessCount > 0);
+
+        if (--aPage.myAccessCount == 0) {
+            if (aPage.myOffset <= myLruLimit) {
+                myLRU.link(aPage);
+            } else {
+                myLRU.myPrevious.link(aPage);
             }
         }
     }
 
-    final synchronized void modify(Page pg) { 
-        Assert.that(pg.accessCount > 0);
-        if ((pg.state & Page.psDirty) == 0) { 
-            Assert.that(!flushing);
-            pg.state |= Page.psDirty;
-            if (nDirtyPages >= dirtyPages.length) {                     
-                Page[] newDirtyPages = new Page[nDirtyPages*2];
-                System.arraycopy(dirtyPages, 0, newDirtyPages, 0, dirtyPages.length);
-                dirtyPages = newDirtyPages;
+    final synchronized void modify(final Page aPage) {
+        Assert.that(aPage.myAccessCount > 0);
+
+        if ((aPage.myState & Page.PS_DIRTY) == 0) {
+            Assert.that(!isFlushing);
+
+            aPage.myState |= Page.PS_DIRTY;
+
+            if (myDirtyPagesCount >= myDirtyPages.length) {
+                final Page[] newDirtyPages = new Page[myDirtyPagesCount * 2];
+
+                System.arraycopy(myDirtyPages, 0, newDirtyPages, 0, myDirtyPages.length);
+
+                myDirtyPages = newDirtyPages;
             }
-            dirtyPages[nDirtyPages] = pg;
-            pg.writeQueueIndex = nDirtyPages++;
+
+            myDirtyPages[myDirtyPagesCount] = aPage;
+            aPage.myWriteQueueIndex = myDirtyPagesCount++;
         }
     }
-    
-    final Page getPage(long addr) { 
-        return find(addr, 0);
+
+    final Page getPage(final long aAddress) {
+        return find(aAddress, 0);
     }
-    
-    final Page putPage(long addr) { 
-        return find(addr, Page.psDirty);
+
+    final Page putPage(final long aAddress) {
+        return find(aAddress, Page.PS_DIRTY);
     }
-    
-    final byte[] get(long pos) { 
-        Assert.that(pos != 0);
-        int offs = (int)pos & (Page.pageSize-1);
-        Page pg = find(pos - offs, 0);
-        int size = ObjectHeader.getSize(pg.data, offs);
-        Assert.that(size >= ObjectHeader.sizeof);
-        byte[] obj = new byte[size];
-        int dst = 0;
-        while (size > Page.pageSize - offs) { 
-            System.arraycopy(pg.data, offs, obj, dst, Page.pageSize - offs);
-            unfix(pg);
-            size -= Page.pageSize - offs;
-            pos += Page.pageSize - offs;
-            dst += Page.pageSize - offs;
-            pg = find(pos, 0);
-            offs = 0;
+
+    final byte[] get(final long aPosition) {
+        Assert.that(aPosition != 0);
+
+        long position = aPosition;
+        int offset = (int) position & Page.PAGE_SIZE - 1;
+        Page page = find(position - offset, 0);
+        int size = ObjectHeader.getSize(page.myData, offset);
+
+        Assert.that(size >= ObjectHeader.SIZE_OF);
+
+        final byte[] obj = new byte[size];
+
+        int dest = 0;
+
+        while (size > Page.PAGE_SIZE - offset) {
+            System.arraycopy(page.myData, offset, obj, dest, Page.PAGE_SIZE - offset);
+            unfix(page);
+
+            size -= Page.PAGE_SIZE - offset;
+            position += Page.PAGE_SIZE - offset;
+            dest += Page.PAGE_SIZE - offset;
+            page = find(position, 0);
+            offset = 0;
         }
-        System.arraycopy(pg.data, offs, obj, dst, size);
-        unfix(pg);
+
+        System.arraycopy(page.myData, offset, obj, dest, size);
+        unfix(page);
+
         return obj;
     }
 
-    final void put(long pos, byte[] obj) { 
-        put(pos, obj, obj.length);
+    final void put(final long aPosition, final byte[] aObject) {
+        put(aPosition, aObject, aObject.length);
     }
 
-    final void put(long pos, byte[] obj, int size) { 
-        int offs = (int)pos & (Page.pageSize-1);
-        Page pg = find(pos - offs, Page.psDirty);
+    final void put(final long aPosition, final byte[] aBytes, final int aSize) {
+        int size = aSize;
+        long position = aPosition;
+        int offset = (int) position & Page.PAGE_SIZE - 1;
+        Page page = find(position - offset, Page.PS_DIRTY);
         int src = 0;
-        while (size > Page.pageSize - offs) { 
-            System.arraycopy(obj, src, pg.data, offs, Page.pageSize - offs);
-            unfix(pg);
-            size -= Page.pageSize - offs;
-            pos += Page.pageSize - offs;
-            src += Page.pageSize - offs;
-            pg = find(pos, Page.psDirty);
-            offs = 0;
+
+        while (size > Page.PAGE_SIZE - offset) {
+            System.arraycopy(aBytes, src, page.myData, offset, Page.PAGE_SIZE - offset);
+            unfix(page);
+
+            size -= Page.PAGE_SIZE - offset;
+            position += Page.PAGE_SIZE - offset;
+            src += Page.PAGE_SIZE - offset;
+            page = find(position, Page.PS_DIRTY);
+            offset = 0;
         }
-        System.arraycopy(obj, src, pg.data, offs, size);
-        unfix(pg);
+
+        System.arraycopy(aBytes, src, page.myData, offset, size);
+        unfix(page);
     }
 
-    void flush() { 
-        synchronized (this) { 
-            flushing = true;
-            java.util.Arrays.sort(dirtyPages, 0, nDirtyPages); 
+    void flush() {
+        synchronized (this) {
+            isFlushing = true;
+            Arrays.sort(myDirtyPages, 0, myDirtyPagesCount);
         }
-        for (int i = 0; i < nDirtyPages; i++) { 
-            Page pg = dirtyPages[i];
-            synchronized (pg) { 
-                if ((pg.state & Page.psDirty) != 0) { 
-                    file.write(pg.offs, pg.data);
-                    pg.state &= ~Page.psDirty;
+
+        for (int index = 0; index < myDirtyPagesCount; index++) {
+            final Page page = myDirtyPages[index];
+
+            synchronized (page) {
+                if ((page.myState & Page.PS_DIRTY) != 0) {
+                    myFile.write(page.myOffset, page.myData);
+                    page.myState &= ~Page.PS_DIRTY;
                 }
             }
-        }           
-        file.sync();
-        nDirtyPages = 0;
-        flushing = false;
+        }
+
+        myFile.sync();
+        myDirtyPagesCount = 0;
+        isFlushing = false;
     }
+
 }
-
-
-
-
-
-
-

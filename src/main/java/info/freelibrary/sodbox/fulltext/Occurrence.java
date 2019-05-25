@@ -1,43 +1,51 @@
+
 package info.freelibrary.sodbox.fulltext;
 
 /**
  * Occurrence of word in the document
  */
-public class Occurrence implements Comparable 
-{ 
+public class Occurrence implements Comparable {
+
     /**
-     * Word (lowercased)
+     * Word (lower-cased)
      */
-    public String word;
+    public String myWord;
+
     /**
      * Position of word in document text (0 based)
      */
-    public int    position;
+    public int myPosition;
+
     /**
-     * Word occurrence kind. 
-     * It is up to the document scanner implementation how to enumerate occurence kinds.
-     * These is only one limitation - number of difference kinds should not exceed 8.
+     * Word occurrence kind. It is up to the document scanner implementation how to enumerate occurence kinds. These
+     * is only one limitation - number of difference kinds should not exceed 8.
      */
-    public int    kind;
+    public int myKind;
 
     /**
      * Occurrence constructor
-     * @param word lowercased word 
-     * @param position offset of word from the beginning of document text
-     * @param kind word occurrence kind (should be less than 8)
+     *
+     * @param aWord lower-cased word
+     * @param aPosition offset of word from the beginning of document text
+     * @param aKind word occurrence kind (should be less than 8)
      */
-    public Occurrence(String word, int position, int kind) {
-        this.word = word;
-        this.position = position;
-        this.kind = kind;
+    public Occurrence(final String aWord, final int aPosition, final int aKind) {
+        myWord = aWord;
+        myPosition = aPosition;
+        myKind = aKind;
     }
 
-    public int compareTo(Object o) { 
-        Occurrence occ = (Occurrence)o;
-        int diff = word.compareTo(occ.word);
-        if (diff == 0) { 
-            diff = position - occ.position;
+    @Override
+    public int compareTo(final Object aObject) {
+        final Occurrence occurrence = (Occurrence) aObject;
+
+        int diff = myWord.compareTo(occurrence.myWord);
+
+        if (diff == 0) {
+            diff = myPosition - occurrence.myPosition;
         }
+
         return diff;
     }
+
 }

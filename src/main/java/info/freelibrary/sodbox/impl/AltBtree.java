@@ -1,1856 +1,2013 @@
+
 package info.freelibrary.sodbox.impl;
 
-import info.freelibrary.sodbox.Persistent;
-import info.freelibrary.sodbox.Storage;
+import java.lang.reflect.Array;
+import java.util.ArrayList;
+import java.util.ConcurrentModificationException;
+import java.util.Date;
+import java.util.Iterator;
+import java.util.Map;
+import java.util.NoSuchElementException;
+
 import info.freelibrary.sodbox.Assert;
 import info.freelibrary.sodbox.IValue;
 import info.freelibrary.sodbox.Index;
-import info.freelibrary.sodbox.Link;
-import info.freelibrary.sodbox.Key;
-import info.freelibrary.sodbox.StorageError;
 import info.freelibrary.sodbox.IterableIterator;
-import info.freelibrary.sodbox.PersistentIterator;
+import info.freelibrary.sodbox.Key;
+import info.freelibrary.sodbox.Link;
+import info.freelibrary.sodbox.Persistent;
 import info.freelibrary.sodbox.PersistentCollection;
-
-import java.util.Map;
-import java.util.Date;
-import java.util.Iterator;
-import java.util.ArrayList;
-import java.util.NoSuchElementException;
-import java.util.ConcurrentModificationException;
-
-import java.lang.reflect.Array;
+import info.freelibrary.sodbox.PersistentIterator;
+import info.freelibrary.sodbox.Storage;
+import info.freelibrary.sodbox.StorageError;
 
 class AltBtree<T> extends PersistentCollection<T> implements Index<T> {
 
-	static final int op_done = 0;
-	static final int op_overflow = 1;
-	static final int op_underflow = 2;
-	static final int op_not_found = 3;
-	static final int op_duplicate = 4;
-	static final int op_overwrite = 5;
-	
-	transient int updateCounter;
-	
-	int height;
-	int type;
-	int nElems;
-	boolean unique;
-	BtreePage root;
-
-	AltBtree() {}
-	
-	AltBtree(Class cls, boolean unique) {
-		this.unique = unique;
-		type = checkType(cls);
-	}
-
-	AltBtree(int type, boolean unique) {
-		this.type = type;
-		this.unique = unique;
-	}
-	
-	static class BtreeKey {
-		Key key;
-		Object node;
-		Object oldNode;
-
-		BtreeKey(Key key, Object node) {
-			this.key = key;
-			this.node = node;
-		}
-	}
-
-	static abstract class BtreePage extends Persistent {
-
-		int nItems;
-		Link items;
-
-		static final int BTREE_PAGE_SIZE = Page.pageSize - ObjectHeader.sizeof
-				- 4 * 3;
-
-		BtreePage() {}
-
-		BtreePage(Storage s, int n) {
-			super(s);
-
-			items = s.createLink(n);
-			items.setSize(n);
-		}
-
-		abstract Object getData();
-
-		abstract Object getKeyValue(int i);
-
-		abstract Key getKey(int i);
-
-		abstract int compare(Key key, int i);
-
-		abstract void insert(BtreeKey key, int i);
-
-		abstract BtreePage clonePage();
-
-		void clearKeyValue(int i) {}
-
-		boolean find(Key firstKey, Key lastKey, int height, ArrayList result) {
-			int l = 0, n = nItems, r = n;
-			int oid;
-			height -= 1;
-
-			if (firstKey != null) {
-				while (l < r) {
-					int i = (l + r) >> 1;
-
-					if (compare(firstKey, i) >= firstKey.inclusion) {
-						l = i + 1;
-					}
-					else {
-						r = i;
-					}
-				}
-
-				Assert.that(r == l);
-			}
-
-			if (lastKey != null) {
-				if (height == 0) {
-					while (l < n) {
-						if (-compare(lastKey, l) >= lastKey.inclusion) {
-							return false;
-						}
-
-						result.add(items.get(l));
-						l += 1;
-					}
-
-					return true;
-				}
-				else {
-					do {
-						if (!((BtreePage) items.get(l)).find(firstKey, lastKey,
-								height, result)) {
-							return false;
-						}
-						if (l == n) {
-							return true;
-						}
-					}
-					while (compare(lastKey, l++) >= 0);
-
-					return false;
-				}
-			}
-			if (height == 0) {
-				while (l < n) {
-					result.add(items.get(l));
-					l += 1;
-				}
-			}
-			else {
-				do {
-					if (!((BtreePage) items.get(l)).find(firstKey, lastKey,
-							height, result)) {
-						return false;
-					}
-				}
-				while (++l <= n);
-			}
-
-			return true;
-		}
-
-		static void memcpyData(BtreePage dst_pg, int dst_idx, BtreePage src_pg,
-				int src_idx, int len) {
-			System.arraycopy(src_pg.getData(), src_idx, dst_pg.getData(),
-					dst_idx, len);
-		}
-
-		static void memcpyItems(BtreePage dst_pg, int dst_idx,
-				BtreePage src_pg, int src_idx, int len) {
-			System.arraycopy(src_pg.items.toRawArray(), src_idx,
-					dst_pg.items.toRawArray(), dst_idx, len);
-		}
-
-		static void memcpy(BtreePage dst_pg, int dst_idx, BtreePage src_pg,
-				int src_idx, int len) {
-			memcpyData(dst_pg, dst_idx, src_pg, src_idx, len);
-			memcpyItems(dst_pg, dst_idx, src_pg, src_idx, len);
-		}
-
-		void memset(int i, int len) {
-			while (--len >= 0) {
-				items.setObject(i++, null);
-			}
-		}
-
-		int insert(BtreeKey ins, int height, boolean unique, boolean overwrite) {
-			int result;
-			int l = 0, n = nItems, r = n;
-			int ahead = unique ? 1 : 0;
-
-			while (l < r) {
-				int i = (l + r) >> 1;
-
-				if (compare(ins.key, i) >= ahead) {
-					l = i + 1;
-				}
-				else {
-					r = i;
-				}
-			}
-
-			Assert.that(l == r);
-
-			/* insert before e[r] */
-			if (--height != 0) {
-				result = ((BtreePage) items.get(r)).insert(ins, height, unique,
-						overwrite);
-
-				Assert.that(result != op_not_found);
-
-				if (result != op_overflow) {
-					return result;
-				}
-
-				n += 1;
-			}
-			else if (r < n && compare(ins.key, r) == 0) {
-				if (overwrite) {
-					ins.oldNode = items.get(r);
-					modify();
-					items.setObject(r, ins.node);
-					return op_overwrite;
-				}
-				else if (unique) {
-					ins.oldNode = items.get(r);
-					return op_duplicate;
-				}
-			}
-
-			int max = items.size();
-			modify();
-
-			if (n < max) {
-				memcpy(this, r + 1, this, r, n - r);
-				insert(ins, r);
-				nItems += 1;
-				return op_done;
-			}
-			else { /* page is full then divide page */
-				BtreePage b = clonePage();
-				Assert.that(n == max);
-				int m = (max + 1) / 2;
-
-				if (r < m) {
-					memcpy(b, 0, this, 0, r);
-					memcpy(b, r + 1, this, r, m - r - 1);
-					memcpy(this, 0, this, m - 1, max - m + 1);
-					b.insert(ins, r);
-				}
-				else {
-					memcpy(b, 0, this, 0, m);
-					memcpy(this, 0, this, m, r - m);
-					memcpy(this, r - m + 1, this, r, max - r);
-					insert(ins, r - m);
-				}
-
-				memset(max - m + 1, m - 1);
-				ins.node = b;
-				ins.key = b.getKey(m - 1);
-
-				if (height == 0) {
-					nItems = max - m + 1;
-					b.nItems = m;
-				}
-				else {
-					b.clearKeyValue(m - 1);
-					nItems = max - m;
-					b.nItems = m - 1;
-				}
-
-				return op_overflow;
-			}
-		}
-
-		int handlePageUnderflow(int r, BtreeKey rem, int height) {
-			BtreePage a = (BtreePage) items.get(r);
-
-			a.modify();
-			modify();
-
-			int an = a.nItems;
-
-			if (r < nItems) { // exists greater page
-				BtreePage b = (BtreePage) items.get(r + 1);
-				int bn = b.nItems;
-
-				Assert.that(bn >= an);
-
-				if (height != 1) {
-					memcpyData(a, an, this, r, 1);
-					an += 1;
-					bn += 1;
-				}
-				if (an + bn > items.size()) {
-					// reallocation of nodes between pages a and b
-					int i = bn - ((an + bn) >> 1);
-
-					b.modify();
-					memcpy(a, an, b, 0, i);
-					memcpy(b, 0, b, i, bn - i);
-					memcpyData(this, r, a, an + i - 1, 1);
-
-					if (height != 1) {
-						a.clearKeyValue(an + i - 1);
-					}
-
-					b.memset(bn - i, i);
-					b.nItems -= i;
-					a.nItems += i;
-
-					return op_done;
-				}
-				else { // merge page b to a
-					memcpy(a, an, b, 0, bn);
-					b.deallocate();
-					memcpyData(this, r, this, r + 1, nItems - r - 1);
-					memcpyItems(this, r + 1, this, r + 2, nItems - r - 1);
-					items.setObject(nItems, null);
-					a.nItems += bn;
-					nItems -= 1;
-
-					return nItems < items.size() / 3 ? op_underflow : op_done;
-				}
-			}
-			else { // page b is before a
-				BtreePage b = (BtreePage) items.get(r - 1);
-				int bn = b.nItems;
-
-				Assert.that(bn >= an);
-
-				if (height != 1) {
-					an += 1;
-					bn += 1;
-				}
-
-				if (an + bn > items.size()) {
-					// reallocation of nodes between pages a and b
-					int i = bn - ((an + bn) >> 1);
-
-					b.modify();
-					memcpy(a, i, a, 0, an);
-					memcpy(a, 0, b, bn - i, i);
-
-					if (height != 1) {
-						memcpyData(a, i - 1, this, r - 1, 1);
-					}
-
-					memcpyData(this, r - 1, b, bn - i - 1, 1);
-
-					if (height != 1) {
-						b.clearKeyValue(bn - i - 1);
-					}
-
-					b.memset(bn - i, i);
-					b.nItems -= i;
-					a.nItems += i;
-
-					return op_done;
-				}
-				else { // merge page b to a
-					memcpy(a, bn, a, 0, an);
-					memcpy(a, 0, b, 0, bn);
-
-					if (height != 1) {
-						memcpyData(a, bn - 1, this, r - 1, 1);
-					}
-
-					b.deallocate();
-					items.setObject(r - 1, a);
-					items.setObject(nItems, null);
-					a.nItems += bn;
-					nItems -= 1;
-
-					return nItems < items.size() / 3 ? op_underflow : op_done;
-				}
-			}
-		}
-
-		int remove(BtreeKey rem, int height) {
-			int i, n = nItems, l = 0, r = n;
-
-			while (l < r) {
-				i = (l + r) >> 1;
-
-				if (compare(rem.key, i) > 0) {
-					l = i + 1;
-				}
-				else {
-					r = i;
-				}
-			}
-
-			if (--height == 0) {
-				Object node = rem.node;
-
-				while (r < n) {
-					if (compare(rem.key, r) == 0) {
-						if (node == null || items.containsElement(r, node)) {
-							rem.oldNode = items.get(r);
-							modify();
-							memcpy(this, r, this, r + 1, n - r - 1);
-							nItems = --n;
-							memset(n, 1);
-							return n < items.size() / 3 ? op_underflow
-									: op_done;
-						}
-					}
-					else {
-						break;
-					}
-
-					r += 1;
-				}
-				return op_not_found;
-			}
-
-			do {
-				switch (((BtreePage) items.get(r)).remove(rem, height)) {
-				case op_underflow:
-					return handlePageUnderflow(r, rem, height);
-				case op_done:
-					return op_done;
-				}
-			}
-			while (++r <= n);
-
-			return op_not_found;
-		}
-
-		void purge(int height) {
-			if (--height != 0) {
-				int n = nItems;
-
-				do {
-					((BtreePage) items.get(n)).purge(height);
-				}
-				while (--n >= 0);
-			}
-
-			super.deallocate();
-		}
-
-		int traverseForward(int height, Object[] result, int pos) {
-			int i, n = nItems;
-
-			if (--height != 0) {
-				for (i = 0; i <= n; i++) {
-					pos = ((BtreePage) items.get(i)).traverseForward(height,
-							result, pos);
-				}
-			}
-			else {
-				for (i = 0; i < n; i++) {
-					result[pos++] = items.get(i);
-				}
-			}
-
-			return pos;
-		}
-
-	}
-
-	static class BtreePageOfByte extends BtreePage {
-
-		byte[] data;
-
-		static final int MAX_ITEMS = BTREE_PAGE_SIZE / (4 + 1);
-
-		BtreePageOfByte() {}
-
-		Object getData() {
-			return data;
-		}
-
-		Object getKeyValue(int i) {
-			return new Byte(data[i]);
-		}
-
-		Key getKey(int i) {
-			return new Key(data[i]);
-		}
-
-		BtreePage clonePage() {
-			return new BtreePageOfByte(getStorage());
-		}
-
-		int compare(Key key, int i) {
-			return (byte) key.ival - data[i];
-		}
-
-		void insert(BtreeKey key, int i) {
-			items.setObject(i, key.node);
-			data[i] = (byte) key.key.ival;
-		}
-
-		BtreePageOfByte(Storage s) {
-			super(s, MAX_ITEMS);
-			data = new byte[MAX_ITEMS];
-		}
-
-	}
-
-	static class BtreePageOfBoolean extends BtreePageOfByte {
-
-		BtreePageOfBoolean() {}
-
-		BtreePageOfBoolean(Storage s) {
-			super(s);
-		}
-
-		Key getKey(int i) {
-			return new Key(data[i] != 0);
-		}
-
-		Object getKeyValue(int i) {
-			return Boolean.valueOf(data[i] != 0);
-		}
-
-		BtreePage clonePage() {
-			return new BtreePageOfBoolean(getStorage());
-		}
-
-	}
-
-	static class BtreePageOfShort extends BtreePage {
-
-		short[] data;
-
-		static final int MAX_ITEMS = BTREE_PAGE_SIZE / (4 + 2);
-
-		BtreePageOfShort() {}
-
-		BtreePageOfShort(Storage s) {
-			super(s, MAX_ITEMS);
-			data = new short[MAX_ITEMS];
-		}
-
-		Object getData() {
-			return data;
-		}
-
-		Key getKey(int i) {
-			return new Key(data[i]);
-		}
-
-		Object getKeyValue(int i) {
-			return new Short(data[i]);
-		}
-
-		BtreePage clonePage() {
-			return new BtreePageOfShort(getStorage());
-		}
-
-		int compare(Key key, int i) {
-			return (short) key.ival - data[i];
-		}
-
-		void insert(BtreeKey key, int i) {
-			items.setObject(i, key.node);
-			data[i] = (short) key.key.ival;
-		}
-
-	}
-
-	static class BtreePageOfChar extends BtreePage {
-
-		char[] data;
-
-		static final int MAX_ITEMS = BTREE_PAGE_SIZE / (4 + 2);
-
-		BtreePageOfChar() {}
-
-		BtreePageOfChar(Storage s) {
-			super(s, MAX_ITEMS);
-			data = new char[MAX_ITEMS];
-		}
-
-		Object getData() {
-			return data;
-		}
-
-		Key getKey(int i) {
-			return new Key(data[i]);
-		}
-
-		Object getKeyValue(int i) {
-			return new Character(data[i]);
-		}
-
-		BtreePage clonePage() {
-			return new BtreePageOfChar(getStorage());
-		}
-
-		int compare(Key key, int i) {
-			return (char) key.ival - data[i];
-		}
-
-		void insert(BtreeKey key, int i) {
-			items.setObject(i, key.node);
-			data[i] = (char) key.key.ival;
-		}
-
-	}
-
-	static class BtreePageOfInt extends BtreePage {
-
-		int[] data;
-
-		static final int MAX_ITEMS = BTREE_PAGE_SIZE / (4 + 4);
-
-		BtreePageOfInt() {}
-
-		BtreePageOfInt(Storage s) {
-			super(s, MAX_ITEMS);
-			data = new int[MAX_ITEMS];
-		}
-
-		Object getData() {
-			return data;
-		}
-
-		Key getKey(int i) {
-			return new Key(data[i]);
-		}
-
-		Object getKeyValue(int i) {
-			return new Integer(data[i]);
-		}
-
-		BtreePage clonePage() {
-			return new BtreePageOfInt(getStorage());
-		}
-
-		int compare(Key key, int i) {
-			return key.ival < data[i] ? -1 : key.ival == data[i] ? 0 : 1;
-		}
-
-		void insert(BtreeKey key, int i) {
-			items.setObject(i, key.node);
-			data[i] = key.key.ival;
-		}
-
-	}
-
-	static class BtreePageOfLong extends BtreePage {
-
-		long[] data;
-
-		static final int MAX_ITEMS = BTREE_PAGE_SIZE / (4 + 8);
-
-		BtreePageOfLong() {}
-
-		BtreePageOfLong(Storage s) {
-			super(s, MAX_ITEMS);
-			data = new long[MAX_ITEMS];
-		}
-
-		Object getData() {
-			return data;
-		}
-
-		Key getKey(int i) {
-			return new Key(data[i]);
-		}
-
-		Object getKeyValue(int i) {
-			return new Long(data[i]);
-		}
-
-		BtreePage clonePage() {
-			return new BtreePageOfLong(getStorage());
-		}
-
-		int compare(Key key, int i) {
-			return key.lval < data[i] ? -1 : key.lval == data[i] ? 0 : 1;
-		}
-
-		void insert(BtreeKey key, int i) {
-			items.setObject(i, key.node);
-			data[i] = key.key.lval;
-		}
-
-	}
-
-	static class BtreePageOfFloat extends BtreePage {
-
-		float[] data;
-
-		static final int MAX_ITEMS = BTREE_PAGE_SIZE / (4 + 4);
-
-		BtreePageOfFloat() {}
-
-		BtreePageOfFloat(Storage s) {
-			super(s, MAX_ITEMS);
-			data = new float[MAX_ITEMS];
-		}
-
-		Object getData() {
-			return data;
-		}
-
-		Key getKey(int i) {
-			return new Key(data[i]);
-		}
-
-		Object getKeyValue(int i) {
-			return new Float(data[i]);
-		}
-
-		BtreePage clonePage() {
-			return new BtreePageOfFloat(getStorage());
-		}
-
-		int compare(Key key, int i) {
-			return (float) key.dval < data[i] ? -1
-					: (float) key.dval == data[i] ? 0 : 1;
-		}
-
-		void insert(BtreeKey key, int i) {
-			items.setObject(i, key.node);
-			data[i] = (float) key.key.dval;
-		}
-
-	}
-
-	static class BtreePageOfDouble extends BtreePage {
-
-		double[] data;
-
-		static final int MAX_ITEMS = BTREE_PAGE_SIZE / (4 + 8);
-
-		BtreePageOfDouble() {}
-
-		BtreePageOfDouble(Storage s) {
-			super(s, MAX_ITEMS);
-			data = new double[MAX_ITEMS];
-		}
-
-		Object getData() {
-			return data;
-		}
-
-		Key getKey(int i) {
-			return new Key(data[i]);
-		}
-
-		Object getKeyValue(int i) {
-			return new Double(data[i]);
-		}
-
-		BtreePage clonePage() {
-			return new BtreePageOfDouble(getStorage());
-		}
-
-		int compare(Key key, int i) {
-			return key.dval < data[i] ? -1 : key.dval == data[i] ? 0 : 1;
-		}
-
-		void insert(BtreeKey key, int i) {
-			items.setObject(i, key.node);
-			data[i] = key.key.dval;
-		}
-
-	}
-
-	static class BtreePageOfObject extends BtreePage {
-
-		Link data;
-
-		static final int MAX_ITEMS = BTREE_PAGE_SIZE / (4 + 4);
-
-		BtreePageOfObject() {}
-
-		BtreePageOfObject(Storage s) {
-			super(s, MAX_ITEMS);
-			data = s.createLink(MAX_ITEMS);
-			data.setSize(MAX_ITEMS);
-		}
-
-		Object getData() {
-			return data.toRawArray();
-		}
-
-		Key getKey(int i) {
-			return new Key(data.getRaw(i));
-		}
-
-		Object getKeyValue(int i) {
-			return data.get(i);
-		}
-
-		BtreePage clonePage() {
-			return new BtreePageOfObject(getStorage());
-		}
-
-		int compare(Key key, int i) {
-			Object obj = data.getRaw(i);
-			int oid = obj == null ? 0 : getStorage().getOid(obj);
-			return key.ival < oid ? -1 : key.ival == oid ? 0 : 1;
-		}
-
-		void insert(BtreeKey key, int i) {
-			items.setObject(i, key.node);
-			data.setObject(i, key.key.oval);
-		}
-
-	}
-
-	static class BtreePageOfString extends BtreePage {
-
-		String[] data;
-
-		static final int MAX_ITEMS = 100;
-
-		BtreePageOfString() {}
-
-		BtreePageOfString(Storage s) {
-			super(s, MAX_ITEMS);
-			data = new String[MAX_ITEMS];
-		}
-
-		Object getData() {
-			return data;
-		}
-
-		Key getKey(int i) {
-			return new Key(data[i]);
-		}
-
-		Object getKeyValue(int i) {
-			return data[i];
-		}
-
-		void clearKeyValue(int i) {
-			data[i] = null;
-		}
-
-		BtreePage clonePage() {
-			return new BtreePageOfString(getStorage());
-		}
-
-		int compare(Key key, int i) {
-			return ((String) key.oval).compareTo(data[i]);
-		}
-
-		void insert(BtreeKey key, int i) {
-			items.setObject(i, key.node);
-			data[i] = (String) key.key.oval;
-		}
-
-		void memset(int i, int len) {
-			while (--len >= 0) {
-				items.setObject(i, null);
-				data[i] = null;
-				i += 1;
-			}
-		}
-
-		boolean prefixSearch(String key, int height, ArrayList result) {
-			int l = 0, n = nItems, r = n;
-
-			height -= 1;
-
-			while (l < r) {
-				int i = (l + r) >> 1;
-
-				if (!key.startsWith(data[i]) && key.compareTo(data[i]) > 0) {
-					l = i + 1;
-				}
-				else {
-					r = i;
-				}
-			}
-
-			Assert.that(r == l);
-
-			if (height == 0) {
-				while (l < n) {
-					if (key.compareTo(data[l]) < 0) {
-						return false;
-					}
-
-					result.add(items.get(l));
-					l += 1;
-				}
-			}
-			else {
-				do {
-					if (!((BtreePageOfString) items.get(l)).prefixSearch(key,
-							height, result)) {
-						return false;
-					}
-					if (l == n) {
-						return true;
-					}
-				}
-				while (key.compareTo(data[l++]) >= 0);
-
-				return false;
-			}
-
-			return true;
-		}
-
-	}
-
-	static class BtreePageOfValue extends BtreePage {
-
-		Object[] data;
-
-		static final int MAX_ITEMS = 100;
-
-		BtreePageOfValue() {}
-
-		BtreePageOfValue(Storage s) {
-			super(s, MAX_ITEMS);
-			data = new Object[MAX_ITEMS];
-		}
-
-		Object getData() {
-			return data;
-		}
-
-		Key getKey(int i) {
-			return new Key((IValue) data[i]);
-		}
-
-		Object getKeyValue(int i) {
-			return data[i];
-		}
-
-		void clearKeyValue(int i) {
-			data[i] = null;
-		}
-
-		BtreePage clonePage() {
-			return new BtreePageOfValue(getStorage());
-		}
-
-		int compare(Key key, int i) {
-			return ((Comparable) key.oval).compareTo(data[i]);
-		}
-
-		void insert(BtreeKey key, int i) {
-			items.setObject(i, key.node);
-			data[i] = key.key.oval;
-		}
-
-	}
-
-	static int checkType(Class c) {
-		int elemType = ClassDescriptor.getTypeCode(c);
-
-		if (elemType > ClassDescriptor.tpObject
-				&& elemType != ClassDescriptor.tpValue
-				&& elemType != ClassDescriptor.tpEnum) {
-			throw new StorageError(StorageError.UNSUPPORTED_INDEX_TYPE, c);
-		}
-
-		return elemType;
-	}
-
-	public Class[] getKeyTypes() {
-		return new Class[] { getKeyType() };
-	}
-
-	public Class getKeyType() {
-		return mapKeyType(type);
-	}
-
-	static Class mapKeyType(int type) {
-		switch (type) {
-		case ClassDescriptor.tpBoolean:
-			return boolean.class;
-		case ClassDescriptor.tpByte:
-			return byte.class;
-		case ClassDescriptor.tpChar:
-			return char.class;
-		case ClassDescriptor.tpShort:
-			return short.class;
-		case ClassDescriptor.tpInt:
-			return int.class;
-		case ClassDescriptor.tpLong:
-			return long.class;
-		case ClassDescriptor.tpFloat:
-			return float.class;
-		case ClassDescriptor.tpDouble:
-			return double.class;
-		case ClassDescriptor.tpString:
-			return String.class;
-		case ClassDescriptor.tpDate:
-			return Date.class;
-		case ClassDescriptor.tpObject:
-			return Object.class;
-		case ClassDescriptor.tpValue:
-			return IValue.class;
-		case ClassDescriptor.tpEnum:
-			return Enum.class;
-		default:
-			return null;
-		}
-	}
-
-	Key checkKey(Key key) {
-		if (key != null) {
-			if (key.type != type) {
-				throw new StorageError(StorageError.INCOMPATIBLE_KEY_TYPE);
-			}
-
-			if (type == ClassDescriptor.tpObject && key.ival == 0
-					&& key.oval != null) {
-				Object obj = key.oval;
-				key = new Key(obj, getStorage().makePersistent(obj),
-						key.inclusion != 0);
-			}
-
-			if (key.oval instanceof char[]) {
-				key = new Key(new String((char[]) key.oval), key.inclusion != 0);
-			}
-		}
-
-		return key;
-	}
-
-	public T get(Key key) {
-		key = checkKey(key);
-
-		if (root != null) {
-			ArrayList<T> list = new ArrayList<T>();
-
-			root.find(key, key, height, list);
-
-			if (list.size() > 1) {
-				throw new StorageError(StorageError.KEY_NOT_UNIQUE);
-			}
-			else if (list.size() == 0) {
-				return null;
-			}
-			else {
-				return (T) list.get(0);
-			}
-		}
-
-		return null;
-	}
-
-	public ArrayList<T> prefixSearchList(String key) {
-		if (ClassDescriptor.tpString != type) {
-			throw new StorageError(StorageError.INCOMPATIBLE_KEY_TYPE);
-		}
-
-		ArrayList<T> list = new ArrayList<T>();
-
-		if (root != null) {
-			((BtreePageOfString) root).prefixSearch(key, height, list);
-		}
-
-		return list;
-	}
-
-	public Object[] prefixSearch(String key) {
-		ArrayList<T> list = prefixSearchList(key);
-		return list.toArray();
-	}
-
-	public ArrayList<T> getList(Key from, Key till) {
-		ArrayList<T> list = new ArrayList<T>();
-
-		if (root != null) {
-			root.find(checkKey(from), checkKey(till), height, list);
-		}
-
-		return list;
-	}
-
-	public ArrayList<T> getList(Object from, Object till) {
-		return getList(Btree.getKeyFromObject(type, from),
-				Btree.getKeyFromObject(type, till));
-	}
-
-	public Object[] get(Key from, Key till) {
-		ArrayList<T> list = getList(from, till);
-		return list.toArray();
-	}
-
-	public Object[] get(Object from, Object till) {
-		return get(Btree.getKeyFromObject(type, from),
-				Btree.getKeyFromObject(type, till));
-	}
-
-	public boolean put(Key key, T obj) {
-		return insert(key, obj, false) == null;
-	}
-
-	public T set(Key key, T obj) {
-		return insert(key, obj, true);
-	}
-
-	final void allocateRootPage(BtreeKey ins) {
-		Storage s = getStorage();
-		BtreePage newRoot = null;
-
-		switch (type) {
-		case ClassDescriptor.tpByte:
-			newRoot = new BtreePageOfByte(s);
-			break;
-		case ClassDescriptor.tpShort:
-			newRoot = new BtreePageOfShort(s);
-			break;
-		case ClassDescriptor.tpChar:
-			newRoot = new BtreePageOfChar(s);
-			break;
-		case ClassDescriptor.tpBoolean:
-			newRoot = new BtreePageOfBoolean(s);
-			break;
-		case ClassDescriptor.tpInt:
-		case ClassDescriptor.tpEnum:
-			newRoot = new BtreePageOfInt(s);
-			break;
-		case ClassDescriptor.tpLong:
-		case ClassDescriptor.tpDate:
-			newRoot = new BtreePageOfLong(s);
-			break;
-		case ClassDescriptor.tpFloat:
-			newRoot = new BtreePageOfFloat(s);
-			break;
-		case ClassDescriptor.tpDouble:
-			newRoot = new BtreePageOfDouble(s);
-			break;
-		case ClassDescriptor.tpObject:
-			newRoot = new BtreePageOfObject(s);
-			break;
-		case ClassDescriptor.tpString:
-			newRoot = new BtreePageOfString(s);
-			break;
-		case ClassDescriptor.tpValue:
-			newRoot = new BtreePageOfValue(s);
-			break;
-		default:
-			Assert.failed("Invalid type");
-		}
-
-		newRoot.insert(ins, 0);
-		newRoot.items.setObject(1, root);
-		newRoot.nItems = 1;
-		root = newRoot;
-	}
-
-	final T insert(Key key, T obj, boolean overwrite) {
-		BtreeKey ins = new BtreeKey(checkKey(key), obj);
-
-		if (root == null) {
-			allocateRootPage(ins);
-			height = 1;
-		}
-		else {
-			int result = root.insert(ins, height, unique, overwrite);
-
-			if (result == op_overflow) {
-				allocateRootPage(ins);
-				height += 1;
-			}
-			else if (result == op_duplicate || result == op_overwrite) {
-				return (T) ins.oldNode;
-			}
-		}
-
-		updateCounter += 1;
-		nElems += 1;
-		modify();
-
-		return null;
-	}
-
-	public void remove(Key key, T obj) {
-		remove(new BtreeKey(checkKey(key), obj));
-	}
-
-	public boolean unlink(Key key, T obj) {
-		return removeIfExists(key, obj);
-	}
-
-	boolean removeIfExists(Key key, Object obj) {
-		return removeIfExists(new BtreeKey(checkKey(key), obj));
-	}
-
-	void remove(BtreeKey rem) {
-		if (!removeIfExists(rem)) {
-			throw new StorageError(StorageError.KEY_NOT_FOUND);
-		}
-	}
-
-	boolean removeIfExists(BtreeKey rem) {
-		if (root == null) {
-			return false;
-		}
-
-		int result = root.remove(rem, height);
-
-		if (result == op_not_found) {
-			return false;
-		}
-
-		nElems -= 1;
-
-		if (result == op_underflow) {
-			if (root.nItems == 0) {
-				BtreePage newRoot = null;
-
-				if (height != 1) {
-					newRoot = (BtreePage) root.items.get(0);
-				}
-
-				root.deallocate();
-				root = newRoot;
-				height -= 1;
-			}
-		}
-
-		updateCounter += 1;
-		modify();
-
-		return true;
-	}
-
-	public T remove(Key key) {
-		if (!unique) {
-			throw new StorageError(StorageError.KEY_NOT_UNIQUE);
-		}
-
-		BtreeKey rk = new BtreeKey(checkKey(key), null);
-		remove(rk);
-
-		return (T) rk.oldNode;
-	}
-
-	public T get(Object key) {
-		return get(Btree.getKeyFromObject(type, key));
-	}
-
-	public ArrayList<T> getPrefixList(String prefix) {
-		return getList(new Key(prefix, true), new Key(prefix
-				+ Character.MAX_VALUE, false));
-	}
-
-	public Object[] getPrefix(String prefix) {
-		return get(new Key(prefix, true), new Key(prefix + Character.MAX_VALUE,
-				false));
-	}
-
-	public boolean put(Object key, T obj) {
-		return put(Btree.getKeyFromObject(type, key), obj);
-	}
-
-	public T set(Object key, T obj) {
-		return set(Btree.getKeyFromObject(type, key), obj);
-	}
-
-	public void remove(Object key, T obj) {
-		remove(Btree.getKeyFromObject(type, key), obj);
-	}
-
-	public T remove(String key) {
-		return remove(new Key(key));
-	}
-
-	public T removeKey(Object key) {
-		return removeKey(Btree.getKeyFromObject(type, key));
-	}
-
-	public int size() {
-		return nElems;
-	}
-
-	public void clear() {
-		if (root != null) {
-			root.purge(height);
-			root = null;
-			nElems = 0;
-			height = 0;
-			updateCounter += 1;
-			modify();
-		}
-	}
-
-	public Object[] toArray() {
-		Object[] arr = new Object[nElems];
-
-		if (root != null) {
-			root.traverseForward(height, arr, 0);
-		}
-
-		return arr;
-	}
-
-	public <E> E[] toArray(E[] arr) {
-		if (arr.length < nElems) {
-			arr = (E[]) Array.newInstance(arr.getClass().getComponentType(),
-					nElems);
-		}
-
-		if (root != null) {
-			root.traverseForward(height, (Object[]) arr, 0);
-		}
-
-		if (arr.length > nElems) {
-			arr[nElems] = null;
-		}
-
-		return arr;
-	}
-
-	public void deallocate() {
-		if (root != null) {
-			root.purge(height);
-		}
-
-		super.deallocate();
-	}
-
-	static class BtreeEntry<T> implements Map.Entry<Object, T> {
-
-		private int pos;
-		private BtreePage pg;
-
-		BtreeEntry(BtreePage pg, int pos) {
-			this.pg = pg;
-			this.pos = pos;
-		}
-
-		public Object getKey() {
-			return pg.getKeyValue(pos);
-		}
-
-		public T getValue() {
-			return (T) pg.items.get(pos);
-		}
-
-		public T setValue(T value) {
-			throw new UnsupportedOperationException();
-		}
-
-		public boolean equals(Object o) {
-			if (!(o instanceof Map.Entry)) {
-				return false;
-			}
-
-			Map.Entry e = (Map.Entry) o;
-
-			return (getKey() == null ? e.getKey() == null : getKey().equals(
-					e.getKey()))
-					&& (getValue() == null ? e.getValue() == null : getValue()
-							.equals(e.getValue()));
-		}
-
-		public int hashCode() {
-			return ((getKey() == null) ? 0 : getKey().hashCode())
-					^ ((getValue() == null) ? 0 : getValue().hashCode());
-		}
-
-		public String toString() {
-			return getKey() + "=" + getValue();
-		}
-
-	}
-
-	public Iterator<T> iterator() {
-		return iterator(null, null, ASCENT_ORDER);
-	}
-
-	public IterableIterator<Map.Entry<Object, T>> entryIterator() {
-		return entryIterator(null, null, ASCENT_ORDER);
-	}
-
-	class BtreeSelectionIterator<E> extends IterableIterator<E> implements
-			PersistentIterator {
-
-		BtreePage[] pageStack;
-		int[] posStack;
-		BtreePage currPage;
-		int currPos;
-		int sp;
-		int end;
-		Key from;
-		Key till;
-		int order;
-		int counter;
-		BtreeKey currKey;
-		Key nextKey;
-		Object nextObj;
-
-		BtreeSelectionIterator(Key from, Key till, int order) {
-			this.from = from;
-			this.till = till;
-			this.order = order;
-			reset();
-		}
-
-		void reset() {
-			int i, l, r;
-
-			sp = 0;
-			counter = updateCounter;
-			if (height == 0) {
-				return;
-			}
-
-			BtreePage page = root;
-			int h = height;
-
-			pageStack = new BtreePage[h];
-			posStack = new int[h];
-
-			if (order == ASCENT_ORDER) {
-				if (from == null) {
-					while (--h > 0) {
-						posStack[sp] = 0;
-						pageStack[sp] = page;
-						page = (BtreePage) page.items.get(0);
-						sp += 1;
-					}
-
-					posStack[sp] = 0;
-					pageStack[sp] = page;
-					end = page.nItems;
-					sp += 1;
-				}
-				else {
-					while (--h > 0) {
-						pageStack[sp] = page;
-						l = 0;
-						r = page.nItems;
-
-						while (l < r) {
-							i = (l + r) >> 1;
-
-							if (page.compare(from, i) >= from.inclusion) {
-								l = i + 1;
-							}
-							else {
-								r = i;
-							}
-						}
-
-						Assert.that(r == l);
-
-						posStack[sp] = r;
-						page = (BtreePage) page.items.get(r);
-						sp += 1;
-					}
-
-					pageStack[sp] = page;
-					l = 0;
-					r = end = page.nItems;
-
-					while (l < r) {
-						i = (l + r) >> 1;
-
-						if (page.compare(from, i) >= from.inclusion) {
-							l = i + 1;
-						}
-						else {
-							r = i;
-						}
-					}
-
-					Assert.that(r == l);
-
-					if (r == end) {
-						sp += 1;
-						gotoNextItem(page, r - 1);
-					}
-					else {
-						posStack[sp++] = r;
-					}
-				}
-
-				if (sp != 0 && till != null) {
-					page = pageStack[sp - 1];
-
-					if (-page.compare(till, posStack[sp - 1]) >= till.inclusion) {
-						sp = 0;
-					}
-				}
-			}
-			else { // descent order
-				if (till == null) {
-					while (--h > 0) {
-						pageStack[sp] = page;
-						posStack[sp] = page.nItems;
-						page = (BtreePage) page.items.get(page.nItems);
-						sp += 1;
-					}
-
-					pageStack[sp] = page;
-					posStack[sp++] = page.nItems - 1;
-				}
-				else {
-					while (--h > 0) {
-						pageStack[sp] = page;
-						l = 0;
-						r = page.nItems;
-
-						while (l < r) {
-							i = (l + r) >> 1;
-
-							if (page.compare(till, i) >= 1 - till.inclusion) {
-								l = i + 1;
-							}
-							else {
-								r = i;
-							}
-						}
-
-						Assert.that(r == l);
-
-						posStack[sp] = r;
-						page = (BtreePage) page.items.get(r);
-						sp += 1;
-					}
-
-					pageStack[sp] = page;
-					l = 0;
-					r = page.nItems;
-
-					while (l < r) {
-						i = (l + r) >> 1;
-
-						if (page.compare(till, i) >= 1 - till.inclusion) {
-							l = i + 1;
-						}
-						else {
-							r = i;
-						}
-					}
-
-					Assert.that(r == l);
-
-					if (r == 0) {
-						sp += 1;
-						gotoNextItem(page, r);
-					}
-					else {
-						posStack[sp++] = r - 1;
-					}
-				}
-				if (sp != 0 && from != null) {
-					page = pageStack[sp - 1];
-
-					if (page.compare(from, posStack[sp - 1]) >= from.inclusion) {
-						sp = 0;
-					}
-				}
-			}
-		}
-
-		public boolean hasNext() {
-			if (counter != updateCounter) {
-				if (((StorageImpl) getStorage()).concurrentIterator) {
-					refresh();
-				}
-				else {
-					throw new ConcurrentModificationException();
-				}
-			}
-
-			return sp != 0;
-		}
-
-		public E next() {
-			if (!hasNext()) {
-				throw new NoSuchElementException();
-			}
-
-			int pos = posStack[sp - 1];
-			BtreePage pg = pageStack[sp - 1];
-
-			currPos = pos;
-			currPage = pg;
-			E curr = (E) getCurrent(pg, pos);
-
-			if (((StorageImpl) getStorage()).concurrentIterator) {
-				currKey = new BtreeKey(pg.getKey(pos), pg.items.getRaw(pos));
-			}
-
-			gotoNextItem(pg, pos);
-
-			return curr;
-		}
-
-		public int nextOid() {
-			if (!hasNext()) {
-				return 0;
-			}
-
-			int pos = posStack[sp - 1];
-			BtreePage pg = pageStack[sp - 1];
-
-			currPos = pos;
-			currPage = pg;
-
-			Object obj = pg.items.getRaw(pos);
-			int oid = getStorage().getOid(obj);
-
-			if (((StorageImpl) getStorage()).concurrentIterator) {
-				currKey = new BtreeKey(pg.getKey(pos), pg.items.getRaw(pos));
-			}
-
-			gotoNextItem(pg, pos);
-			return oid;
-		}
-
-		protected Object getCurrent(BtreePage pg, int pos) {
-			return pg.items.get(pos);
-		}
-
-		protected final void gotoNextItem(BtreePage pg, int pos) {
-			if (order == ASCENT_ORDER) {
-				if (++pos == end) {
-					while (--sp != 0) {
-						pos = posStack[sp - 1];
-						pg = pageStack[sp - 1];
-
-						if (++pos <= pg.nItems) {
-							posStack[sp - 1] = pos;
-
-							do {
-								pg = (BtreePage) pg.items.get(pos);
-								end = pg.nItems;
-								pageStack[sp] = pg;
-								posStack[sp] = pos = 0;
-							}
-							while (++sp < pageStack.length);
-
-							break;
-						}
-					}
-				}
-				else {
-					posStack[sp - 1] = pos;
-				}
-				if (sp != 0 && till != null
-						&& -pg.compare(till, pos) >= till.inclusion) {
-					sp = 0;
-				}
-			}
-			else { // descent order
-				if (--pos < 0) {
-					while (--sp != 0) {
-						pos = posStack[sp - 1];
-						pg = pageStack[sp - 1];
-
-						if (--pos >= 0) {
-							posStack[sp - 1] = pos;
-
-							do {
-								pg = (BtreePage) pg.items.get(pos);
-								pageStack[sp] = pg;
-								posStack[sp] = pos = pg.nItems;
-							}
-							while (++sp < pageStack.length);
-
-							posStack[sp - 1] = --pos;
-							break;
-						}
-					}
-				}
-				else {
-					posStack[sp - 1] = pos;
-				}
-				if (sp != 0 && from != null
-						&& pg.compare(from, pos) >= from.inclusion) {
-					sp = 0;
-				}
-			}
-			if (((StorageImpl) getStorage()).concurrentIterator && sp != 0) {
-				nextKey = pg.getKey(pos);
-				nextObj = pg.items.getRaw(pos);
-			}
-		}
-
-		private void refresh() {
-			if (sp != 0) {
-				if (nextKey == null) {
-					reset();
-				}
-				else {
-					if (order == ASCENT_ORDER) {
-						from = nextKey;
-					}
-					else {
-						till = nextKey;
-					}
-
-					Object next = nextObj;
-					reset();
-
-					while (true) {
-						int pos = posStack[sp - 1];
-						BtreePage pg = pageStack[sp - 1];
-
-						if (!pg.items.getRaw(pos).equals(next)) {
-							gotoNextItem(pg, pos);
-						}
-						else {
-							break;
-						}
-					}
-				}
-			}
-
-			counter = updateCounter;
-		}
-
-		public void remove() {
-			if (currPage == null) {
-				throw new NoSuchElementException();
-			}
-
-			StorageImpl db = (StorageImpl) getStorage();
-
-			if (!db.concurrentIterator) {
-				if (counter != updateCounter) {
-					throw new ConcurrentModificationException();
-				}
-
-				currKey = new BtreeKey(currPage.getKey(currPos),
-						currPage.items.getRaw(currPos));
-
-				if (sp != 0) {
-					int pos = posStack[sp - 1];
-					BtreePage pg = pageStack[sp - 1];
-
-					nextKey = pg.getKey(pos);
-					nextObj = pg.items.getRaw(pos);
-				}
-			}
-
-			AltBtree.this.removeIfExists(currKey);
-
-			refresh();
-			currPage = null;
-		}
-
-	}
-
-	class BtreeSelectionEntryIterator extends
-			BtreeSelectionIterator<Map.Entry<Object, T>> {
-		BtreeSelectionEntryIterator(Key from, Key till, int order) {
-			super(from, till, order);
-		}
-
-		protected Object getCurrent(BtreePage pg, int pos) {
-			return new BtreeEntry(pg, pos);
-		}
-	}
-
-	class BtreeEntryStartFromIterator extends BtreeSelectionEntryIterator {
-
-		int start;
-
-		BtreeEntryStartFromIterator(int start, int order) {
-			super(null, null, order);
-			this.start = start;
-			reset();
-		}
-
-		void reset() {
-			super.reset();
-			int skip = (order == ASCENT_ORDER) ? start : nElems - start - 1;
-			while (--skip >= 0 && hasNext()) {
-				next();
-			}
-		}
-
-	}
-
-	public IterableIterator<T> iterator(Key from, Key till, int order) {
-		return new BtreeSelectionIterator<T>(checkKey(from), checkKey(till),
-				order);
-	}
-
-	public IterableIterator<T> iterator(Object from, Object till, int order) {
-		return new BtreeSelectionIterator<T>(checkKey(Btree.getKeyFromObject(
-				type, from)), checkKey(Btree.getKeyFromObject(type, till)),
-				order);
-	}
-
-	public IterableIterator<T> prefixIterator(String prefix) {
-		return prefixIterator(prefix, ASCENT_ORDER);
-	}
-
-	public IterableIterator<T> prefixIterator(String prefix, int order) {
-		return iterator(new Key(prefix), new Key(prefix + Character.MAX_VALUE,
-				false), order);
-	}
-
-	public IterableIterator<Map.Entry<Object, T>> entryIterator(Key from,
-			Key till, int order) {
-		return new BtreeSelectionEntryIterator(checkKey(from), checkKey(till),
-				order);
-	}
-
-	public IterableIterator<Map.Entry<Object, T>> entryIterator(Object from,
-			Object till, int order) {
-		return new BtreeSelectionEntryIterator(checkKey(Btree.getKeyFromObject(
-				type, from)), checkKey(Btree.getKeyFromObject(type, till)),
-				order);
-	}
-
-	public int indexOf(Key key) {
-		PersistentIterator iterator = (PersistentIterator) iterator(null, key,
-				DESCENT_ORDER);
-		int i;
-
-		for (i = -1; iterator.nextOid() != 0; i++);
-
-		return i;
-	}
-
-	public T getAt(int i) {
-		IterableIterator<Map.Entry<Object, T>> iterator;
-
-		if (i < 0 || i >= nElems) {
-			throw new IndexOutOfBoundsException("Position " + i
-					+ ", index size " + nElems);
-		}
-
-		if (i <= (nElems / 2)) {
-			iterator = entryIterator(null, null, ASCENT_ORDER);
-
-			while (--i >= 0) {
-				iterator.next();
-			}
-		}
-		else {
-			iterator = entryIterator(null, null, DESCENT_ORDER);
-			i -= nElems;
-
-			while (++i < 0) {
-				iterator.next();
-			}
-		}
-
-		return iterator.next().getValue();
-	}
-
-	public IterableIterator<Map.Entry<Object, T>> entryIterator(int start,
-			int order) {
-		return new BtreeEntryStartFromIterator(start, order);
-	}
-
-	public boolean isUnique() {
-		return unique;
-	}
+    static final int OP_DONE = 0;
+
+    static final int OP_OVERFLOW = 1;
+
+    static final int OP_UNDERFLOW = 2;
+
+    static final int OP_NOT_FOUND = 3;
+
+    static final int OP_DUPLICATE = 4;
+
+    static final int OP_OVERWRITE = 5;
+
+    transient int myUpdateCounter;
+
+    int myHeight;
+
+    int myType;
+
+    int myNumOfElems;
+
+    boolean myUnique;
+
+    BtreePage myRoot;
+
+    AltBtree() {
+    }
+
+    AltBtree(final Class aClass, final boolean aUnique) {
+        myUnique = aUnique;
+        myType = checkType(aClass);
+    }
+
+    AltBtree(final int aType, final boolean aUnique) {
+        myType = aType;
+        myUnique = aUnique;
+    }
+
+    static int checkType(final Class aClass) {
+        final int elemType = ClassDescriptor.getTypeCode(aClass);
+
+        if (elemType > ClassDescriptor.TP_OBJECT && elemType != ClassDescriptor.TP_VALUE &&
+                elemType != ClassDescriptor.TP_ENUM) {
+            throw new StorageError(StorageError.UNSUPPORTED_INDEX_TYPE, aClass);
+        }
+
+        return elemType;
+    }
+
+    static Class mapKeyType(final int aType) {
+        switch (aType) {
+            case ClassDescriptor.TP_BOOLEAN:
+                return boolean.class;
+            case ClassDescriptor.TP_BYTE:
+                return byte.class;
+            case ClassDescriptor.TP_CHAR:
+                return char.class;
+            case ClassDescriptor.TP_SHORT:
+                return short.class;
+            case ClassDescriptor.TP_INT:
+                return int.class;
+            case ClassDescriptor.TP_LONG:
+                return long.class;
+            case ClassDescriptor.TP_FLOAT:
+                return float.class;
+            case ClassDescriptor.TP_DOUBLE:
+                return double.class;
+            case ClassDescriptor.TP_STRING:
+                return String.class;
+            case ClassDescriptor.TP_DATE:
+                return Date.class;
+            case ClassDescriptor.TP_OBJECT:
+                return Object.class;
+            case ClassDescriptor.TP_VALUE:
+                return IValue.class;
+            case ClassDescriptor.TP_ENUM:
+                return Enum.class;
+            default:
+                return null;
+        }
+    }
+
+    Key checkKey(final Key aKey) {
+        Key key = aKey;
+
+        if (key != null) {
+            if (key.myType != myType) {
+                throw new StorageError(StorageError.INCOMPATIBLE_KEY_TYPE);
+            }
+
+            if (myType == ClassDescriptor.TP_OBJECT && key.myIntValue == 0 && key.myObjectValue != null) {
+                final Object obj = key.myObjectValue;
+                key = new Key(obj, getStorage().makePersistent(obj), key.myInclusion != 0);
+            }
+
+            if (key.myObjectValue instanceof char[]) {
+                key = new Key(new String((char[]) key.myObjectValue), key.myInclusion != 0);
+            }
+        }
+
+        return key;
+    }
+
+    @Override
+    public T get(final Key aKey) {
+        Key key = aKey;
+
+        key = checkKey(key);
+
+        if (myRoot != null) {
+            final ArrayList<T> list = new ArrayList<>();
+
+            myRoot.find(key, key, myHeight, list);
+
+            if (list.size() > 1) {
+                throw new StorageError(StorageError.KEY_NOT_UNIQUE);
+            } else if (list.size() == 0) {
+                return null;
+            } else {
+                return list.get(0);
+            }
+        }
+
+        return null;
+    }
+
+    @Override
+    public ArrayList<T> prefixSearchList(final String aKey) {
+        if (ClassDescriptor.TP_STRING != myType) {
+            throw new StorageError(StorageError.INCOMPATIBLE_KEY_TYPE);
+        }
+
+        final ArrayList<T> list = new ArrayList<>();
+
+        if (myRoot != null) {
+            ((BtreePageOfString) myRoot).prefixSearch(aKey, myHeight, list);
+        }
+
+        return list;
+    }
+
+    @Override
+    public Object[] prefixSearch(final String aKey) {
+        return prefixSearchList(aKey).toArray();
+    }
+
+    @Override
+    public ArrayList<T> getList(final Key aFrom, final Key aTo) {
+        final ArrayList<T> list = new ArrayList<>();
+
+        if (myRoot != null) {
+            myRoot.find(checkKey(aFrom), checkKey(aTo), myHeight, list);
+        }
+
+        return list;
+    }
+
+    @Override
+    public ArrayList<T> getList(final Object aFrom, final Object aTo) {
+        return getList(Btree.getKeyFromObject(myType, aFrom), Btree.getKeyFromObject(myType, aTo));
+    }
+
+    @Override
+    public Object[] get(final Key aFrom, final Key aTo) {
+        return getList(aFrom, aTo).toArray();
+    }
+
+    @Override
+    public Object[] get(final Object aFrom, final Object aTo) {
+        return get(Btree.getKeyFromObject(myType, aFrom), Btree.getKeyFromObject(myType, aTo));
+    }
+
+    @Override
+    public boolean put(final Key aKey, final T aObject) {
+        return insert(aKey, aObject, false) == null;
+    }
+
+    @Override
+    public T set(final Key aKey, final T aObject) {
+        return insert(aKey, aObject, true);
+    }
+
+    @Override
+    public IterableIterator<T> iterator(final Key aFrom, final Key aTo, final int aOrder) {
+        return new BtreeSelectionIterator<>(checkKey(aFrom), checkKey(aTo), aOrder);
+    }
+
+    @Override
+    public IterableIterator<T> iterator(final Object aFrom, final Object aTo, final int aOrder) {
+        return new BtreeSelectionIterator<>(checkKey(Btree.getKeyFromObject(myType, aFrom)), checkKey(Btree
+                .getKeyFromObject(myType, aTo)), aOrder);
+    }
+
+    @Override
+    public IterableIterator<T> prefixIterator(final String aPrefix) {
+        return prefixIterator(aPrefix, ASCENT_ORDER);
+    }
+
+    @Override
+    public IterableIterator<T> prefixIterator(final String aPrefix, final int aOrder) {
+        return iterator(new Key(aPrefix), new Key(aPrefix + Character.MAX_VALUE, false), aOrder);
+    }
+
+    @Override
+    public IterableIterator<Map.Entry<Object, T>> entryIterator(final Key aFrom, final Key aTo, final int aOrder) {
+        return new BtreeSelectionEntryIterator(checkKey(aFrom), checkKey(aTo), aOrder);
+    }
+
+    @Override
+    public IterableIterator<Map.Entry<Object, T>> entryIterator(final Object aFrom, final Object aTo,
+            final int aOrder) {
+        return new BtreeSelectionEntryIterator(checkKey(Btree.getKeyFromObject(myType, aFrom)), checkKey(Btree
+                .getKeyFromObject(myType, aTo)), aOrder);
+    }
+
+    @Override
+    public int indexOf(final Key aKey) {
+        final PersistentIterator iterator = (PersistentIterator) iterator(null, aKey, DESCENT_ORDER);
+        int i;
+
+        for (i = -1; iterator.nextOID() != 0; i++) {
+        }
+
+        return i;
+    }
+
+    @Override
+    public T getAt(final int aIndex) {
+        final IterableIterator<Map.Entry<Object, T>> iterator;
+
+        int index = aIndex;
+
+        if (index < 0 || index >= myNumOfElems) {
+            throw new IndexOutOfBoundsException("Position " + index + ", index size " + myNumOfElems);
+        }
+
+        if (index <= myNumOfElems / 2) {
+            iterator = entryIterator(null, null, ASCENT_ORDER);
+
+            while (--index >= 0) {
+                iterator.next();
+            }
+        } else {
+            iterator = entryIterator(null, null, DESCENT_ORDER);
+            index -= myNumOfElems;
+
+            while (++index < 0) {
+                iterator.next();
+            }
+        }
+
+        return iterator.next().getValue();
+    }
+
+    @Override
+    public IterableIterator<Map.Entry<Object, T>> entryIterator(final int aStart, final int aOrder) {
+        return new BtreeEntryStartFromIterator(aStart, aOrder);
+    }
+
+    @Override
+    public boolean isUnique() {
+        return myUnique;
+    }
+
+    @SuppressWarnings("unchecked")
+    final void allocateRootPage(final BtreeKey aInsert) {
+        final Storage storage = getStorage();
+        BtreePage newRoot = null;
+
+        switch (myType) {
+            case ClassDescriptor.TP_BYTE:
+                newRoot = new BtreePageOfByte(storage);
+                break;
+            case ClassDescriptor.TP_SHORT:
+                newRoot = new BtreePageOfShort(storage);
+                break;
+            case ClassDescriptor.TP_CHAR:
+                newRoot = new BtreePageOfChar(storage);
+                break;
+            case ClassDescriptor.TP_BOOLEAN:
+                newRoot = new BtreePageOfBoolean(storage);
+                break;
+            case ClassDescriptor.TP_INT:
+            case ClassDescriptor.TP_ENUM:
+                newRoot = new BtreePageOfInt(storage);
+                break;
+            case ClassDescriptor.TP_LONG:
+            case ClassDescriptor.TP_DATE:
+                newRoot = new BtreePageOfLong(storage);
+                break;
+            case ClassDescriptor.TP_FLOAT:
+                newRoot = new BtreePageOfFloat(storage);
+                break;
+            case ClassDescriptor.TP_DOUBLE:
+                newRoot = new BtreePageOfDouble(storage);
+                break;
+            case ClassDescriptor.TP_OBJECT:
+                newRoot = new BtreePageOfObject(storage);
+                break;
+            case ClassDescriptor.TP_STRING:
+                newRoot = new BtreePageOfString(storage);
+                break;
+            case ClassDescriptor.TP_VALUE:
+                newRoot = new BtreePageOfValue(storage);
+                break;
+            default:
+                Assert.failed("Invalid type");
+        }
+
+        newRoot.insert(aInsert, 0);
+        newRoot.myItems.setObject(1, myRoot);
+        newRoot.myNumOfItems = 1;
+        myRoot = newRoot;
+    }
+
+    @SuppressWarnings("unchecked")
+    final T insert(final Key aKey, final T aObject, final boolean aOverwrite) {
+        final BtreeKey ins = new BtreeKey(checkKey(aKey), aObject);
+
+        if (myRoot == null) {
+            allocateRootPage(ins);
+            myHeight = 1;
+        } else {
+            final int result = myRoot.insert(ins, myHeight, myUnique, aOverwrite);
+
+            if (result == OP_OVERFLOW) {
+                allocateRootPage(ins);
+                myHeight += 1;
+            } else if (result == OP_DUPLICATE || result == OP_OVERWRITE) {
+                return (T) ins.myOldNode;
+            }
+        }
+
+        myUpdateCounter += 1;
+        myNumOfElems += 1;
+        modify();
+
+        return null;
+    }
+
+    @Override
+    public void remove(final Key aKey, final T aObject) {
+        remove(new BtreeKey(checkKey(aKey), aObject));
+    }
+
+    @Override
+    public boolean unlink(final Key aKey, final T aObject) {
+        return removeIfExists(aKey, aObject);
+    }
+
+    boolean removeIfExists(final Key aKey, final Object aObject) {
+        return removeIfExists(new BtreeKey(checkKey(aKey), aObject));
+    }
+
+    void remove(final BtreeKey aRemove) {
+        if (!removeIfExists(aRemove)) {
+            throw new StorageError(StorageError.KEY_NOT_FOUND);
+        }
+    }
+
+    boolean removeIfExists(final BtreeKey aRemove) {
+        if (myRoot == null) {
+            return false;
+        }
+
+        final int result = myRoot.remove(aRemove, myHeight);
+
+        if (result == OP_NOT_FOUND) {
+            return false;
+        }
+
+        myNumOfElems -= 1;
+
+        if (result == OP_UNDERFLOW) {
+            if (myRoot.myNumOfItems == 0) {
+                BtreePage newRoot = null;
+
+                if (myHeight != 1) {
+                    newRoot = (BtreePage) myRoot.myItems.get(0);
+                }
+
+                myRoot.deallocate();
+                myRoot = newRoot;
+                myHeight -= 1;
+            }
+        }
+
+        myUpdateCounter += 1;
+        modify();
+
+        return true;
+    }
+
+    @SuppressWarnings("unchecked")
+    @Override
+    public T remove(final Key aKey) {
+        if (!myUnique) {
+            throw new StorageError(StorageError.KEY_NOT_UNIQUE);
+        }
+
+        final BtreeKey rk = new BtreeKey(checkKey(aKey), null);
+        remove(rk);
+
+        return (T) rk.myOldNode;
+    }
+
+    @Override
+    public T get(final Object aKey) {
+        return get(Btree.getKeyFromObject(myType, aKey));
+    }
+
+    @Override
+    public ArrayList<T> getPrefixList(final String aPrefix) {
+        return getList(new Key(aPrefix, true), new Key(aPrefix + Character.MAX_VALUE, false));
+    }
+
+    @Override
+    public Object[] getPrefix(final String aPrefix) {
+        return get(new Key(aPrefix, true), new Key(aPrefix + Character.MAX_VALUE, false));
+    }
+
+    @Override
+    public boolean put(final Object aKey, final T aObject) {
+        return put(Btree.getKeyFromObject(myType, aKey), aObject);
+    }
+
+    @Override
+    public T set(final Object aKey, final T aObject) {
+        return set(Btree.getKeyFromObject(myType, aKey), aObject);
+    }
+
+    @Override
+    public void remove(final Object aKey, final T aObject) {
+        remove(Btree.getKeyFromObject(myType, aKey), aObject);
+    }
+
+    @Override
+    public T remove(final String aKey) {
+        return remove(new Key(aKey));
+    }
+
+    @Override
+    public T removeKey(final Object aKey) {
+        return removeKey(Btree.getKeyFromObject(myType, aKey));
+    }
+
+    @Override
+    public Iterator<T> iterator() {
+        return iterator(null, null, ASCENT_ORDER);
+    }
+
+    @Override
+    public IterableIterator<Map.Entry<Object, T>> entryIterator() {
+        return entryIterator(null, null, ASCENT_ORDER);
+    }
+
+    @Override
+    public int size() {
+        return myNumOfElems;
+    }
+
+    @Override
+    public void clear() {
+        if (myRoot != null) {
+            myRoot.purge(myHeight);
+            myRoot = null;
+            myNumOfElems = 0;
+            myHeight = 0;
+            myUpdateCounter += 1;
+            modify();
+        }
+    }
+
+    @Override
+    public Object[] toArray() {
+        final Object[] array = new Object[myNumOfElems];
+
+        if (myRoot != null) {
+            myRoot.traverseForward(myHeight, array, 0);
+        }
+
+        return array;
+    }
+
+    @SuppressWarnings("unchecked")
+    @Override
+    public <E> E[] toArray(final E[] aArray) {
+        E[] array = aArray;
+
+        if (array.length < myNumOfElems) {
+            array = (E[]) Array.newInstance(array.getClass().getComponentType(), myNumOfElems);
+        }
+
+        if (myRoot != null) {
+            myRoot.traverseForward(myHeight, array, 0);
+        }
+
+        if (array.length > myNumOfElems) {
+            array[myNumOfElems] = null;
+        }
+
+        return array;
+    }
+
+    @Override
+    public void deallocate() {
+        if (myRoot != null) {
+            myRoot.purge(myHeight);
+        }
+
+        super.deallocate();
+    }
+
+    @Override
+    public Class[] getKeyTypes() {
+        return new Class[] { getKeyType() };
+    }
+
+    @Override
+    public Class getKeyType() {
+        return mapKeyType(myType);
+    }
+
+    static class BtreeKey {
+
+        Key myKey;
+
+        Object myNode;
+
+        Object myOldNode;
+
+        BtreeKey(final Key aKey, final Object aNode) {
+            myKey = aKey;
+            myNode = aNode;
+        }
+
+    }
+
+    abstract static class BtreePage extends Persistent {
+
+        static final int BTREE_PAGE_SIZE = Page.PAGE_SIZE - ObjectHeader.SIZE_OF - 4 * 3;
+
+        int myNumOfItems;
+
+        Link myItems;
+
+        BtreePage() {
+        }
+
+        BtreePage(final Storage aStorage, final int aSize) {
+            super(aStorage);
+
+            myItems = aStorage.createLink(aSize);
+            myItems.setSize(aSize);
+        }
+
+        abstract Object getData();
+
+        abstract Object getKeyValue(int aIndex);
+
+        abstract Key getKey(int aIndex);
+
+        abstract int compare(Key aKey, int aIndex);
+
+        abstract void insert(BtreeKey aKey, int aIndex);
+
+        abstract BtreePage clonePage();
+
+        void clearKeyValue(final int aIndex) {
+        }
+
+        @SuppressWarnings("unchecked")
+        boolean find(final Key aFirstKey, final Key aLastKey, final int aHeight, final ArrayList aResult) {
+            final int n = myNumOfItems;
+
+            int height = aHeight;
+            int l = 0;
+            int r = n;
+
+            height -= 1;
+
+            if (aFirstKey != null) {
+                while (l < r) {
+                    final int i = l + r >> 1;
+
+                    if (compare(aFirstKey, i) >= aFirstKey.myInclusion) {
+                        l = i + 1;
+                    } else {
+                        r = i;
+                    }
+                }
+
+                Assert.that(r == l);
+            }
+
+            if (aLastKey != null) {
+                if (height == 0) {
+                    while (l < n) {
+                        if (-compare(aLastKey, l) >= aLastKey.myInclusion) {
+                            return false;
+                        }
+
+                        aResult.add(myItems.get(l));
+                        l += 1;
+                    }
+
+                    return true;
+                } else {
+                    do {
+                        if (!((BtreePage) myItems.get(l)).find(aFirstKey, aLastKey, height, aResult)) {
+                            return false;
+                        }
+
+                        if (l == n) {
+                            return true;
+                        }
+                    } while (compare(aLastKey, l++) >= 0);
+
+                    return false;
+                }
+            }
+
+            if (height == 0) {
+                while (l < n) {
+                    aResult.add(myItems.get(l));
+                    l += 1;
+                }
+            } else {
+                do {
+                    if (!((BtreePage) myItems.get(l)).find(aFirstKey, aLastKey, height, aResult)) {
+                        return false;
+                    }
+                } while (++l <= n);
+            }
+
+            return true;
+        }
+
+        static void memcpyData(final BtreePage aDestPage, final int aDestIndex, final BtreePage aSrcPage,
+                final int aSrcIndex, final int aLength) {
+            System.arraycopy(aSrcPage.getData(), aSrcIndex, aDestPage.getData(), aDestIndex, aLength);
+        }
+
+        static void memcpyItems(final BtreePage aDestPage, final int aDestIndex, final BtreePage aSrcPage,
+                final int aSrcIndex, final int aLength) {
+            System.arraycopy(aSrcPage.myItems.toRawArray(), aSrcIndex, aDestPage.myItems.toRawArray(), aDestIndex,
+                    aLength);
+        }
+
+        static void memcpy(final BtreePage aDestPage, final int aDestIndex, final BtreePage aSrcPage,
+                final int aSrcIndex, final int aLength) {
+            memcpyData(aDestPage, aDestIndex, aSrcPage, aSrcIndex, aLength);
+            memcpyItems(aDestPage, aDestIndex, aSrcPage, aSrcIndex, aLength);
+        }
+
+        @SuppressWarnings("unchecked")
+        void memset(final int aIndex, final int aLength) {
+            int index = aIndex;
+            int length = aLength;
+
+            while (--length >= 0) {
+                myItems.setObject(index++, null);
+            }
+        }
+
+        @SuppressWarnings("unchecked")
+        int insert(final BtreeKey aInsert, final int aHeight, final boolean aUnique, final boolean aOverwrite) {
+            final int ahead = aUnique ? 1 : 0;
+            final int result;
+
+            int height = aHeight;
+            int n = myNumOfItems;
+            int r = n;
+            int l = 0;
+
+            while (l < r) {
+                final int i = l + r >> 1;
+
+                if (compare(aInsert.myKey, i) >= ahead) {
+                    l = i + 1;
+                } else {
+                    r = i;
+                }
+            }
+
+            Assert.that(l == r);
+
+            /* insert before e[r] */
+            if (--height != 0) {
+                result = ((BtreePage) myItems.get(r)).insert(aInsert, height, aUnique, aOverwrite);
+
+                Assert.that(result != OP_NOT_FOUND);
+
+                if (result != OP_OVERFLOW) {
+                    return result;
+                }
+
+                n += 1;
+            } else if (r < n && compare(aInsert.myKey, r) == 0) {
+                if (aOverwrite) {
+                    aInsert.myOldNode = myItems.get(r);
+                    modify();
+                    myItems.setObject(r, aInsert.myNode);
+                    return OP_OVERWRITE;
+                } else if (aUnique) {
+                    aInsert.myOldNode = myItems.get(r);
+                    return OP_DUPLICATE;
+                }
+            }
+
+            final int max = myItems.size();
+            modify();
+
+            if (n < max) {
+                memcpy(this, r + 1, this, r, n - r);
+                insert(aInsert, r);
+                myNumOfItems += 1;
+                return OP_DONE;
+            } else { /* page is full then divide page */
+                final BtreePage b = clonePage();
+                Assert.that(n == max);
+                final int m = (max + 1) / 2;
+
+                if (r < m) {
+                    memcpy(b, 0, this, 0, r);
+                    memcpy(b, r + 1, this, r, m - r - 1);
+                    memcpy(this, 0, this, m - 1, max - m + 1);
+                    b.insert(aInsert, r);
+                } else {
+                    memcpy(b, 0, this, 0, m);
+                    memcpy(this, 0, this, m, r - m);
+                    memcpy(this, r - m + 1, this, r, max - r);
+                    insert(aInsert, r - m);
+                }
+
+                memset(max - m + 1, m - 1);
+                aInsert.myNode = b;
+                aInsert.myKey = b.getKey(m - 1);
+
+                if (height == 0) {
+                    myNumOfItems = max - m + 1;
+                    b.myNumOfItems = m;
+                } else {
+                    b.clearKeyValue(m - 1);
+                    myNumOfItems = max - m;
+                    b.myNumOfItems = m - 1;
+                }
+
+                return OP_OVERFLOW;
+            }
+        }
+
+        @SuppressWarnings("unchecked")
+        int handlePageUnderflow(final int aIndex, final BtreeKey aKey, final int aHeight) {
+            final BtreePage a = (BtreePage) myItems.get(aIndex);
+
+            a.modify();
+            modify();
+
+            int an = a.myNumOfItems;
+
+            if (aIndex < myNumOfItems) { // exists greater page
+                final BtreePage b = (BtreePage) myItems.get(aIndex + 1);
+                int bn = b.myNumOfItems;
+
+                Assert.that(bn >= an);
+
+                if (aHeight != 1) {
+                    memcpyData(a, an, this, aIndex, 1);
+                    an += 1;
+                    bn += 1;
+                }
+                if (an + bn > myItems.size()) {
+                    // reallocation of nodes between pages a and b
+                    final int i = bn - (an + bn >> 1);
+
+                    b.modify();
+
+                    memcpy(a, an, b, 0, i);
+                    memcpy(b, 0, b, i, bn - i);
+                    memcpyData(this, aIndex, a, an + i - 1, 1);
+
+                    if (aHeight != 1) {
+                        a.clearKeyValue(an + i - 1);
+                    }
+
+                    b.memset(bn - i, i);
+                    b.myNumOfItems -= i;
+                    a.myNumOfItems += i;
+
+                    return OP_DONE;
+                } else { // merge page b to a
+                    memcpy(a, an, b, 0, bn);
+                    b.deallocate();
+                    memcpyData(this, aIndex, this, aIndex + 1, myNumOfItems - aIndex - 1);
+                    memcpyItems(this, aIndex + 1, this, aIndex + 2, myNumOfItems - aIndex - 1);
+                    myItems.setObject(myNumOfItems, null);
+                    a.myNumOfItems += bn;
+                    myNumOfItems -= 1;
+
+                    return myNumOfItems < myItems.size() / 3 ? OP_UNDERFLOW : OP_DONE;
+                }
+            } else { // page b is before a
+                final BtreePage b = (BtreePage) myItems.get(aIndex - 1);
+                int bn = b.myNumOfItems;
+
+                Assert.that(bn >= an);
+
+                if (aHeight != 1) {
+                    an += 1;
+                    bn += 1;
+                }
+
+                if (an + bn > myItems.size()) {
+                    // reallocation of nodes between pages a and b
+                    final int i = bn - (an + bn >> 1);
+
+                    b.modify();
+                    memcpy(a, i, a, 0, an);
+                    memcpy(a, 0, b, bn - i, i);
+
+                    if (aHeight != 1) {
+                        memcpyData(a, i - 1, this, aIndex - 1, 1);
+                    }
+
+                    memcpyData(this, aIndex - 1, b, bn - i - 1, 1);
+
+                    if (aHeight != 1) {
+                        b.clearKeyValue(bn - i - 1);
+                    }
+
+                    b.memset(bn - i, i);
+                    b.myNumOfItems -= i;
+                    a.myNumOfItems += i;
+
+                    return OP_DONE;
+                } else { // merge page b to a
+                    memcpy(a, bn, a, 0, an);
+                    memcpy(a, 0, b, 0, bn);
+
+                    if (aHeight != 1) {
+                        memcpyData(a, bn - 1, this, aIndex - 1, 1);
+                    }
+
+                    b.deallocate();
+                    myItems.setObject(aIndex - 1, a);
+                    myItems.setObject(myNumOfItems, null);
+                    a.myNumOfItems += bn;
+                    myNumOfItems -= 1;
+
+                    return myNumOfItems < myItems.size() / 3 ? OP_UNDERFLOW : OP_DONE;
+                }
+            }
+        }
+
+        @SuppressWarnings("unchecked")
+        int remove(final BtreeKey aRemove, final int aHeight) {
+            int n = myNumOfItems;
+            int height = aHeight;
+            int l = 0;
+            int r = n;
+            int i;
+
+            while (l < r) {
+                i = l + r >> 1;
+
+                if (compare(aRemove.myKey, i) > 0) {
+                    l = i + 1;
+                } else {
+                    r = i;
+                }
+            }
+
+            if (--height == 0) {
+                final Object node = aRemove.myNode;
+
+                while (r < n) {
+                    if (compare(aRemove.myKey, r) == 0) {
+                        if (node == null || myItems.containsElement(r, node)) {
+                            aRemove.myOldNode = myItems.get(r);
+                            modify();
+                            memcpy(this, r, this, r + 1, n - r - 1);
+                            myNumOfItems = --n;
+                            memset(n, 1);
+                            return n < myItems.size() / 3 ? OP_UNDERFLOW : OP_DONE;
+                        }
+                    } else {
+                        break;
+                    }
+
+                    r += 1;
+                }
+                return OP_NOT_FOUND;
+            }
+
+            do {
+                switch (((BtreePage) myItems.get(r)).remove(aRemove, height)) {
+                    case OP_UNDERFLOW:
+                        return handlePageUnderflow(r, aRemove, height);
+                    case OP_DONE:
+                        return OP_DONE;
+                    default:
+                }
+            } while (++r <= n);
+
+            return OP_NOT_FOUND;
+        }
+
+        void purge(final int aHeight) {
+            int height = aHeight;
+
+            if (--height != 0) {
+                int n = myNumOfItems;
+
+                do {
+                    ((BtreePage) myItems.get(n)).purge(height);
+                } while (--n >= 0);
+            }
+
+            super.deallocate();
+        }
+
+        int traverseForward(final int aHeight, final Object[] aResult, final int aPosition) {
+            final int n = myNumOfItems;
+
+            int position = aPosition;
+            int height = aHeight;
+            int i;
+
+            if (--height != 0) {
+                for (i = 0; i <= n; i++) {
+                    position = ((BtreePage) myItems.get(i)).traverseForward(height, aResult, position);
+                }
+            } else {
+                for (i = 0; i < n; i++) {
+                    aResult[position++] = myItems.get(i);
+                }
+            }
+
+            return position;
+        }
+
+    }
+
+    static class BtreePageOfByte extends BtreePage {
+
+        static final int MAX_ITEMS = BTREE_PAGE_SIZE / (4 + 1);
+
+        byte[] myData;
+
+        BtreePageOfByte() {
+        }
+
+        BtreePageOfByte(final Storage aStorage) {
+            super(aStorage, MAX_ITEMS);
+            myData = new byte[MAX_ITEMS];
+        }
+
+        @Override
+        Object getData() {
+            return myData;
+        }
+
+        @Override
+        Object getKeyValue(final int aIndex) {
+            return new Byte(myData[aIndex]);
+        }
+
+        @Override
+        Key getKey(final int aIndex) {
+            return new Key(myData[aIndex]);
+        }
+
+        @Override
+        BtreePage clonePage() {
+            return new BtreePageOfByte(getStorage());
+        }
+
+        @Override
+        int compare(final Key aKey, final int aIndex) {
+            return (byte) aKey.myIntValue - myData[aIndex];
+        }
+
+        @Override
+        void insert(final BtreeKey aKey, final int aIndex) {
+            myItems.setObject(aIndex, aKey.myNode);
+            myData[aIndex] = (byte) aKey.myKey.myIntValue;
+        }
+
+    }
+
+    static class BtreePageOfBoolean extends BtreePageOfByte {
+
+        BtreePageOfBoolean() {
+        }
+
+        BtreePageOfBoolean(final Storage aStorage) {
+            super(aStorage);
+        }
+
+        @Override
+        Key getKey(final int aIndex) {
+            return new Key(myData[aIndex] != 0);
+        }
+
+        @Override
+        Object getKeyValue(final int aIndex) {
+            return Boolean.valueOf(myData[aIndex] != 0);
+        }
+
+        @Override
+        BtreePage clonePage() {
+            return new BtreePageOfBoolean(getStorage());
+        }
+
+    }
+
+    static class BtreePageOfShort extends BtreePage {
+
+        static final int MAX_ITEMS = BTREE_PAGE_SIZE / (4 + 2);
+
+        short[] myData;
+
+        BtreePageOfShort() {
+        }
+
+        BtreePageOfShort(final Storage aStorage) {
+            super(aStorage, MAX_ITEMS);
+            myData = new short[MAX_ITEMS];
+        }
+
+        @Override
+        Object getData() {
+            return myData;
+        }
+
+        @Override
+        Key getKey(final int aIndex) {
+            return new Key(myData[aIndex]);
+        }
+
+        @Override
+        Object getKeyValue(final int aIndex) {
+            return new Short(myData[aIndex]);
+        }
+
+        @Override
+        BtreePage clonePage() {
+            return new BtreePageOfShort(getStorage());
+        }
+
+        @Override
+        int compare(final Key aKey, final int aIndex) {
+            return (short) aKey.myIntValue - myData[aIndex];
+        }
+
+        @SuppressWarnings("unchecked")
+        @Override
+        void insert(final BtreeKey aKey, final int aIndex) {
+            myItems.setObject(aIndex, aKey.myNode);
+            myData[aIndex] = (short) aKey.myKey.myIntValue;
+        }
+
+    }
+
+    static class BtreePageOfChar extends BtreePage {
+
+        static final int MAX_ITEMS = BTREE_PAGE_SIZE / (4 + 2);
+
+        char[] myData;
+
+        BtreePageOfChar() {
+        }
+
+        BtreePageOfChar(final Storage aStorage) {
+            super(aStorage, MAX_ITEMS);
+            myData = new char[MAX_ITEMS];
+        }
+
+        @Override
+        Object getData() {
+            return myData;
+        }
+
+        @Override
+        Key getKey(final int aIndex) {
+            return new Key(myData[aIndex]);
+        }
+
+        @Override
+        Object getKeyValue(final int aIndex) {
+            return new Character(myData[aIndex]);
+        }
+
+        @Override
+        BtreePage clonePage() {
+            return new BtreePageOfChar(getStorage());
+        }
+
+        @Override
+        int compare(final Key aKey, final int aIndex) {
+            return (char) aKey.myIntValue - myData[aIndex];
+        }
+
+        @SuppressWarnings("unchecked")
+        @Override
+        void insert(final BtreeKey aKey, final int aIndex) {
+            myItems.setObject(aIndex, aKey.myNode);
+            myData[aIndex] = (char) aKey.myKey.myIntValue;
+        }
+
+    }
+
+    static class BtreePageOfInt extends BtreePage {
+
+        static final int MAX_ITEMS = BTREE_PAGE_SIZE / (4 + 4);
+
+        int[] myData;
+
+        BtreePageOfInt() {
+        }
+
+        BtreePageOfInt(final Storage aStorage) {
+            super(aStorage, MAX_ITEMS);
+            myData = new int[MAX_ITEMS];
+        }
+
+        @Override
+        Object getData() {
+            return myData;
+        }
+
+        @Override
+        Key getKey(final int aIndex) {
+            return new Key(myData[aIndex]);
+        }
+
+        @Override
+        Object getKeyValue(final int aIndex) {
+            return new Integer(myData[aIndex]);
+        }
+
+        @Override
+        BtreePage clonePage() {
+            return new BtreePageOfInt(getStorage());
+        }
+
+        @Override
+        int compare(final Key aKey, final int aIndex) {
+            return aKey.myIntValue < myData[aIndex] ? -1 : aKey.myIntValue == myData[aIndex] ? 0 : 1;
+        }
+
+        @SuppressWarnings("unchecked")
+        @Override
+        void insert(final BtreeKey aKey, final int aIndex) {
+            myItems.setObject(aIndex, aKey.myNode);
+            myData[aIndex] = aKey.myKey.myIntValue;
+        }
+
+    }
+
+    static class BtreePageOfLong extends BtreePage {
+
+        static final int MAX_ITEMS = BTREE_PAGE_SIZE / (4 + 8);
+
+        long[] myData;
+
+        BtreePageOfLong() {
+        }
+
+        BtreePageOfLong(final Storage aStorage) {
+            super(aStorage, MAX_ITEMS);
+            myData = new long[MAX_ITEMS];
+        }
+
+        @Override
+        Object getData() {
+            return myData;
+        }
+
+        @Override
+        Key getKey(final int aIndex) {
+            return new Key(myData[aIndex]);
+        }
+
+        @Override
+        Object getKeyValue(final int aIndex) {
+            return new Long(myData[aIndex]);
+        }
+
+        @Override
+        BtreePage clonePage() {
+            return new BtreePageOfLong(getStorage());
+        }
+
+        @Override
+        int compare(final Key aKey, final int aIndex) {
+            return aKey.myLongValue < myData[aIndex] ? -1 : aKey.myLongValue == myData[aIndex] ? 0 : 1;
+        }
+
+        @SuppressWarnings("unchecked")
+        @Override
+        void insert(final BtreeKey aKey, final int aIndex) {
+            myItems.setObject(aIndex, aKey.myNode);
+            myData[aIndex] = aKey.myKey.myLongValue;
+        }
+
+    }
+
+    static class BtreePageOfFloat extends BtreePage {
+
+        static final int MAX_ITEMS = BTREE_PAGE_SIZE / (4 + 4);
+
+        float[] myData;
+
+        BtreePageOfFloat() {
+        }
+
+        BtreePageOfFloat(final Storage aStorage) {
+            super(aStorage, MAX_ITEMS);
+            myData = new float[MAX_ITEMS];
+        }
+
+        @Override
+        Object getData() {
+            return myData;
+        }
+
+        @Override
+        Key getKey(final int aIndex) {
+            return new Key(myData[aIndex]);
+        }
+
+        @Override
+        Object getKeyValue(final int aIndex) {
+            return new Float(myData[aIndex]);
+        }
+
+        @Override
+        BtreePage clonePage() {
+            return new BtreePageOfFloat(getStorage());
+        }
+
+        @Override
+        int compare(final Key aKey, final int aIndex) {
+            return (float) aKey.myDoubleValue < myData[aIndex] ? -1 : (float) aKey.myDoubleValue == myData[aIndex] ? 0
+                    : 1;
+        }
+
+        @SuppressWarnings("unchecked")
+        @Override
+        void insert(final BtreeKey aKey, final int aIndex) {
+            myItems.setObject(aIndex, aKey.myNode);
+            myData[aIndex] = (float) aKey.myKey.myDoubleValue;
+        }
+
+    }
+
+    static class BtreePageOfDouble extends BtreePage {
+
+        static final int MAX_ITEMS = BTREE_PAGE_SIZE / (4 + 8);
+
+        double[] myData;
+
+        BtreePageOfDouble() {
+        }
+
+        BtreePageOfDouble(final Storage aStorage) {
+            super(aStorage, MAX_ITEMS);
+            myData = new double[MAX_ITEMS];
+        }
+
+        @Override
+        Object getData() {
+            return myData;
+        }
+
+        @Override
+        Key getKey(final int aIndex) {
+            return new Key(myData[aIndex]);
+        }
+
+        @Override
+        Object getKeyValue(final int aIndex) {
+            return new Double(myData[aIndex]);
+        }
+
+        @Override
+        BtreePage clonePage() {
+            return new BtreePageOfDouble(getStorage());
+        }
+
+        @Override
+        int compare(final Key aKey, final int aIndex) {
+            return aKey.myDoubleValue < myData[aIndex] ? -1 : aKey.myDoubleValue == myData[aIndex] ? 0 : 1;
+        }
+
+        @SuppressWarnings("unchecked")
+        @Override
+        void insert(final BtreeKey aKey, final int aIndex) {
+            myItems.setObject(aIndex, aKey.myNode);
+            myData[aIndex] = aKey.myKey.myDoubleValue;
+        }
+
+    }
+
+    static class BtreePageOfObject extends BtreePage {
+
+        static final int MAX_ITEMS = BTREE_PAGE_SIZE / (4 + 4);
+
+        Link myData;
+
+        BtreePageOfObject() {
+        }
+
+        BtreePageOfObject(final Storage aStorage) {
+            super(aStorage, MAX_ITEMS);
+            myData = aStorage.createLink(MAX_ITEMS);
+            myData.setSize(MAX_ITEMS);
+        }
+
+        @Override
+        Object getData() {
+            return myData.toRawArray();
+        }
+
+        @Override
+        Key getKey(final int aIndex) {
+            return new Key(myData.getRaw(aIndex));
+        }
+
+        @Override
+        Object getKeyValue(final int aIndex) {
+            return myData.get(aIndex);
+        }
+
+        @Override
+        BtreePage clonePage() {
+            return new BtreePageOfObject(getStorage());
+        }
+
+        @Override
+        int compare(final Key aKey, final int aIndex) {
+            final Object obj = myData.getRaw(aIndex);
+            final int oid = obj == null ? 0 : getStorage().getOid(obj);
+            return aKey.myIntValue < oid ? -1 : aKey.myIntValue == oid ? 0 : 1;
+        }
+
+        @SuppressWarnings("unchecked")
+        @Override
+        void insert(final BtreeKey aKey, final int aIndex) {
+            myItems.setObject(aIndex, aKey.myNode);
+            myData.setObject(aIndex, aKey.myKey.myObjectValue);
+        }
+
+    }
+
+    static class BtreePageOfString extends BtreePage {
+
+        static final int MAX_ITEMS = 100;
+
+        String[] myData;
+
+        BtreePageOfString() {
+        }
+
+        BtreePageOfString(final Storage aStorage) {
+            super(aStorage, MAX_ITEMS);
+            myData = new String[MAX_ITEMS];
+        }
+
+        @Override
+        Object getData() {
+            return myData;
+        }
+
+        @Override
+        Key getKey(final int aIndex) {
+            return new Key(myData[aIndex]);
+        }
+
+        @Override
+        Object getKeyValue(final int aIndex) {
+            return myData[aIndex];
+        }
+
+        @Override
+        void clearKeyValue(final int aIndex) {
+            myData[aIndex] = null;
+        }
+
+        @Override
+        BtreePage clonePage() {
+            return new BtreePageOfString(getStorage());
+        }
+
+        @Override
+        int compare(final Key aKey, final int aIndex) {
+            return ((String) aKey.myObjectValue).compareTo(myData[aIndex]);
+        }
+
+        @SuppressWarnings("unchecked")
+        @Override
+        void insert(final BtreeKey aKey, final int aIndex) {
+            myItems.setObject(aIndex, aKey.myNode);
+            myData[aIndex] = (String) aKey.myKey.myObjectValue;
+        }
+
+        @SuppressWarnings("unchecked")
+        @Override
+        void memset(final int aIndex, final int aLength) {
+            int length = aLength;
+            int index = aIndex;
+
+            while (--length >= 0) {
+                myItems.setObject(index, null);
+                myData[index] = null;
+                index += 1;
+            }
+        }
+
+        @SuppressWarnings("unchecked")
+        boolean prefixSearch(final String aKey, final int aHeight, final ArrayList aResult) {
+            final int n = myNumOfItems;
+
+            int height = aHeight;
+            int l = 0;
+            int r = n;
+
+            height -= 1;
+
+            while (l < r) {
+                final int i = l + r >> 1;
+
+                if (!aKey.startsWith(myData[i]) && aKey.compareTo(myData[i]) > 0) {
+                    l = i + 1;
+                } else {
+                    r = i;
+                }
+            }
+
+            Assert.that(r == l);
+
+            if (height == 0) {
+                while (l < n) {
+                    if (aKey.compareTo(myData[l]) < 0) {
+                        return false;
+                    }
+
+                    aResult.add(myItems.get(l));
+                    l += 1;
+                }
+            } else {
+                do {
+                    if (!((BtreePageOfString) myItems.get(l)).prefixSearch(aKey, height, aResult)) {
+                        return false;
+                    }
+                    if (l == n) {
+                        return true;
+                    }
+                } while (aKey.compareTo(myData[l++]) >= 0);
+
+                return false;
+            }
+
+            return true;
+        }
+
+    }
+
+    static class BtreePageOfValue extends BtreePage {
+
+        static final int MAX_ITEMS = 100;
+
+        Object[] myData;
+
+        BtreePageOfValue() {
+        }
+
+        BtreePageOfValue(final Storage aStorage) {
+            super(aStorage, MAX_ITEMS);
+            myData = new Object[MAX_ITEMS];
+        }
+
+        @Override
+        Object getData() {
+            return myData;
+        }
+
+        @Override
+        Key getKey(final int aIndex) {
+            return new Key((IValue) myData[aIndex]);
+        }
+
+        @Override
+        Object getKeyValue(final int aIndex) {
+            return myData[aIndex];
+        }
+
+        @Override
+        void clearKeyValue(final int aIndex) {
+            myData[aIndex] = null;
+        }
+
+        @Override
+        BtreePage clonePage() {
+            return new BtreePageOfValue(getStorage());
+        }
+
+        @SuppressWarnings("unchecked")
+        @Override
+        int compare(final Key aKey, final int aIndex) {
+            return ((Comparable) aKey.myObjectValue).compareTo(myData[aIndex]);
+        }
+
+        @SuppressWarnings("unchecked")
+        @Override
+        void insert(final BtreeKey aKey, final int aIndex) {
+            myItems.setObject(aIndex, aKey.myNode);
+            myData[aIndex] = aKey.myKey.myObjectValue;
+        }
+
+    }
+
+    static class BtreeEntry<T> implements Map.Entry<Object, T> {
+
+        private final int myPosition;
+
+        private final BtreePage myPage;
+
+        BtreeEntry(final BtreePage aPage, final int aPosition) {
+            myPage = aPage;
+            myPosition = aPosition;
+        }
+
+        @Override
+        public Object getKey() {
+            return myPage.getKeyValue(myPosition);
+        }
+
+        @SuppressWarnings("unchecked")
+        @Override
+        public T getValue() {
+            return (T) myPage.myItems.get(myPosition);
+        }
+
+        @Override
+        public T setValue(final T aValue) {
+            throw new UnsupportedOperationException();
+        }
+
+        @Override
+        public boolean equals(final Object aObject) {
+            if (!(aObject instanceof Map.Entry)) {
+                return false;
+            }
+
+            final Map.Entry e = (Map.Entry) aObject;
+
+            return (getKey() == null ? e.getKey() == null : getKey().equals(e.getKey())) && (getValue() == null ? e
+                    .getValue() == null : getValue().equals(e.getValue()));
+        }
+
+        @Override
+        public int hashCode() {
+            return (getKey() == null ? 0 : getKey().hashCode()) ^ (getValue() == null ? 0 : getValue().hashCode());
+        }
+
+        @Override
+        public String toString() {
+            return getKey() + "=" + getValue();
+        }
+
+    }
+
+    class BtreeSelectionIterator<E> extends IterableIterator<E> implements PersistentIterator {
+
+        BtreePage[] myPageStack;
+
+        int[] myPositionStack;
+
+        BtreePage myCurrentPage;
+
+        int myCurrentPosition;
+
+        int myStackPosition;
+
+        int myEnd;
+
+        Key myFrom;
+
+        Key myTo;
+
+        int myOrder;
+
+        int myCounter;
+
+        BtreeKey myCurrentKey;
+
+        Key myNextKey;
+
+        Object myNextObj;
+
+        BtreeSelectionIterator(final Key aFrom, final Key aTo, final int aOrder) {
+            myFrom = aFrom;
+            myTo = aTo;
+            myOrder = aOrder;
+
+            reset();
+        }
+
+        void reset() {
+            int i;
+            int l;
+            int r;
+
+            myStackPosition = 0;
+            myCounter = myUpdateCounter;
+
+            if (myHeight == 0) {
+                return;
+            }
+
+            BtreePage page = myRoot;
+            int h = myHeight;
+
+            myPageStack = new BtreePage[h];
+            myPositionStack = new int[h];
+
+            if (myOrder == ASCENT_ORDER) {
+                if (myFrom == null) {
+                    while (--h > 0) {
+                        myPositionStack[myStackPosition] = 0;
+                        myPageStack[myStackPosition] = page;
+                        page = (BtreePage) page.myItems.get(0);
+                        myStackPosition += 1;
+                    }
+
+                    myPositionStack[myStackPosition] = 0;
+                    myPageStack[myStackPosition] = page;
+                    myEnd = page.myNumOfItems;
+                    myStackPosition += 1;
+                } else {
+                    while (--h > 0) {
+                        myPageStack[myStackPosition] = page;
+                        l = 0;
+                        r = page.myNumOfItems;
+
+                        while (l < r) {
+                            i = l + r >> 1;
+
+                            if (page.compare(myFrom, i) >= myFrom.myInclusion) {
+                                l = i + 1;
+                            } else {
+                                r = i;
+                            }
+                        }
+
+                        Assert.that(r == l);
+
+                        myPositionStack[myStackPosition] = r;
+                        page = (BtreePage) page.myItems.get(r);
+                        myStackPosition += 1;
+                    }
+
+                    myPageStack[myStackPosition] = page;
+                    l = 0;
+                    r = myEnd = page.myNumOfItems;
+
+                    while (l < r) {
+                        i = l + r >> 1;
+
+                        if (page.compare(myFrom, i) >= myFrom.myInclusion) {
+                            l = i + 1;
+                        } else {
+                            r = i;
+                        }
+                    }
+
+                    Assert.that(r == l);
+
+                    if (r == myEnd) {
+                        myStackPosition += 1;
+                        gotoNextItem(page, r - 1);
+                    } else {
+                        myPositionStack[myStackPosition++] = r;
+                    }
+                }
+
+                if (myStackPosition != 0 && myTo != null) {
+                    page = myPageStack[myStackPosition - 1];
+
+                    if (-page.compare(myTo, myPositionStack[myStackPosition - 1]) >= myTo.myInclusion) {
+                        myStackPosition = 0;
+                    }
+                }
+            } else { // descent order
+                if (myTo == null) {
+                    while (--h > 0) {
+                        myPageStack[myStackPosition] = page;
+                        myPositionStack[myStackPosition] = page.myNumOfItems;
+                        page = (BtreePage) page.myItems.get(page.myNumOfItems);
+                        myStackPosition += 1;
+                    }
+
+                    myPageStack[myStackPosition] = page;
+                    myPositionStack[myStackPosition++] = page.myNumOfItems - 1;
+                } else {
+                    while (--h > 0) {
+                        myPageStack[myStackPosition] = page;
+                        l = 0;
+                        r = page.myNumOfItems;
+
+                        while (l < r) {
+                            i = l + r >> 1;
+
+                            if (page.compare(myTo, i) >= 1 - myTo.myInclusion) {
+                                l = i + 1;
+                            } else {
+                                r = i;
+                            }
+                        }
+
+                        Assert.that(r == l);
+
+                        myPositionStack[myStackPosition] = r;
+                        page = (BtreePage) page.myItems.get(r);
+                        myStackPosition += 1;
+                    }
+
+                    myPageStack[myStackPosition] = page;
+                    l = 0;
+                    r = page.myNumOfItems;
+
+                    while (l < r) {
+                        i = l + r >> 1;
+
+                        if (page.compare(myTo, i) >= 1 - myTo.myInclusion) {
+                            l = i + 1;
+                        } else {
+                            r = i;
+                        }
+                    }
+
+                    Assert.that(r == l);
+
+                    if (r == 0) {
+                        myStackPosition += 1;
+                        gotoNextItem(page, r);
+                    } else {
+                        myPositionStack[myStackPosition++] = r - 1;
+                    }
+                }
+                if (myStackPosition != 0 && myFrom != null) {
+                    page = myPageStack[myStackPosition - 1];
+
+                    if (page.compare(myFrom, myPositionStack[myStackPosition - 1]) >= myFrom.myInclusion) {
+                        myStackPosition = 0;
+                    }
+                }
+            }
+        }
+
+        @Override
+        public boolean hasNext() {
+            if (myCounter != myUpdateCounter) {
+                if (((StorageImpl) getStorage()).myConcurrentIterator) {
+                    refresh();
+                } else {
+                    throw new ConcurrentModificationException();
+                }
+            }
+
+            return myStackPosition != 0;
+        }
+
+        @SuppressWarnings("unchecked")
+        @Override
+        public E next() {
+            if (!hasNext()) {
+                throw new NoSuchElementException();
+            }
+
+            final int position = myPositionStack[myStackPosition - 1];
+            final BtreePage page = myPageStack[myStackPosition - 1];
+
+            myCurrentPosition = position;
+            myCurrentPage = page;
+            final E current = (E) getCurrent(page, position);
+
+            if (((StorageImpl) getStorage()).myConcurrentIterator) {
+                myCurrentKey = new BtreeKey(page.getKey(position), page.myItems.getRaw(position));
+            }
+
+            gotoNextItem(page, position);
+
+            return current;
+        }
+
+        @Override
+        public int nextOID() {
+            if (!hasNext()) {
+                return 0;
+            }
+
+            final int position = myPositionStack[myStackPosition - 1];
+            final BtreePage page = myPageStack[myStackPosition - 1];
+
+            myCurrentPosition = position;
+            myCurrentPage = page;
+
+            final Object obj = page.myItems.getRaw(position);
+            final int oid = getStorage().getOid(obj);
+
+            if (((StorageImpl) getStorage()).myConcurrentIterator) {
+                myCurrentKey = new BtreeKey(page.getKey(position), page.myItems.getRaw(position));
+            }
+
+            gotoNextItem(page, position);
+            return oid;
+        }
+
+        protected Object getCurrent(final BtreePage aPage, final int aPosition) {
+            return aPage.myItems.get(aPosition);
+        }
+
+        protected final void gotoNextItem(final BtreePage aPage, final int aPosition) {
+            BtreePage page = aPage;
+            int position = aPosition;
+
+            if (myOrder == ASCENT_ORDER) {
+                if (++position == myEnd) {
+                    while (--myStackPosition != 0) {
+                        position = myPositionStack[myStackPosition - 1];
+                        page = myPageStack[myStackPosition - 1];
+
+                        if (++position <= page.myNumOfItems) {
+                            myPositionStack[myStackPosition - 1] = position;
+
+                            do {
+                                page = (BtreePage) page.myItems.get(position);
+                                myEnd = page.myNumOfItems;
+                                myPageStack[myStackPosition] = page;
+                                myPositionStack[myStackPosition] = position = 0;
+                            } while (++myStackPosition < myPageStack.length);
+
+                            break;
+                        }
+                    }
+                } else {
+                    myPositionStack[myStackPosition - 1] = position;
+                }
+                if (myStackPosition != 0 && myTo != null && -page.compare(myTo, position) >= myTo.myInclusion) {
+                    myStackPosition = 0;
+                }
+            } else { // descent order
+                if (--position < 0) {
+                    while (--myStackPosition != 0) {
+                        position = myPositionStack[myStackPosition - 1];
+                        page = myPageStack[myStackPosition - 1];
+
+                        if (--position >= 0) {
+                            myPositionStack[myStackPosition - 1] = position;
+
+                            do {
+                                page = (BtreePage) page.myItems.get(position);
+                                myPageStack[myStackPosition] = page;
+                                myPositionStack[myStackPosition] = position = page.myNumOfItems;
+                            } while (++myStackPosition < myPageStack.length);
+
+                            myPositionStack[myStackPosition - 1] = --position;
+                            break;
+                        }
+                    }
+                } else {
+                    myPositionStack[myStackPosition - 1] = position;
+                }
+
+                if (myStackPosition != 0 && myFrom != null && page.compare(myFrom, position) >= myFrom.myInclusion) {
+                    myStackPosition = 0;
+                }
+            }
+            if (((StorageImpl) getStorage()).myConcurrentIterator && myStackPosition != 0) {
+                myNextKey = page.getKey(position);
+                myNextObj = page.myItems.getRaw(position);
+            }
+        }
+
+        private void refresh() {
+            if (myStackPosition != 0) {
+                if (myNextKey == null) {
+                    reset();
+                } else {
+                    if (myOrder == ASCENT_ORDER) {
+                        myFrom = myNextKey;
+                    } else {
+                        myTo = myNextKey;
+                    }
+
+                    final Object next = myNextObj;
+                    reset();
+
+                    while (true) {
+                        final int position = myPositionStack[myStackPosition - 1];
+                        final BtreePage page = myPageStack[myStackPosition - 1];
+
+                        if (!page.myItems.getRaw(position).equals(next)) {
+                            gotoNextItem(page, position);
+                        } else {
+                            break;
+                        }
+                    }
+                }
+            }
+
+            myCounter = myUpdateCounter;
+        }
+
+        @Override
+        public void remove() {
+            if (myCurrentPage == null) {
+                throw new NoSuchElementException();
+            }
+
+            final StorageImpl db = (StorageImpl) getStorage();
+
+            if (!db.myConcurrentIterator) {
+                if (myCounter != myUpdateCounter) {
+                    throw new ConcurrentModificationException();
+                }
+
+                myCurrentKey = new BtreeKey(myCurrentPage.getKey(myCurrentPosition), myCurrentPage.myItems.getRaw(
+                        myCurrentPosition));
+
+                if (myStackPosition != 0) {
+                    final int position = myPositionStack[myStackPosition - 1];
+                    final BtreePage page = myPageStack[myStackPosition - 1];
+
+                    myNextKey = page.getKey(position);
+                    myNextObj = page.myItems.getRaw(position);
+                }
+            }
+
+            AltBtree.this.removeIfExists(myCurrentKey);
+
+            refresh();
+            myCurrentPage = null;
+        }
+
+    }
+
+    class BtreeSelectionEntryIterator extends BtreeSelectionIterator<Map.Entry<Object, T>> {
+
+        BtreeSelectionEntryIterator(final Key aFrom, final Key aTo, final int aOrder) {
+            super(aFrom, aTo, aOrder);
+        }
+
+        @Override
+        protected Object getCurrent(final BtreePage aPage, final int aPosition) {
+            return new BtreeEntry(aPage, aPosition);
+        }
+    }
+
+    class BtreeEntryStartFromIterator extends BtreeSelectionEntryIterator {
+
+        int myStart;
+
+        BtreeEntryStartFromIterator(final int aStart, final int aOrder) {
+            super(null, null, aOrder);
+
+            myStart = aStart;
+
+            reset();
+        }
+
+        @Override
+        void reset() {
+            super.reset();
+
+            int skip = myOrder == ASCENT_ORDER ? myStart : myNumOfElems - myStart - 1;
+
+            while (--skip >= 0 && hasNext()) {
+                next();
+            }
+        }
+
+    }
+
 }

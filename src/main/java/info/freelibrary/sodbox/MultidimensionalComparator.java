@@ -1,53 +1,57 @@
+
 package info.freelibrary.sodbox;
 
 /**
- * Base class for multidimensional persistent comparator used in
- * multidimensional index.
+ * Base class for multidimensional persistent comparator used in multidimensional index.
  */
 public abstract class MultidimensionalComparator<T> extends Persistent {
 
-	public static final int LEFT_UNDEFINED = -2;
-	public static final int LT = -1;
-	public static final int EQ = 0;
-	public static final int GT = 1;
-	public static final int RIGHT_UNDEFINED = 2;
-	public static final int NE = 3;
+    public static final int LEFT_UNDEFINED = -2;
 
-	/**
-	 * Compare i-th component of two objects.
-	 * 
-	 * @param m1 first object
-	 * @param m2 second object
-	 * @param i component index
-	 * @return LEFT_UNDEFINED if value of i-th component of m1 is null and value
-	 *         of i-th component of m2 is not null, RIGHT_UNDEFINED if value of
-	 *         i-th component of m1 is not null and value of i-th component of
-	 *         m2 is null, EQ if both values are null, otherwise LT, EQ or GT
-	 *         depending on result of their comparison
-	 */
-	public abstract int compare(T m1, T m2, int i);
+    public static final int LT = -1;
 
-	/**
-	 * Get number of dimensions.
-	 * 
-	 * @return number of dimensions
-	 */
-	public abstract int getNumberOfDimensions();
+    public static final int EQ = 0;
 
-	/**
-	 * Create clone of the specified object containing a copy of the specified
-	 * field.
-	 * 
-	 * @param obj original object
-	 * @param i component index
-	 * @return clone of the object
-	 */
-	public abstract T cloneField(T obj, int i);
+    public static final int GT = 1;
 
-	protected MultidimensionalComparator(Storage storage) {
-		super(storage);
-	}
+    public static final int RIGHT_UNDEFINED = 2;
 
-	protected MultidimensionalComparator() {}
+    public static final int NE = 3;
+
+    protected MultidimensionalComparator(final Storage aStorage) {
+        super(aStorage);
+    }
+
+    protected MultidimensionalComparator() {
+    }
+
+    /**
+     * Compare i-th component of two objects.
+     *
+     * @param a1stObject first object
+     * @param a2ndObject second object
+     * @param aIndex component index
+     * @return LEFT_UNDEFINED if value of i-th component of the first object is null and value of i-th component of
+     *         the second object is not null, RIGHT_UNDEFINED if value of i-th component of the first object is not
+     *         null and value of i-th component of the second object is null, EQ if both values are null, otherwise
+     *         LT, EQ or GT depending on result of their comparison
+     */
+    public abstract int compare(T a1stObject, T a2ndObject, int aIndex);
+
+    /**
+     * Get number of dimensions.
+     *
+     * @return number of dimensions
+     */
+    public abstract int getNumberOfDimensions();
+
+    /**
+     * Create clone of the specified object containing a copy of the specified field.
+     *
+     * @param aObject original object
+     * @param aIndex component index
+     * @return clone of the object
+     */
+    public abstract T cloneField(T aObject, int aIndex);
 
 }

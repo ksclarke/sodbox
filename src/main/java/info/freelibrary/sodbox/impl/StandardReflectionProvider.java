@@ -1,62 +1,75 @@
-package info.freelibrary.sodbox.impl;
 
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+package info.freelibrary.sodbox.impl;
 
 import java.lang.reflect.Constructor;
 import java.lang.reflect.Field;
 
+import info.freelibrary.sodbox.Constants;
+import info.freelibrary.sodbox.MessageCodes;
+import info.freelibrary.util.Logger;
+import info.freelibrary.util.LoggerFactory;
+
 public class StandardReflectionProvider implements ReflectionProvider {
 
-	private final static Logger LOGGER = LoggerFactory.getLogger(StandardReflectionProvider.class);
-	
-    @SuppressWarnings("unchecked")
-	static final Class[] defaultConstructorProfile = new Class[0];
+    static final Class[] DEFAULT_CONSTRUCTOR_PROFILE = new Class[0];
 
-    @SuppressWarnings("unchecked")
-	public Constructor getDefaultConstructor(Class cls) throws Exception {
-    	Constructor constructor = cls.getDeclaredConstructor(defaultConstructorProfile);
-    	
-    	if (LOGGER.isDebugEnabled()) {
-    		LOGGER.debug("Getting default constructor for " + cls.getName());
-    	}
+    private static final Logger LOGGER = LoggerFactory.getLogger(StandardReflectionProvider.class,
+            Constants.MESSAGES);
+
+    @Override
+    public Constructor getDefaultConstructor(final Class aClass) throws Exception {
+        final Constructor constructor = aClass.getDeclaredConstructor(DEFAULT_CONSTRUCTOR_PROFILE);
+
+        if (LOGGER.isDebugEnabled()) {
+            LOGGER.debug(MessageCodes.SB_031, aClass.getName());
+        }
 
         return constructor;
     }
 
-    public void setInt(Field field, Object object, int value) throws Exception { 
-        field.setInt(object, value);
+    @Override
+    public void setInt(final Field aField, final Object aObject, final int aValue) throws Exception {
+        aField.setInt(aObject, aValue);
     }
 
-    public void setLong(Field field, Object object, long value) throws Exception { 
-        field.setLong(object, value);
+    @Override
+    public void setLong(final Field aField, final Object aObj, final long aValue) throws Exception {
+        aField.setLong(aObj, aValue);
     }
 
-    public void setShort(Field field, Object object, short value) throws Exception { 
-        field.setShort(object, value);
+    @Override
+    public void setShort(final Field aField, final Object aObj, final short aValue) throws Exception {
+        aField.setShort(aObj, aValue);
     }
 
-    public void setChar(Field field, Object object, char value) throws Exception { 
-        field.setChar(object, value);
+    @Override
+    public void setChar(final Field aField, final Object aObject, final char aValue) throws Exception {
+        aField.setChar(aObject, aValue);
     }
 
-    public void setByte(Field field, Object object, byte value) throws Exception { 
-        field.setByte(object, value);
+    @Override
+    public void setByte(final Field aField, final Object aObj, final byte aValue) throws Exception {
+        aField.setByte(aObj, aValue);
     }
 
-    public void setFloat(Field field, Object object, float value) throws Exception { 
-        field.setFloat(object, value);
+    @Override
+    public void setFloat(final Field aField, final Object aObj, final float aValue) throws Exception {
+        aField.setFloat(aObj, aValue);
     }
 
-    public void setDouble(Field field, Object object, double value) throws Exception { 
-        field.setDouble(object, value);
+    @Override
+    public void setDouble(final Field aField, final Object aObj, final double aValue) throws Exception {
+        aField.setDouble(aObj, aValue);
     }
 
-    public void setBoolean(Field field, Object object, boolean value) throws Exception { 
-        field.setBoolean(object, value);
+    @Override
+    public void setBoolean(final Field aField, final Object aObject, final boolean aValue) throws Exception {
+        aField.setBoolean(aObject, aValue);
     }
 
-    public void set(Field field, Object object, Object value) throws Exception { 
-        field.set(object, value);
+    @Override
+    public void set(final Field aField, final Object aObject, final Object aValue) throws Exception {
+        aField.set(aObject, aValue);
     }
+
 }

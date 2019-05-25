@@ -1,186 +1,247 @@
+
 package info.freelibrary.sodbox.impl;
 
-import java.io.*;
-import java.net.*;
+import java.io.IOException;
 
-import info.freelibrary.sodbox.*;
+import info.freelibrary.sodbox.IFile;
 
 /**
  * File performing asynchronous replication of changed pages to specified slave nodes.
  */
 public class AsyncReplicationMasterFile extends ReplicationMasterFile {
+
+    private final int myAsyncBufSize;
+
+    private int myBuffered;
+
+    private boolean isClosed;
+
+    private Object myGo;
+
+    private Object myAsync;
+
+    private Parcel myHead;
+
+    private Parcel myTail;
+
+    private Thread myThread;
+
     /**
      * Constructor of replication master file
-     * @param storage replication storage
-     * @param file local file used to store data locally
-     * @param asyncBufSize size of asynchronous buffer
-     * @param pageTimestampFile path to the file with pages timestamps. This file is used for synchronizing
-     * with master content of newly attached node
+     *
+     * @param aStorage replication storage
+     * @param aFile local file used to store data locally
+     * @param aAsyncBufSize size of asynchronous buffer
+     * @param aPageTsFile path to the file with pages timestamps. This file is used for synchronizing with
+     *        master content of newly attached node
      */
-    public AsyncReplicationMasterFile(ReplicationMasterStorageImpl storage, IFile file, int asyncBufSize, String pageTimestampFile) { 
-        super(storage, file, pageTimestampFile);
-        this.asyncBufSize = asyncBufSize;
+    public AsyncReplicationMasterFile(final ReplicationMasterStorageImpl aStorage, final IFile aFile,
+            final int aAsyncBufSize, final String aPageTsFile) {
+        super(aStorage, aFile, aPageTsFile);
+
+        this.myAsyncBufSize = aAsyncBufSize;
         start();
     }
 
-
     /**
      * Constructor of replication master file
-     * @param file local file used to store data locally
-     * @param hosts slave node hosts to which replicastion will be performed
-     * @param asyncBufSize size of asynchronous buffer
-     * @param ack whether master should wait acknowledgment from slave node during trasanction commit
+     *
+     * @param aFile local file used to store data locally
+     * @param aHosts slave node hosts to which replication will be performed
+     * @param aAsyncBufSize size of asynchronous buffer
+     * @param aAck whether master should wait acknowledgment from slave node during transaction commit
      */
-    public AsyncReplicationMasterFile(IFile file, String[] hosts, int asyncBufSize, boolean ack) {                 
-        this(file, hosts, asyncBufSize, ack, null);
+    public AsyncReplicationMasterFile(final IFile aFile, final String[] aHosts, final int aAsyncBufSize,
+            final boolean aAck) {
+        this(aFile, aHosts, aAsyncBufSize, aAck, null);
     }
 
     /**
      * Constructor of replication master file
-     * @param file local file used to store data locally
-     * @param hosts slave node hosts to which replicastion will be performed
-     * @param asyncBufSize size of asynchronous buffer
-     * @param ack whether master should wait acknowledgment from slave node during trasanction commit
-     * @param pageTimestampFile path to the file with pages timestamps. This file is used for synchronizing
-     * with master content of newly attached node
+     *
+     * @param aFile local file used to store data locally
+     * @param aHosts slave node hosts to which replication will be performed
+     * @param aAsyncBufSize size of asynchronous buffer
+     * @param aAck whether master should wait acknowledgment from slave node during trasanction commit
+     * @param aPageTsFile path to the file with pages timestamps. This file is used for synchronizing with
+     *        master content of newly attached node
      */
-    public AsyncReplicationMasterFile(IFile file, String[] hosts, int asyncBufSize, boolean ack, String pageTimestampFile) {                 
-        super(file, hosts, ack, pageTimestampFile);
-        this.asyncBufSize = asyncBufSize;
+    public AsyncReplicationMasterFile(final IFile aFile, final String[] aHosts, final int aAsyncBufSize,
+            final boolean aAck, final String aPageTsFile) {
+        super(aFile, aHosts, aAck, aPageTsFile);
+
+        this.myAsyncBufSize = aAsyncBufSize;
+
         start();
-    }
-
-    class WriteThread extends Thread { 
-        public void run() { 
-            asyncWrite();
-        }
     }
 
     private void start() {
-        go = new Object();
-        async = new Object();
-        thread = new WriteThread();
-        thread.start();
+        myGo = new Object();
+        myAsync = new Object();
+        myThread = new WriteThread();
+        myThread.start();
     }
-                
-    static class Parcel {
-        byte[] data;
-        long   pos;
-        int    host;
-        Parcel next;
-    }
-    
-    public void write(long pos, byte[] buf) {
-        file.write(pos, buf);
-        synchronized (mutex) { 
-            if (pageTimestamps != null) { 
-                int pageNo = (int)(pos >> Page.pageSizeLog);
-                if (pageNo >= pageTimestamps.length) { 
-                    int newLength = pageNo >= pageTimestamps.length*2 ? pageNo+1 : pageTimestamps.length*2;
 
-                    int[] newPageTimestamps = new int[newLength];
-                    System.arraycopy(pageTimestamps, 0, newPageTimestamps, 0, pageTimestamps.length);
-                    pageTimestamps = newPageTimestamps;
+    @Override
+    public void write(final long aPosition, final byte[] aBytes) {
+        myFile.write(aPosition, aBytes);
 
-                    int[] newDirtyPageTimestampMap = new int[(((newLength*4 + Page.pageSize - 1) >> Page.pageSizeLog) + 31) >> 5];
-                    System.arraycopy(dirtyPageTimestampMap, 0, newDirtyPageTimestampMap, 0, dirtyPageTimestampMap.length);
-                    dirtyPageTimestampMap = newDirtyPageTimestampMap;                    
+        synchronized (myMutex) {
+            if (myPageTs != null) {
+                final int pageNo = (int) (aPosition >> Page.PAGE_SIZE_LOG);
+                if (pageNo >= myPageTs.length) {
+                    final int newLength = pageNo >= myPageTs.length * 2 ? pageNo + 1 : myPageTs.length *
+                            2;
+
+                    final int[] newPageTs = new int[newLength];
+
+                    System.arraycopy(myPageTs, 0, newPageTs, 0, myPageTs.length);
+
+                    myPageTs = newPageTs;
+
+                    final int[] newDirtyPageTimestampMap = new int[(newLength * 4 + Page.PAGE_SIZE -
+                            1 >> Page.PAGE_SIZE_LOG) + 31 >> 5];
+
+                    System.arraycopy(myDirtyPageTsMap, 0, newDirtyPageTimestampMap, 0,
+                            myDirtyPageTsMap.length);
+
+                    myDirtyPageTsMap = newDirtyPageTimestampMap;
                 }
-                pageTimestamps[pageNo] = ++timestamp;
-                dirtyPageTimestampMap[pageNo >> (Page.pageSizeLog - 2 + 5)] |= 1 << ((pageNo >> (Page.pageSizeLog - 2)) & 31);
+
+                myPageTs[pageNo] = ++myTimestamp;
+                myDirtyPageTsMap[pageNo >> Page.PAGE_SIZE_LOG - 2 + 5] |= 1 << (pageNo >> Page.PAGE_SIZE_LOG - 2 &
+                        31);
             }
         }
-        for (int i = 0; i < out.length; i++) { 
-            if (out[i] != null) {                
-                byte[] data = new byte[8 + buf.length];
-                Bytes.pack8(data, 0, pos);
-                System.arraycopy(buf, 0, data, 8, buf.length);
-                Parcel p = new Parcel();
-                p.data = data;
-                p.pos = pos;
-                p.host = i;
-                try { 
-                    synchronized(async) { 
-                        buffered += data.length;
-                        while (buffered > asyncBufSize && buffered != data.length) { 
-                            async.wait();
+        for (int i = 0; i < myOutputStream.length; i++) {
+            if (myOutputStream[i] != null) {
+                final byte[] data = new byte[8 + aBytes.length];
+
+                Bytes.pack8(data, 0, aPosition);
+                System.arraycopy(aBytes, 0, data, 8, aBytes.length);
+
+                final Parcel p = new Parcel();
+
+                p.myData = data;
+                p.myPosition = aPosition;
+                p.myHost = i;
+
+                try {
+                    synchronized (myAsync) {
+                        myBuffered += data.length;
+
+                        while (myBuffered > myAsyncBufSize && myBuffered != data.length) {
+                            myAsync.wait();
                         }
                     }
-                } catch (InterruptedException x) {}
-                    
-                synchronized(go) { 
-                    if (head == null) { 
-                        head = tail = p;
-                    } else { 
-                        tail = tail.next = p;
+                } catch (final InterruptedException details) {
+                    // FIXME
+                }
+
+                synchronized (myGo) {
+                    if (myHead == null) {
+                        myHead = myTail = p;
+                    } else {
+                        myTail = myTail.myNext = p;
                     }
-                    go.notify();
+
+                    myGo.notify();
                 }
             }
         }
     }
 
-    public void asyncWrite() { 
-        try { 
-            while (true) { 
-                Parcel p;
-                synchronized(go) {
-                    while (head == null) { 
-                        if (closed) { 
+    /**
+     * Asynchronous write.
+     */
+    public void asyncWrite() {
+        try {
+            while (true) {
+                final Parcel parcel;
+
+                synchronized (myGo) {
+                    while (myHead == null) {
+                        if (isClosed) {
                             return;
                         }
-                        go.wait();
+
+                        myGo.wait();
                     }
-                    p = head;
-                    head = p.next;
-                }  
-                
-                synchronized(async) { 
-                    if (buffered > asyncBufSize) { 
-                        async.notifyAll();
-                    }
-                    buffered -= p.data.length;
+
+                    parcel = myHead;
+                    myHead = parcel.myNext;
                 }
 
-                int i = p.host;
-                while (out[i] != null) { 
-                    try { 
-                        out[i].write(p.data);
-                        if (!ack || p.pos != 0 || in[i].read(rcBuf) == 1) {
+                synchronized (myAsync) {
+                    if (myBuffered > myAsyncBufSize) {
+                        myAsync.notifyAll();
+                    }
+
+                    myBuffered -= parcel.myData.length;
+                }
+
+                final int i = parcel.myHost;
+
+                while (myOutputStream[i] != null) {
+                    try {
+                        myOutputStream[i].write(parcel.myData);
+
+                        if (!myAck || parcel.myPosition != 0 || myInputStream[i].read(myRcBuf) == 1) {
                             break;
                         }
-                    } catch (IOException x) {}
-                    
-                    out[i] = null;
-                    sockets[i] = null;
-                    nHosts -= 1;
-                    if (handleError(hosts[i])) { 
+                    } catch (final IOException details) {
+                        // FIXME
+                    }
+
+                    myOutputStream[i] = null;
+                    mySockets[i] = null;
+                    myNumOfHosts -= 1;
+                    if (handleError(myHosts[i])) {
                         connect(i);
-                    } else { 
+                    } else {
                         break;
                     }
                 }
             }
-        } catch (InterruptedException x) {}
+        } catch (final InterruptedException details) {
+            // FIXME
+        }
     }
 
+    @Override
     public void close() {
-        try { 
-            synchronized (go) {
-                closed = true;
-                go.notify();
+        try {
+            synchronized (myGo) {
+                isClosed = true;
+                myGo.notify();
             }
-            thread.join();
-        } catch (InterruptedException x) {}
+            myThread.join();
+        } catch (final InterruptedException details) {
+            // FIXME
+        }
+
         super.close();
     }
 
-    private int     asyncBufSize;
-    private int     buffered;
-    private boolean closed;
-    private Object  go;
-    private Object  async;
-    private Parcel  head;
-    private Parcel  tail;    
-    private Thread  thread;
+    class WriteThread extends Thread {
+
+        @Override
+        public void run() {
+            asyncWrite();
+        }
+
+    }
+
+    static class Parcel {
+
+        byte[] myData;
+
+        long myPosition;
+
+        int myHost;
+
+        Parcel myNext;
+
+    }
+
 }

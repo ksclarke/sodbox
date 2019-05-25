@@ -1,39 +1,46 @@
+
 package info.freelibrary.sodbox.fulltext;
 
 /**
  * Unary node of full text query
  */
-public class FullTextQueryUnaryOp extends FullTextQuery
-{
-    public FullTextQuery opd;
-    
-    /**
-     * Query node visitor.
-     */
-    public void visit(FullTextQueryVisitor visitor) { 
-        visitor.visit(this);
-        opd.visit(visitor);
-    }
+public class FullTextQueryUnaryOp extends FullTextQuery {
 
-    /**
-     * This method checks that query can be executed by interection of keyword occurrences lists
-     * @return true if quuery can be executed by FullTextIndex, false otherwise
-     */
-    public boolean isConstrained() { 
-        return op == NOT ? false : opd.isConstrained();
-    }
-
-    public String toString() { 
-        return operatorName[op] + '(' + opd.toString() + ')';
-    }
+    public FullTextQuery myQuery;
 
     /**
      * Unary node constructor
-     * @param op operation code
-     * @param opd operand
+     *
+     * @param aOp operation code
+     * @param aOperand operand
      */
-    public FullTextQueryUnaryOp(int op, FullTextQuery opd) { 
-        super(op);
-        this.opd = opd;
+    public FullTextQueryUnaryOp(final int aOp, final FullTextQuery aOperand) {
+        super(aOp);
+        myQuery = aOperand;
     }
-}    
+
+    /**
+     * Query node visitor.
+     */
+    @Override
+    public void visit(final FullTextQueryVisitor aVisitor) {
+        aVisitor.visit(this);
+        myQuery.visit(aVisitor);
+    }
+
+    /**
+     * This method checks that query can be executed by intersection of keyword occurrences lists
+     *
+     * @return true if query can be executed by FullTextIndex, false otherwise
+     */
+    @Override
+    public boolean isConstrained() {
+        return myOp == NOT ? false : myQuery.isConstrained();
+    }
+
+    @Override
+    public String toString() {
+        return OPERATOR_NAME[myOp] + '(' + myQuery.toString() + ')';
+    }
+
+}

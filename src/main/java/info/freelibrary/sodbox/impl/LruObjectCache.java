@@ -1,350 +1,443 @@
+
 package info.freelibrary.sodbox.impl;
-import info.freelibrary.sodbox.*;
 
-import  java.lang.ref.*;
+import java.lang.ref.Reference;
+import java.lang.ref.WeakReference;
 
-public class LruObjectCache implements OidHashTable { 
-    Entry table[];
-    static final float loadFactor = 0.75f;
-    static final int defaultInitSize = 1319;
-    int count;
-    int threshold;
-    int pinLimit;
-    int nPinned;
-    long nModified;
-    Entry pinList;
-    boolean disableRehash;
-    StorageImpl db;
+public class LruObjectCache implements OidHashTable {
+
+    static final float LOAD_FACTOR = 0.75f;
+
+    static final int DEFAULT_INIT_SIZE = 1319;
 
     static Runtime runtime = Runtime.getRuntime();
 
-    public LruObjectCache(StorageImpl db, int size) {
-        this.db = db;
-        int initialCapacity = size == 0 ? defaultInitSize : size;
-        threshold = (int)(initialCapacity * loadFactor);
-        table = new Entry[initialCapacity];
-        pinList = new Entry(0, null, null);
-        pinLimit = size;
-        pinList.lru = pinList.mru = pinList;
+    Entry myTable[];
+
+    int myCount;
+
+    int myThreshold;
+
+    int myPinLimit;
+
+    int myPinnedCount;
+
+    long myModifiedCount;
+
+    Entry myPinList;
+
+    boolean hasDisabledRehash;
+
+    StorageImpl myStorage;
+
+    /**
+     * Creates LRU object cache.
+     *
+     * @param aStorage A storage
+     * @param aSize A cache size
+     */
+    public LruObjectCache(final StorageImpl aStorage, final int aSize) {
+        final int initialCapacity = aSize == 0 ? DEFAULT_INIT_SIZE : aSize;
+
+        myStorage = aStorage;
+        myThreshold = (int) (initialCapacity * LOAD_FACTOR);
+        myTable = new Entry[initialCapacity];
+        myPinList = new Entry(0, null, null);
+        myPinLimit = aSize;
+        myPinList.myLRU = myPinList.myMRU = myPinList;
     }
 
-    public synchronized boolean remove(int oid) {
-        Entry tab[] = table;
-        int index = (oid & 0x7FFFFFFF) % tab.length;
-        for (Entry e = tab[index], prev = null; e != null; prev = e, e = e.next) {
-            if (e.oid == oid) {
+    @Override
+    public synchronized boolean remove(final int aOID) {
+        final Entry tab[] = myTable;
+        final int index = (aOID & 0x7FFFFFFF) % tab.length;
+
+        for (Entry entry = tab[index], prev = null; entry != null; prev = entry, entry = entry.myNext) {
+            if (entry.myOID == aOID) {
                 if (prev != null) {
-                    prev.next = e.next;
+                    prev.myNext = entry.myNext;
                 } else {
-                    tab[index] = e.next;
+                    tab[index] = entry.myNext;
                 }
-                e.clear();
-                unpinObject(e);
-                count -= 1;
+
+                entry.clear();
+                unpinObject(entry);
+                myCount -= 1;
+
                 return true;
             }
         }
+
         return false;
     }
 
-    protected Reference createReference(Object obj) { 
-        return new WeakReference(obj);
+    @SuppressWarnings("unchecked")
+    protected Reference createReference(final Object aObject) {
+        return new WeakReference(aObject);
     }
 
-    private final void unpinObject(Entry e) 
-    {
-        if (e.pin != null) { 
-            e.unpin();
-            nPinned -= 1;
+    private void unpinObject(final Entry aEntry) {
+        if (aEntry.myPin != null) {
+            aEntry.unpin();
+            myPinnedCount -= 1;
         }
     }
-        
 
-    private final void pinObject(Entry e, Object obj) 
-    { 
-        if (pinLimit != 0) { 
-            if (e.pin != null) { 
-                e.unlink();
-            } else { 
-                if (nPinned == pinLimit) {
-                    pinList.lru.unpin();
-                } else { 
-                    nPinned += 1;
+    private void pinObject(final Entry aEntry, final Object aObject) {
+        if (myPinLimit != 0) {
+            if (aEntry.myPin != null) {
+                aEntry.unlink();
+            } else {
+                if (myPinnedCount == myPinLimit) {
+                    myPinList.myLRU.unpin();
+                } else {
+                    myPinnedCount += 1;
                 }
             }
-            e.linkAfter(pinList, obj);
+
+            aEntry.linkAfter(myPinList, aObject);
         }
     }
 
-    public synchronized void put(int oid, Object obj) { 
-        Reference ref = createReference(obj);
-        Entry tab[] = table;
-        int index = (oid & 0x7FFFFFFF) % tab.length;
-        for (Entry e = tab[index]; e != null; e = e.next) {
-            if (e.oid == oid) {
-                e.ref = ref;
-                pinObject(e, obj);
+    @Override
+    public synchronized void put(final int aOID, final Object aObject) {
+        final Reference ref = createReference(aObject);
+
+        Entry tab[] = myTable;
+        int index = (aOID & 0x7FFFFFFF) % tab.length;
+
+        for (Entry e = tab[index]; e != null; e = e.myNext) {
+            if (e.myOID == aOID) {
+                e.myRef = ref;
+                pinObject(e, aObject);
+
                 return;
             }
         }
-        if (count >= threshold && !disableRehash) {
+
+        if (myCount >= myThreshold && !hasDisabledRehash) {
             // Rehash the table if the threshold is exceeded
             rehash();
-            tab = table;
-            index = (oid & 0x7FFFFFFF) % tab.length;
-        } 
-        
+            tab = myTable;
+            index = (aOID & 0x7FFFFFFF) % tab.length;
+        }
+
         // Creates the new entry.
-        tab[index] = new Entry(oid, ref, tab[index]);
-        pinObject(tab[index], obj);
-        count++;
+        tab[index] = new Entry(aOID, ref, tab[index]);
+        pinObject(tab[index], aObject);
+        myCount++;
     }
 
-    public Object get(int oid) {
-        while (true) { 
-            cs:synchronized(this) { 
-                Entry tab[] = table;
-                int index = (oid & 0x7FFFFFFF) % tab.length;
-                for (Entry e = tab[index]; e != null; e = e.next) {
-                    if (e.oid == oid) {
-                        Object obj = e.ref.get();
-                        if (obj == null) { 
-                            if (e.dirty != 0) { 
+    @Override
+    public Object get(final int aOID) {
+        while (true) {
+            cs:
+            synchronized (this) {
+                final Entry tab[] = myTable;
+                final int index = (aOID & 0x7FFFFFFF) % tab.length;
+
+                for (Entry entry = tab[index]; entry != null; entry = entry.myNext) {
+                    if (entry.myOID == aOID) {
+                        final Object obj = entry.myRef.get();
+
+                        if (obj == null) {
+                            if (entry.myDirty != 0) {
                                 break cs;
                             }
-                        } else  { 
-                            if (db.isDeleted(obj)) {
-                                e.ref.clear();
-                                unpinObject(e);
+                        } else {
+                            if (myStorage.isDeleted(obj)) {
+                                entry.myRef.clear();
+                                unpinObject(entry);
+
                                 return null;
                             }
-                            pinObject(e, obj);
+
+                            pinObject(entry, obj);
                         }
+
                         return obj;
                     }
                 }
+
                 return null;
             }
-            runtime.runFinalization();
-        } 
-    }
-    
-    public void flush() {
-        while (true) { 
-          cs:synchronized(this) { 
-                disableRehash = true;
-                long n;
-                do {
-                    n = nModified;                    
-                    for (int i = 0; i < table.length; i++) { 
-                        Entry e, next, prev;
-                        for (e = table[i], prev = null; e != null; e = next) { 
-                            Object obj = e.ref.get();
-                            next = e.next;
-                            if (obj != null) { 
-                                if (db.isModified(obj)) { 
-                                    db.store(obj);
-                                }
-                                prev = e;
-                            } else if (e.dirty != 0) { 
-                                break cs;
-                            } else { 
-                                count -= 1;
-                                e.clear();
-                                if (prev == null) { 
-                                    table[i] = next;
-                                } else { 
-                                    prev.next = next;
-                                }                            
-                            }
-                        }
-                    }
-                } while (n != nModified);
-                disableRehash = false;
-                if (count >= threshold) {
-                    // Rehash the table if the threshold is exceeded
-                    rehash();
-                }
-                return;
-            }
+
             runtime.runFinalization();
         }
     }
 
+    @Override
+    public void flush() {
+        while (true) {
+            cs:
+            synchronized (this) {
+                long modifiedCount;
+
+                hasDisabledRehash = true;
+
+                do {
+                    modifiedCount = myModifiedCount;
+
+                    for (int index = 0; index < myTable.length; index++) {
+                        Entry entry;
+                        Entry next;
+                        Entry previous;
+
+                        for (entry = myTable[index], previous = null; entry != null; entry = next) {
+                            final Object obj = entry.myRef.get();
+
+                            next = entry.myNext;
+
+                            if (obj != null) {
+                                if (myStorage.isModified(obj)) {
+                                    myStorage.store(obj);
+                                }
+
+                                previous = entry;
+                            } else if (entry.myDirty != 0) {
+                                break cs;
+                            } else {
+                                myCount -= 1;
+                                entry.clear();
+
+                                if (previous == null) {
+                                    myTable[index] = next;
+                                } else {
+                                    previous.myNext = next;
+                                }
+                            }
+                        }
+                    }
+                } while (modifiedCount != myModifiedCount);
+
+                hasDisabledRehash = false;
+
+                if (myCount >= myThreshold) {
+                    // Rehash the table if the threshold is exceeded
+                    rehash();
+                }
+
+                return;
+            }
+
+            runtime.runFinalization();
+        }
+    }
+
+    @Override
     public synchronized void reload() {
-        disableRehash = true;
-        for (int i = 0; i < table.length; i++) { 
-            Entry e, next, prev;
-            for (e = table[i]; e != null; e = e.next) {                 
-                Object obj = e.ref.get();
-                if (obj != null) { 
-                    db.invalidate(obj);
-                    try { 
-                        //System.out.println("Reload object " + db.getOid(obj));
-                        db.load(obj);
-                    } catch (Exception x) { 
-                        //x.printStackTrace();
+        hasDisabledRehash = true;
+
+        for (int index = 0; index < myTable.length; index++) {
+            Entry entry;
+
+            for (entry = myTable[index]; entry != null; entry = entry.myNext) {
+                final Object obj = entry.myRef.get();
+
+                if (obj != null) {
+                    myStorage.invalidate(obj);
+
+                    try {
+                        // System.out.println("Reload object " + db.getOid(obj));
+                        myStorage.load(obj);
+                    } catch (final Exception details) {
+                        // FIXME
                         // ignore errors caused by attempt to load object which was created in rollbacked transaction
                     }
                 }
             }
         }
-        disableRehash = false;
-        if (count >= threshold) {
+
+        hasDisabledRehash = false;
+
+        if (myCount >= myThreshold) {
             // Rehash the table if the threshold is exceeded
             rehash();
         }
     }
 
-
+    @Override
     public void invalidate() {
-        while (true) { 
-            cs:synchronized(this) { 
-                for (int i = 0; i < table.length; i++) { 
-                    for (Entry e = table[i]; e != null; e = e.next) { 
-                        Object obj = e.ref.get();
-                        if (obj != null) { 
-                            if (db.isModified(obj)) { 
-                                e.dirty = 0;
-                                unpinObject(e);
-                                db.invalidate(obj);
+        while (true) {
+            cs:
+            synchronized (this) {
+                for (int index = 0; index < myTable.length; index++) {
+                    for (Entry entry = myTable[index]; entry != null; entry = entry.myNext) {
+                        final Object obj = entry.myRef.get();
+
+                        if (obj != null) {
+                            if (myStorage.isModified(obj)) {
+                                entry.myDirty = 0;
+                                unpinObject(entry);
+                                myStorage.invalidate(obj);
                             }
-                        } else if (e.dirty != 0) { 
+                        } else if (entry.myDirty != 0) {
                             break cs;
                         }
                     }
                 }
+
                 return;
             }
+
             runtime.runFinalization();
         }
     }
 
+    @Override
     public synchronized void clear() {
-        Entry tab[] = table;
-        for (int i = 0; i < tab.length; i++) { 
-            tab[i] = null;
+        final Entry tab[] = myTable;
+
+        for (int index = 0; index < tab.length; index++) {
+            tab[index] = null;
         }
-        count = 0;
-        nPinned = 0;
-        pinList.lru = pinList.mru = pinList;
+
+        myCount = 0;
+        myPinnedCount = 0;
+        myPinList.myLRU = myPinList.myMRU = myPinList;
     }
 
     void rehash() {
-        int oldCapacity = table.length;
-        Entry oldMap[] = table;
-        int i;
-        for (i = oldCapacity; --i >= 0;) {
-            Entry e, next, prev;
-            for (prev = null, e = oldMap[i]; e != null; e = next) { 
-                next = e.next;
-                Object obj = e.ref.get();
-                if ((obj == null || db.isDeleted(obj)) && e.dirty == 0) { 
-                    count -= 1;
-                    e.clear();
-                    if (prev == null) { 
-                        oldMap[i] = next;
-                    } else { 
-                        prev.next = next;
+        final int oldCapacity = myTable.length;
+        final Entry oldMap[] = myTable;
+
+        int index;
+
+        for (index = oldCapacity; --index >= 0;) {
+            Entry entry;
+            Entry next;
+            Entry previous;
+
+            for (previous = null, entry = oldMap[index]; entry != null; entry = next) {
+                final Object obj;
+
+                next = entry.myNext;
+                obj = entry.myRef.get();
+
+                if ((obj == null || myStorage.isDeleted(obj)) && entry.myDirty == 0) {
+                    myCount -= 1;
+                    entry.clear();
+
+                    if (previous == null) {
+                        oldMap[index] = next;
+                    } else {
+                        previous.myNext = next;
                     }
-                } else { 
-                    prev = e;
+                } else {
+                    previous = entry;
                 }
             }
         }
-        
-        if (count <= (threshold >>> 1)) {
+
+        if (myCount <= myThreshold >>> 1) {
             return;
         }
-        int newCapacity = oldCapacity * 2 + 1;
-        Entry newMap[] = new Entry[newCapacity];
 
-        threshold = (int)(newCapacity * loadFactor);
-        table = newMap;
+        final int newCapacity = oldCapacity * 2 + 1;
+        final Entry newMap[] = new Entry[newCapacity];
 
-        for (i = oldCapacity; --i >= 0 ;) {
-            for (Entry old = oldMap[i]; old != null; ) {
-                Entry e = old;
-                old = old.next;
+        myThreshold = (int) (newCapacity * LOAD_FACTOR);
+        myTable = newMap;
 
-                int index = (e.oid & 0x7FFFFFFF) % newCapacity;
-                e.next = newMap[index];
-                newMap[index] = e;
+        for (index = oldCapacity; --index >= 0;) {
+            for (Entry old = oldMap[index]; old != null;) {
+                final Entry entry = old;
+                final int mapIndex;
+
+                old = old.myNext;
+                mapIndex = (entry.myOID & 0x7FFFFFFF) % newCapacity;
+
+                entry.myNext = newMap[mapIndex];
+                newMap[mapIndex] = entry;
             }
         }
     }
 
-    public synchronized void setDirty(Object obj) {
-        int oid = db.getOid(obj);
-        Entry tab[] = table;
-        int index = (oid & 0x7FFFFFFF) % tab.length;
-        nModified += 1;
-        for (Entry e = tab[index] ; e != null ; e = e.next) {
-            if (e.oid == oid) {
-                e.dirty += 1;
+    @Override
+    public synchronized void setDirty(final Object aObject) {
+        final int oid = myStorage.getOid(aObject);
+        final Entry tab[] = myTable;
+        final int index = (oid & 0x7FFFFFFF) % tab.length;
+
+        myModifiedCount += 1;
+
+        for (Entry entry = tab[index]; entry != null; entry = entry.myNext) {
+            if (entry.myOID == oid) {
+                entry.myDirty += 1;
                 return;
             }
         }
     }
 
-    public synchronized void clearDirty(Object obj) {
-        int oid = db.getOid(obj);
-        Entry tab[] = table;
-        int index = (oid & 0x7FFFFFFF) % tab.length;
-        for (Entry e = tab[index] ; e != null ; e = e.next) {
-            if (e.oid == oid) {
-                if (e.dirty > 0) { 
-                    e.dirty -= 1;
+    @Override
+    public synchronized void clearDirty(final Object aObject) {
+        final int oid = myStorage.getOid(aObject);
+        final Entry tab[] = myTable;
+        final int index = (oid & 0x7FFFFFFF) % tab.length;
+
+        for (Entry entry = tab[index]; entry != null; entry = entry.myNext) {
+            if (entry.myOID == oid) {
+                if (entry.myDirty > 0) {
+                    entry.myDirty -= 1;
                 }
+
                 return;
             }
         }
     }
 
-    public int size() { 
-        return count;
+    @Override
+    public int size() {
+        return myCount;
     }
 
-    static class Entry { 
-        Entry       next;
-        Reference   ref;
-        int         oid;
-        int         dirty;
-        Entry       lru;
-        Entry       mru;
-        Object      pin;
+    static class Entry {
 
-        void unlink() { 
-            lru.mru = mru;
-            mru.lru = lru;
-        } 
+        Entry myNext;
 
-        void unpin() { 
+        Reference myRef;
+
+        int myOID;
+
+        int myDirty;
+
+        Entry myLRU;
+
+        Entry myMRU;
+
+        Object myPin;
+
+        Entry(final int aOID, final Reference aRef, final Entry aChain) {
+            myNext = aChain;
+            myOID = aOID;
+            myRef = aRef;
+        }
+
+        void unlink() {
+            myLRU.myMRU = myMRU;
+            myMRU.myLRU = myLRU;
+        }
+
+        void unpin() {
             unlink();
-            lru = mru = null;
-            pin = null;
+
+            myLRU = myMRU = null;
+            myPin = null;
         }
 
-        void linkAfter(Entry head, Object obj) { 
-            mru = head.mru;
-            mru.lru = this;
-            head.mru = this;
-            lru = head;
-            pin = obj;
+        void linkAfter(final Entry aHead, final Object aObject) {
+            myMRU = aHead.myMRU;
+            myMRU.myLRU = this;
+            aHead.myMRU = this;
+            myLRU = aHead;
+            myPin = aObject;
         }
 
-        void clear() { 
-            ref.clear();
-            ref = null;
-            dirty = 0;
-            next = null;
-        }
-
-        Entry(int oid, Reference ref, Entry chain) { 
-            next = chain;
-            this.oid = oid;
-            this.ref = ref;
+        void clear() {
+            myRef.clear();
+            myRef = null;
+            myDirty = 0;
+            myNext = null;
         }
     }
 }
-

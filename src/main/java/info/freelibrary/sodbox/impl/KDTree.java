@@ -1,392 +1,516 @@
+
 package info.freelibrary.sodbox.impl;
 
-import info.freelibrary.sodbox.*;
+import java.util.ArrayList;
+import java.util.Iterator;
+import java.util.NoSuchElementException;
+import java.util.Random;
+import java.util.Stack;
 
-import java.util.*;
+import info.freelibrary.sodbox.IterableIterator;
+import info.freelibrary.sodbox.MultidimensionalComparator;
+import info.freelibrary.sodbox.MultidimensionalIndex;
+import info.freelibrary.sodbox.Persistent;
+import info.freelibrary.sodbox.PersistentCollection;
+import info.freelibrary.sodbox.PersistentIterator;
+import info.freelibrary.sodbox.Storage;
 
-public class KDTree<T> extends PersistentCollection<T> implements MultidimensionalIndex<T>{
-    KDTreeNode root;
-    int        nMembers;
-    int        height;
-    MultidimensionalComparator<T> comparator;
-
-    private KDTree() {} 
-
-    KDTree(Storage storage, MultidimensionalComparator<T> comparator) { 
-        super(storage);
-        this.comparator = comparator;
-    }
-
-    KDTree(Storage storage, Class cls, String[] fieldNames, boolean treateZeroAsUndefinedValue) { 
-        super(storage);
-        this.comparator = new ReflectionMultidimensionalComparator<T>(storage, cls, fieldNames, treateZeroAsUndefinedValue);
-    }
-
-    public MultidimensionalComparator<T> getComparator() { 
-        return comparator;
-    }
+public class KDTree<T> extends PersistentCollection<T> implements MultidimensionalIndex<T> {
 
     static final int OK = 0;
+
     static final int NOT_FOUND = 1;
-    static final int TRUNCATE  = 2;
-    
 
-    static class KDTreeNode<T> extends Persistent 
-    {
-        KDTreeNode  left;
-        KDTreeNode  right;
-        T           obj;
-        boolean     deleted;
-        
-        KDTreeNode(Storage db, T obj) {
-            super(db);
-            this.obj = obj;
-        }        
+    static final int TRUNCATE = 2;
 
-        private KDTreeNode() {}
+    KDTreeNode myRoot;
 
-        public void load() {
-            super.load();
-            getStorage().load(obj);
-        }
+    int myMemberCount;
 
-        public boolean recursiveLoading() {
-            return false;
-        }
+    int myHeight;
 
-        int insert(T ins, MultidimensionalComparator<T> comparator, int level) 
-        { 
-            load();
-            int diff = comparator.compare(ins, obj, level % comparator.getNumberOfDimensions());
-            if (diff == MultidimensionalComparator.EQ && deleted) { 
-                getStorage().deallocate(obj);
-                modify();
-                obj = ins;
-                deleted = false;
-                return level;
-            } else if (diff != MultidimensionalComparator.GT) { 
-                if (left == null) { 
-                    modify();
-                    left = new KDTreeNode<T>(getStorage(), ins);
-                    return level+1;
-                } else { 
-                    return left.insert(ins, comparator, level + 1);
-                }
-            } else { 
-                if (right == null) { 
-                    modify();
-                    right = new KDTreeNode<T>(getStorage(), ins);
-                    return level+1;
-                } else { 
-                    return right.insert(ins, comparator, level + 1);
-                }
-            }
-        }
-        
-        int remove(T rem, MultidimensionalComparator<T> comparator, int level) 
-        { 
-            load();
-            if (obj == rem) { 
-                if (left == null && right == null) { 
-                    deallocate();
-                    return TRUNCATE;
-                } else {
-                    modify();
-                    obj = comparator.cloneField(obj, level % comparator.getNumberOfDimensions());
-                    deleted = true;
-                    return OK;
-                }  
-            }
-            int diff = comparator.compare(rem, obj, level % comparator.getNumberOfDimensions());
-            if (diff != MultidimensionalComparator.GT && left != null) {
-                int result = left.remove(rem, comparator, level + 1);
-                if (result == TRUNCATE) { 
-                    modify();
-                    left = null;
-                    return OK;
-                } else if (result == OK) { 
-                    return OK;
-                }
-            } 
-            if (diff != MultidimensionalComparator.LT && right != null) { 
-                int result = right.remove(rem, comparator, level + 1);
-                if (result == TRUNCATE) { 
-                    modify();
-                    right = null;
-                    return OK;
-                } else if (result == OK) { 
-                    return OK;
-                }
-            }
-            return NOT_FOUND;
-        }
-                
-        public void deallocate() { 
-            load();
-            if (deleted) { 
-                getStorage().deallocate(obj);
-            }
-            if (left != null) { 
-                left.deallocate();
-            }
-            if (right != null) { 
-                right.deallocate();
-            }
-            super.deallocate();
-        }
+    MultidimensionalComparator<T> myComparator;
+
+    @SuppressWarnings("unused")
+    private KDTree() {
     }
 
-    public void optimize() { 
-        Iterator<T> itr = iterator();
-        int n = nMembers;
-        Object[] members = new Object[n];
-        for (int i = 0; i < n; i++) { 
-            members[i] = itr.next();
+    KDTree(final Storage aStorage, final MultidimensionalComparator<T> aComparator) {
+        super(aStorage);
+
+        myComparator = aComparator;
+    }
+
+    KDTree(final Storage aStorage, final Class aClass, final String[] aFieldNames,
+            final boolean aTreateZeroAsUndefinedValue) {
+        super(aStorage);
+
+        myComparator = new ReflectionMultidimensionalComparator<>(aStorage, aClass, aFieldNames,
+                aTreateZeroAsUndefinedValue);
+    }
+
+    @Override
+    public MultidimensionalComparator<T> getComparator() {
+        return myComparator;
+    }
+
+    @SuppressWarnings("unchecked")
+    @Override
+    public void optimize() {
+        final Iterator<T> itr = iterator();
+        final int memberCount = myMemberCount;
+        final Object[] members = new Object[memberCount];
+
+        for (int index = 0; index < memberCount; index++) {
+            members[index] = itr.next();
         }
-        Random rnd = new Random();
-        for (int i = 0; i < n; i++) { 
-            int j = rnd.nextInt(n);
-            Object tmp = members[j];
-            members[j] = members[i];
-            members[i] = tmp;
+
+        final Random random = new Random();
+
+        for (int index = 0; index < memberCount; index++) {
+            final int j = random.nextInt(memberCount);
+            final Object tmp = members[j];
+
+            members[j] = members[index];
+            members[index] = tmp;
         }
+
         clear();
-        for (int i = 0; i < n; i++) { 
-            add((T)members[i]);
-        }
-    }           
 
-    public boolean add(T obj) 
-    { 
+        for (int index = 0; index < memberCount; index++) {
+            add((T) members[index]);
+        }
+    }
+
+    @SuppressWarnings("unchecked")
+    @Override
+    public boolean add(final T aObject) {
         modify();
-        if (root == null) {
-            root = new KDTreeNode<T>(getStorage(), obj);
-            height = 1;
-        } else {  
-            int level = root.insert(obj, comparator, 0);
-            if (level >= height) { 
-                height = level+1;
+
+        if (myRoot == null) {
+            myRoot = new KDTreeNode<>(getStorage(), aObject);
+            myHeight = 1;
+        } else {
+            final int level = myRoot.insert(aObject, myComparator, 0);
+
+            if (level >= myHeight) {
+                myHeight = level + 1;
             }
         }
-        nMembers += 1;
+
+        myMemberCount += 1;
+
         return true;
     }
 
-    public boolean remove(Object obj) 
-    {
-        if (root == null) { 
+    @SuppressWarnings("unchecked")
+    @Override
+    public boolean remove(final Object aObject) {
+        if (myRoot == null) {
             return false;
         }
-        int result = root.remove(obj, comparator, 0);
-        if (result == NOT_FOUND) { 
+
+        final int result = myRoot.remove(aObject, myComparator, 0);
+
+        if (result == NOT_FOUND) {
             return false;
-        } 
+        }
+
         modify();
-        if (result == TRUNCATE) { 
-            root = null;
+
+        if (result == TRUNCATE) {
+            myRoot = null;
         }
-        nMembers -= 1;
+
+        myMemberCount -= 1;
+
         return true;
     }
 
-    public Iterator<T> iterator() { 
+    @Override
+    public Iterator<T> iterator() {
         return iterator(null, null);
     }
 
-    public IterableIterator<T> iterator(T pattern) { 
-        return iterator(pattern, pattern);
+    @Override
+    public IterableIterator<T> iterator(final T aPattern) {
+        return iterator(aPattern, aPattern);
     }
 
-    public IterableIterator<T> iterator(T low, T high) { 
-        return new KDTreeIterator(low, high);
+    @Override
+    public IterableIterator<T> iterator(final T aLow, final T aHigh) {
+        return new KDTreeIterator(aLow, aHigh);
     }
 
-    public ArrayList<T> queryByExample(T pattern) { 
-        return queryByExample(pattern, pattern);
+    @Override
+    public ArrayList<T> queryByExample(final T aPattern) {
+        return queryByExample(aPattern, aPattern);
     }
 
-    public ArrayList<T> queryByExample(T low, T high) { 
-        Iterator<T> i = iterator(low, high);
-        ArrayList<T> list = new ArrayList<T>();
-        while (i.hasNext()) { 
-            list.add(i.next());
+    @Override
+    public ArrayList<T> queryByExample(final T aLow, final T aHigh) {
+        final Iterator<T> iterator = iterator(aLow, aHigh);
+        final ArrayList<T> list = new ArrayList<>();
+
+        while (iterator.hasNext()) {
+            list.add(iterator.next());
         }
+
         return list;
     }
 
+    @Override
     public Object[] toArray() {
-        return  queryByExample(null, null).toArray();
+        return queryByExample(null, null).toArray();
     }
 
-    public <E> E[] toArray(E[] arr) {
+    @Override
+    public <E> E[] toArray(final E[] arr) {
         return queryByExample(null, null).toArray(arr);
     }
 
-    public int size() { 
-        return nMembers;
+    @Override
+    public int size() {
+        return myMemberCount;
     }
 
-    public int getHeight() { 
-        return height;
+    @Override
+    public int getHeight() {
+        return myHeight;
     }
 
+    @Override
     public void clear() {
-        if (root != null) { 
-            root.deallocate();
+        if (myRoot != null) {
+            myRoot.deallocate();
             modify();
-            root = null;
-            nMembers = 0;
-            height = 0;
+            myRoot = null;
+            myMemberCount = 0;
+            myHeight = 0;
         }
     }
 
-    public boolean contains(Object member) {
-        Iterator<T> i = iterator((T)member);
-        while (i.hasNext()) { 
-            if (i.next() == member) { 
+    @SuppressWarnings("unchecked")
+    @Override
+    public boolean contains(final Object aMember) {
+        final Iterator<T> iterator = iterator((T) aMember);
+
+        while (iterator.hasNext()) {
+            if (iterator.next() == aMember) {
                 return true;
             }
         }
-        return false;
-    } 
 
+        return false;
+    }
+
+    @Override
     public void deallocate() {
-        if (root != null) { 
-            root.deallocate();
+        if (myRoot != null) {
+            myRoot.deallocate();
         }
+
         super.deallocate();
     }
 
-    int compareAllComponents(T pattern, T obj) 
-    { 
-        int n = comparator.getNumberOfDimensions();
+    int compareAllComponents(final T aPattern, final T aObject) {
+        final int n = myComparator.getNumberOfDimensions();
+
         int result = MultidimensionalComparator.EQ;
-        for (int i = 0; i < n; i++) { 
-            int diff = comparator.compare(pattern, obj, i);
-            if (diff == MultidimensionalComparator.RIGHT_UNDEFINED) { 
+
+        for (int i = 0; i < n; i++) {
+            final int diff = myComparator.compare(aPattern, aObject, i);
+
+            if (diff == MultidimensionalComparator.RIGHT_UNDEFINED) {
                 return diff;
-            } else if (diff == MultidimensionalComparator.LT) { 
-                if (result == MultidimensionalComparator.GT) { 
+            } else if (diff == MultidimensionalComparator.LT) {
+                if (result == MultidimensionalComparator.GT) {
                     return MultidimensionalComparator.NE;
-                } else { 
+                } else {
                     result = MultidimensionalComparator.LT;
                 }
-            } else if (diff == MultidimensionalComparator.GT) { 
-                if (result == MultidimensionalComparator.LT) { 
+            } else if (diff == MultidimensionalComparator.GT) {
+                if (result == MultidimensionalComparator.LT) {
                     return MultidimensionalComparator.NE;
-                } else { 
+                } else {
                     result = MultidimensionalComparator.GT;
                 }
             }
         }
+
         return result;
     }
-                
 
-    public class KDTreeIterator extends IterableIterator<T> implements PersistentIterator
-    { 
-        Stack<KDTreeNode<T>> stack;
-        int                  nDims;
-        T                    high;
-        T                    low;
-        KDTreeNode<T>        curr;
-        KDTreeNode<T>        next;
-        int                  currLevel;
- 
-        KDTreeIterator(T low, T high) { 
-            this.low = low;
-            this.high = high;
-            nDims = comparator.getNumberOfDimensions();
-            stack = new Stack<KDTreeNode<T>>();
-            getMin(root);
+    public class KDTreeIterator extends IterableIterator<T> implements PersistentIterator {
+
+        Stack<KDTreeNode<T>> myStack;
+
+        int myDimensionCount;
+
+        T myHigh;
+
+        T myLow;
+
+        KDTreeNode<T> myCurrentNode;
+
+        KDTreeNode<T> myNextNode;
+
+        int myCurrentLevel;
+
+        @SuppressWarnings("unchecked")
+        KDTreeIterator(final T aLow, final T aHigh) {
+            myLow = aLow;
+            myHigh = aHigh;
+            myDimensionCount = myComparator.getNumberOfDimensions();
+            myStack = new Stack<>();
+            getMin(myRoot);
         }
-        
+
+        /**
+         * Gets tree level.
+         *
+         * @return A level
+         */
         public int getLevel() {
-            return currLevel;
+            return myCurrentLevel;
         }
 
-        private boolean getMin(KDTreeNode<T> node) { 
-            if (node != null) { 
-                while (true) { 
+        @SuppressWarnings("unchecked")
+        private boolean getMin(final KDTreeNode<T> aNode) {
+            KDTreeNode node = aNode;
+
+            if (node != null) {
+                while (true) {
                     node.load();
-                    stack.push(node);
-                    int diff = low == null 
-                        ? MultidimensionalComparator.LEFT_UNDEFINED 
-                        : comparator.compare(low, node.obj, (stack.size()-1) % nDims);
-                    if (diff != MultidimensionalComparator.GT && node.left != null) { 
-                        node = node.left;
-                    } else { 
+                    myStack.push(node);
+
+                    final int diff = myLow == null ? MultidimensionalComparator.LEFT_UNDEFINED : myComparator.compare(
+                            myLow, (T) node.myObject, (myStack.size() - 1) % myDimensionCount);
+
+                    if (diff != MultidimensionalComparator.GT && node.myLeftNode != null) {
+                        node = node.myLeftNode;
+                    } else {
                         return true;
                     }
                 }
-            }                         
+            }
+
             return false;
         }
 
+        @SuppressWarnings({ "unchecked", "checkstyle:BooleanExpressionComplexity" })
+        @Override
         public boolean hasNext() {
-            if (next != null) { 
+            if (myNextNode != null) {
                 return true;
             }
-            while (!stack.empty()) { 
-                KDTreeNode<T> node = stack.pop();                    
-                if (node != null) { 
-                    if (!node.deleted) { 
+
+            while (!myStack.empty()) {
+                final KDTreeNode<T> node = myStack.pop();
+
+                if (node != null) {
+                    if (!node.isDeleted) {
                         int result;
-                        if ((low == null 
-                             || (result = compareAllComponents(low, node.obj)) == MultidimensionalComparator.LT 
-                             || result == MultidimensionalComparator.EQ)
-                            && (high == null 
-                                || (result = compareAllComponents(high, node.obj)) == MultidimensionalComparator.GT 
-                                || result == MultidimensionalComparator.EQ))
-                        {
-                            next = node;
-                            currLevel = stack.size();
+
+                        if ((myLow == null || (result = compareAllComponents(myLow,
+                                node.myObject)) == MultidimensionalComparator.LT ||
+                                result == MultidimensionalComparator.EQ) && (myHigh == null || (result =
+                                        compareAllComponents(myHigh,
+                                                node.myObject)) == MultidimensionalComparator.GT ||
+                                        result == MultidimensionalComparator.EQ)) {
+                            myNextNode = node;
+                            myCurrentLevel = myStack.size();
                         }
                     }
-                    if (node.right != null 
-                        && (high == null 
-                            || comparator.compare(high, node.obj, stack.size() % nDims) != MultidimensionalComparator.LT)) 
-                    { 
-                        stack.push(null);
-                        if (!getMin(node.right)) { 
-                            stack.pop();
+
+                    if (node.myRightNode != null && (myHigh == null || myComparator.compare(myHigh, node.myObject,
+                            myStack.size() % myDimensionCount) != MultidimensionalComparator.LT)) {
+                        myStack.push(null);
+
+                        if (!getMin(node.myRightNode)) {
+                            myStack.pop();
                         }
                     }
-                    if (next != null) { 
+
+                    if (myNextNode != null) {
                         return true;
                     }
                 }
             }
-            return false;
-        }                                
 
-        public T next() { 
-            if (!hasNext()) { 
+            return false;
+        }
+
+        @Override
+        public T next() {
+            if (!hasNext()) {
                 throw new NoSuchElementException();
             }
-            curr = next;
-            next = null;
-            return curr.obj;
+
+            myCurrentNode = myNextNode;
+            myNextNode = null;
+
+            return myCurrentNode.myObject;
         }
-        
-        public int nextOid() { 
-            if (!hasNext()) { 
+
+        @Override
+        public int nextOID() {
+            if (!hasNext()) {
                 return 0;
             }
-            curr = next;
-            next = null;
-            return getStorage().getOid(curr.obj);
+
+            myCurrentNode = myNextNode;
+            myNextNode = null;
+
+            return getStorage().getOid(myCurrentNode.myObject);
         }
-        
-        public void remove() { 
-            if (curr == null) { 
+
+        @Override
+        public void remove() {
+            if (myCurrentNode == null) {
                 throw new IllegalStateException();
             }
-            curr.modify();
-            curr.obj = comparator.cloneField(curr.obj, currLevel % nDims);
-            curr.deleted = true;
-            curr = null;
+
+            myCurrentNode.modify();
+            myCurrentNode.myObject = myComparator.cloneField(myCurrentNode.myObject, myCurrentLevel %
+                    myDimensionCount);
+            myCurrentNode.isDeleted = true;
+            myCurrentNode = null;
+        }
+    }
+
+    static class KDTreeNode<T> extends Persistent {
+
+        KDTreeNode myLeftNode;
+
+        KDTreeNode myRightNode;
+
+        T myObject;
+
+        boolean isDeleted;
+
+        KDTreeNode(final Storage aStorage, final T aObject) {
+            super(aStorage);
+
+            myObject = aObject;
+        }
+
+        @SuppressWarnings("unused")
+        private KDTreeNode() {
+        }
+
+        @Override
+        public void load() {
+            super.load();
+
+            getStorage().load(myObject);
+        }
+
+        @Override
+        public boolean recursiveLoading() {
+            return false;
+        }
+
+        @SuppressWarnings("unchecked")
+        int insert(final T aInsert, final MultidimensionalComparator<T> aComparator, final int aLevel) {
+            load();
+
+            final int diff = aComparator.compare(aInsert, myObject, aLevel % aComparator.getNumberOfDimensions());
+
+            if (diff == MultidimensionalComparator.EQ && isDeleted) {
+                getStorage().deallocate(myObject);
+                modify();
+                myObject = aInsert;
+                isDeleted = false;
+
+                return aLevel;
+            } else if (diff != MultidimensionalComparator.GT) {
+                if (myLeftNode == null) {
+                    modify();
+                    myLeftNode = new KDTreeNode<>(getStorage(), aInsert);
+
+                    return aLevel + 1;
+                } else {
+                    return myLeftNode.insert(aInsert, aComparator, aLevel + 1);
+                }
+            } else {
+                if (myRightNode == null) {
+                    modify();
+                    myRightNode = new KDTreeNode<>(getStorage(), aInsert);
+
+                    return aLevel + 1;
+                } else {
+                    return myRightNode.insert(aInsert, aComparator, aLevel + 1);
+                }
+            }
+        }
+
+        @SuppressWarnings("unchecked")
+        int remove(final T aRemove, final MultidimensionalComparator<T> aComparator, final int aLevel) {
+            load();
+
+            if (myObject == aRemove) {
+                if (myLeftNode == null && myRightNode == null) {
+                    deallocate();
+
+                    return TRUNCATE;
+                } else {
+                    modify();
+                    myObject = aComparator.cloneField(myObject, aLevel % aComparator.getNumberOfDimensions());
+                    isDeleted = true;
+
+                    return OK;
+                }
+            }
+
+            final int diff = aComparator.compare(aRemove, myObject, aLevel % aComparator.getNumberOfDimensions());
+
+            if (diff != MultidimensionalComparator.GT && myLeftNode != null) {
+                final int result = myLeftNode.remove(aRemove, aComparator, aLevel + 1);
+
+                if (result == TRUNCATE) {
+                    modify();
+                    myLeftNode = null;
+
+                    return OK;
+                } else if (result == OK) {
+                    return OK;
+                }
+            }
+
+            if (diff != MultidimensionalComparator.LT && myRightNode != null) {
+                final int result = myRightNode.remove(aRemove, aComparator, aLevel + 1);
+
+                if (result == TRUNCATE) {
+                    modify();
+                    myRightNode = null;
+
+                    return OK;
+                } else if (result == OK) {
+                    return OK;
+                }
+            }
+
+            return NOT_FOUND;
+        }
+
+        @Override
+        public void deallocate() {
+            load();
+
+            if (isDeleted) {
+                getStorage().deallocate(myObject);
+            }
+
+            if (myLeftNode != null) {
+                myLeftNode.deallocate();
+            }
+
+            if (myRightNode != null) {
+                myRightNode.deallocate();
+            }
+
+            super.deallocate();
         }
     }
 }
-

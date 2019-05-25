@@ -1,44 +1,64 @@
+
 package info.freelibrary.sodbox.impl;
 
-import info.freelibrary.sodbox.*;
+import info.freelibrary.sodbox.CustomAllocator;
+import info.freelibrary.sodbox.Persistent;
+import info.freelibrary.sodbox.Storage;
 
-public class DefaultAllocator extends Persistent implements CustomAllocator { 
-    public DefaultAllocator(Storage storage) { 
-        super(storage);
+public class DefaultAllocator extends Persistent implements CustomAllocator {
+
+    /**
+     * Create a default allocator.
+     *
+     * @param aStorage A storage
+     */
+    public DefaultAllocator(final Storage aStorage) {
+        super(aStorage);
     }
-    
-    protected DefaultAllocator() {}
 
-    public long allocate(long size) { 
-        return ((StorageImpl)getStorage()).allocate(size, 0);
+    protected DefaultAllocator() {
     }
 
-    public long getSegmentBase() { 
+    @Override
+    public long allocate(final long aSize) {
+        return ((StorageImpl) getStorage()).allocate(aSize, 0);
+    }
+
+    @Override
+    public long getSegmentBase() {
         return 0;
     }
 
+    @Override
     public long getSegmentSize() {
-        return 1L << StorageImpl.dbLargeDatabaseOffsetBits;
+        return 1L << StorageImpl.DB_LARGE_DATABASE_OFFSET_BITS;
     }
 
-    public long reallocate(long pos, long oldSize, long newSize) {
-        StorageImpl db = (StorageImpl)getStorage();
-        if (((newSize + StorageImpl.dbAllocationQuantum - 1) & ~(StorageImpl.dbAllocationQuantum-1))
-            > ((oldSize + StorageImpl.dbAllocationQuantum - 1) & ~(StorageImpl.dbAllocationQuantum-1)))
-        { 
-            long newPos = db.allocate(newSize, 0);
-            db.cloneBitmap(pos, oldSize);
-            db.free(pos, oldSize);
-            pos = newPos;
+    @Override
+    public long reallocate(final long aPosition, final long aOldSize, final long aNewSize) {
+        final StorageImpl db = (StorageImpl) getStorage();
+
+        long position = aPosition;
+
+        if ((aNewSize + StorageImpl.DB_ALLOCATION_QUANTUM - 1 & ~(StorageImpl.DB_ALLOCATION_QUANTUM -
+                1)) > (aOldSize + StorageImpl.DB_ALLOCATION_QUANTUM - 1 & ~(StorageImpl.DB_ALLOCATION_QUANTUM - 1))) {
+            final long newPos = db.allocate(aNewSize, 0);
+
+            db.cloneBitmap(position, aOldSize);
+            db.free(position, aOldSize);
+            position = newPos;
         }
-        return pos;
+
+        return position;
     }
 
-    public void free(long pos, long size) { 
-        ((StorageImpl)getStorage()).cloneBitmap(pos, size);
+    @Override
+    public void free(final long aPosition, final long aSize) {
+        ((StorageImpl) getStorage()).cloneBitmap(aPosition, aSize);
     }
-        
-    public void commit() {}
+
+    @Override
+    public void commit() {
+    }
+
 }
-        
-

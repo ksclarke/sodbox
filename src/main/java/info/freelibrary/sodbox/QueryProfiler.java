@@ -1,96 +1,107 @@
+
 package info.freelibrary.sodbox;
 
 import java.util.Arrays;
-import java.util.HashMap;
 import java.util.Formatter;
+import java.util.HashMap;
 
 /**
- * Class used to profile query execution. It should be registered as storage
- * listener.
+ * Class used to profile query execution. It should be registered as storage listener.
  */
 public class QueryProfiler extends StorageListener {
 
-	public static class QueryInfo implements Comparable<QueryInfo> {
-		public String query;
-		public long totalTime;
-		public long maxTime;
-		public long count;
-		public boolean sequentialSearch;
+    protected HashMap<String, QueryInfo> myProfile = new HashMap<>();
 
-		public int compareTo(QueryInfo info) {
-			return (totalTime > info.totalTime) ? -1
-					: (totalTime < info.totalTime) ? 1
-							: (count > info.count) ? -1
-									: (count < info.count) ? 1 : 0;
-		}
-	}
+    /**
+     * Execute a query.
+     *
+     * @param aQuery A query
+     * @param aElapsedTime An elapsed time
+     * @param aSequentialSearch Whether it's a sequential search or not
+     */
+    public synchronized void queryExecution(final String aQuery, final long aElapsedTime,
+            final boolean aSequentialSearch) {
+        QueryInfo info = myProfile.get(aQuery);
 
-	protected HashMap<String, QueryInfo> profile = new HashMap<String, QueryInfo>();
+        if (info == null) {
+            info = new QueryInfo();
+            info.myQuery = aQuery;
+            myProfile.put(aQuery, info);
+        }
 
-	public synchronized void queryExecution(String query, long elapsedTime,
-			boolean sequentialSearch) {
-		QueryInfo info = profile.get(query);
+        if (info.myMaxTime < aElapsedTime) {
+            info.myMaxTime = aElapsedTime;
+        }
 
-		if (info == null) {
-			info = new QueryInfo();
-			info.query = query;
-			profile.put(query, info);
-		}
+        info.myTotalTime += aElapsedTime;
+        info.myCount += 1;
+        info.mySequentialSearch |= aSequentialSearch;
+    }
 
-		if (info.maxTime < elapsedTime) {
-			info.maxTime = elapsedTime;
-		}
+    /**
+     * Dump queries execution profile to standard output
+     */
+    public void dump() {
+        dump(System.out);
+    }
 
-		info.totalTime += elapsedTime;
-		info.count += 1;
-		info.sequentialSearch |= sequentialSearch;
-	}
+    /**
+     * Dump queries execution profile to the specified destination.
+     *
+     * @param appendable destination where profile should be dumped (it can be StringBuilder, PrintStream...)
+     */
+    public void dump(final Appendable appendable) {
+        final QueryInfo[] results = getProfile();
+        final Formatter f = new Formatter(appendable);
 
-	/**
-	 * Dump queries execution profile to standard output
-	 */
-	public void dump() {
-		dump(System.out);
-	}
+        f.format("S     Total      Count Maximum Average Percent Query\n");
+        long total = 0;
 
-	/**
-	 * Dump queries execution profile to the specified destination.
-	 * 
-	 * @param appendable destination where profile should be dumped (it can be
-	 *        StringBuilder, PrintStream...)
-	 */
-	public void dump(Appendable appendable) {
-		QueryInfo[] results = getProfile();
-		Formatter f = new Formatter(appendable);
-		f.format("S     Total      Count Maximum Average Percent Query\n");
-		long total = 0;
+        for (final QueryInfo info : results) {
+            total += info.myTotalTime;
+        }
 
-		for (QueryInfo info : results) {
-			total += info.totalTime;
-		}
+        final String format = "%c%10d %10d %7d %7d %6d%% %s\n";
 
-		String format = "%c%10d %10d %7d %7d %6d%% %s\n";
+        for (final QueryInfo info : results) {
+            f.format(format, info.mySequentialSearch ? '!' : ' ', info.myTotalTime, info.myCount, info.myMaxTime,
+                    info.myCount != 0 ? info.myTotalTime / info.myCount : 0L, total != 0 ? info.myTotalTime * 100 /
+                            total : 0L, info.myQuery);
+        }
 
-		for (QueryInfo info : results) {
-			f.format(format, info.sequentialSearch ? '!' : ' ', info.totalTime,
-					info.count, info.maxTime, (info.count != 0 ? info.totalTime
-							/ info.count : 0L), (total != 0 ? info.totalTime
-							* 100 / total : 0L), info.query);
-		}
+        f.flush();
+        f.close();
+    }
 
-		f.flush();
-	}
+    /**
+     * Get array with QueryInfo elements sorted by (totalTime,count)
+     */
+    public QueryInfo[] getProfile() {
+        final QueryInfo[] a = new QueryInfo[myProfile.size()];
 
-	/**
-	 * Get array with QueryInfo elements sorted by (totalTime,count)
-	 */
-	public QueryInfo[] getProfile() {
-		QueryInfo[] a = new QueryInfo[profile.size()];
+        myProfile.values().toArray(a);
+        Arrays.sort(a);
 
-		profile.values().toArray(a);
-		Arrays.sort(a);
+        return a;
+    }
 
-		return a;
-	}
+    public static class QueryInfo implements Comparable<QueryInfo> {
+
+        public String myQuery;
+
+        public long myTotalTime;
+
+        public long myMaxTime;
+
+        public long myCount;
+
+        public boolean mySequentialSearch;
+
+        @Override
+        public int compareTo(final QueryInfo aQueryInfo) {
+            return myTotalTime > aQueryInfo.myTotalTime ? -1 : myTotalTime < aQueryInfo.myTotalTime ? 1
+                    : myCount > aQueryInfo.myCount ? -1 : myCount < aQueryInfo.myCount ? 1 : 0;
+        }
+    }
 
 }

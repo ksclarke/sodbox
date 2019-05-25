@@ -1,1739 +1,2113 @@
+
 package info.freelibrary.sodbox.impl;
-import info.freelibrary.sodbox.*;
 
-import  java.util.ArrayList;
+import java.io.IOException;
+import java.util.ArrayList;
 
-class BtreePage { 
-    static final int firstKeyOffs = 4;
-    static final int keySpace = Page.pageSize - firstKeyOffs;
-    static final int strKeySize = 8;    
-    static final int maxItems = keySpace / 4;    
+import info.freelibrary.sodbox.Assert;
+import info.freelibrary.sodbox.Key;
 
-    static int getnItems(Page pg) { 
-        return Bytes.unpack2(pg.data, 0);
-    }
-    static int getSize(Page pg) { 
-        return Bytes.unpack2(pg.data, 2);
-    }
-    static int getKeyStrOid(Page pg, int index) {
-                return Bytes.unpack4(pg.data, firstKeyOffs + index*8);
-    }
-    static int getKeyStrSize(Page pg, int index) { 
-        return Bytes.unpack2(pg.data, firstKeyOffs + index*8+4);
-    }
-    static int getKeyStrOffs(Page pg, int index) { 
-        return Bytes.unpack2(pg.data, firstKeyOffs + index*8+6);
+final class BtreePage {
+
+    static final int FIRST_KEY_OFFSET = 4;
+
+    static final int KEY_SPACE = Page.PAGE_SIZE - FIRST_KEY_OFFSET;
+
+    static final int STRING_KEY_SIZE = 8;
+
+    static final int MAX_ITEMS = KEY_SPACE / 4;
+
+    private static final String ASSERTION_MSG = "String fits in the B-Tree page";
+
+    private BtreePage() {
     }
 
-    static int getReference(Page pg, int index) { 
-        return Bytes.unpack4(pg.data, firstKeyOffs + index*4);
+    static int getnItems(final Page aPage) {
+        return Bytes.unpack2(aPage.myData, 0);
     }
-    
-    static void setnItems(Page pg, int nItems) { 
-        Bytes.pack2(pg.data, 0, (short)nItems);
+
+    static int getSize(final Page aPage) {
+        return Bytes.unpack2(aPage.myData, 2);
     }
-    static void setSize(Page pg, int size) { 
-        Bytes.pack2(pg.data, 2, (short)size);
+
+    static int getKeyStrOid(final Page aPage, final int aIndex) {
+        return Bytes.unpack4(aPage.myData, FIRST_KEY_OFFSET + aIndex * 8);
     }
-    static void setKeyStrOid(Page pg, int index, int oid) { 
-        Bytes.pack4(pg.data, firstKeyOffs + index*8, oid);
+
+    static int getKeyStrSize(final Page aPage, final int aIndex) {
+        return Bytes.unpack2(aPage.myData, FIRST_KEY_OFFSET + aIndex * 8 + 4);
     }
-    static void setKeyStrSize(Page pg, int index, int size) { 
-        Bytes.pack2(pg.data, firstKeyOffs + index*8+4, (short)size);
+
+    static int getKeyStrOffs(final Page aPage, final int aIndex) {
+        return Bytes.unpack2(aPage.myData, FIRST_KEY_OFFSET + aIndex * 8 + 6);
     }
-    static void setKeyStrOffs(Page pg, int index, int offs) { 
-        Bytes.pack2(pg.data, firstKeyOffs + index*8+6, (short)offs);
+
+    static int getReference(final Page aPage, final int aIndex) {
+        return Bytes.unpack4(aPage.myData, FIRST_KEY_OFFSET + aIndex * 4);
     }
-    static void setKeyStrChars(Page pg, int offs, char[] str) { 
-        int len = str.length;
-        for (int i = 0; i < len; i++) { 
-            Bytes.pack2(pg.data, firstKeyOffs + offs, (short)str[i]);
-            offs += 2;
+
+    static void setnItems(final Page aPage, final int aNumOfItems) {
+        Bytes.pack2(aPage.myData, 0, (short) aNumOfItems);
+    }
+
+    static void setSize(final Page aPage, final int aSize) {
+        Bytes.pack2(aPage.myData, 2, (short) aSize);
+    }
+
+    static void setKeyStrOid(final Page aPage, final int aIndex, final int aOID) {
+        Bytes.pack4(aPage.myData, FIRST_KEY_OFFSET + aIndex * 8, aOID);
+    }
+
+    static void setKeyStrSize(final Page aPage, final int aIndex, final int aSize) {
+        Bytes.pack2(aPage.myData, FIRST_KEY_OFFSET + aIndex * 8 + 4, (short) aSize);
+    }
+
+    static void setKeyStrOffs(final Page aPage, final int aIndex, final int aOffset) {
+        Bytes.pack2(aPage.myData, FIRST_KEY_OFFSET + aIndex * 8 + 6, (short) aOffset);
+    }
+
+    static void setKeyStrChars(final Page aPage, final int aOffset, final char[] aChars) {
+        final int len = aChars.length;
+
+        int offset = aOffset;
+
+        for (int index = 0; index < len; index++) {
+            Bytes.pack2(aPage.myData, FIRST_KEY_OFFSET + offset, (short) aChars[index]);
+            offset += 2;
         }
     }
-    static void setKeyBytes(Page pg, int offs, byte[] bytes) { 
-        System.arraycopy(bytes, 0, pg.data, firstKeyOffs + offs, bytes.length);
-    }
-    static void setReference(Page pg, int index, int oid) { 
-        Bytes.pack4(pg.data, firstKeyOffs + index*4, oid);
+
+    static void setKeyBytes(final Page aPage, final int aOffset, final byte[] aBytes) {
+        System.arraycopy(aBytes, 0, aPage.myData, FIRST_KEY_OFFSET + aOffset, aBytes.length);
     }
 
-    final static int compare(Key key, Page pg, int i) { 
-        long   i8;
-        int    i4;
-        float  r4;
-        double r8;
-        switch (key.type) {
-          case ClassDescriptor.tpBoolean:
-          case ClassDescriptor.tpByte:
-            return (byte)key.ival - pg.data[BtreePage.firstKeyOffs + i];
-          case ClassDescriptor.tpShort:
-            return (short)key.ival - Bytes.unpack2(pg.data, BtreePage.firstKeyOffs + i*2);
-          case ClassDescriptor.tpChar:
-            return (char)key.ival - (char)Bytes.unpack2(pg.data, BtreePage.firstKeyOffs + i*2);
-          case ClassDescriptor.tpObject:
-          case ClassDescriptor.tpInt:
-          case ClassDescriptor.tpEnum:
-            i4 = Bytes.unpack4(pg.data, BtreePage.firstKeyOffs + i*4);
-            return key.ival < i4 ? -1 : key.ival == i4 ? 0 : 1;
-          case ClassDescriptor.tpLong:
-          case ClassDescriptor.tpDate:
-            i8 = Bytes.unpack8(pg.data, BtreePage.firstKeyOffs + i*8);
-            return key.lval < i8 ? -1 : key.lval == i8 ? 0 : 1;
-          case ClassDescriptor.tpFloat:
-            r4 = Float.intBitsToFloat(Bytes.unpack4(pg.data, 
-                                                    BtreePage.firstKeyOffs + i*4));
-            return key.dval < r4 ? -1 : key.dval == r4 ? 0 : 1;
-          case ClassDescriptor.tpDouble:
-            r8 = Double.longBitsToDouble(Bytes.unpack8(pg.data, 
-                                                       BtreePage.firstKeyOffs + i*8));
-            return key.dval < r8 ? -1 : key.dval == r8 ? 0 : 1;
+    static void setReference(final Page aPage, final int aIndex, final int aOID) {
+        Bytes.pack4(aPage.myData, FIRST_KEY_OFFSET + aIndex * 4, aOID);
+    }
+
+    static int compare(final Key aKey, final Page aPage, final int aIndex) {
+        final long i8;
+        final int i4;
+        final float r4;
+        final double r8;
+
+        switch (aKey.myType) {
+            case ClassDescriptor.TP_BOOLEAN:
+            case ClassDescriptor.TP_BYTE:
+                return (byte) aKey.myIntValue - aPage.myData[BtreePage.FIRST_KEY_OFFSET + aIndex];
+            case ClassDescriptor.TP_SHORT:
+                return (short) aKey.myIntValue - Bytes.unpack2(aPage.myData, BtreePage.FIRST_KEY_OFFSET + aIndex * 2);
+            case ClassDescriptor.TP_CHAR:
+                return (char) aKey.myIntValue - (char) Bytes.unpack2(aPage.myData, BtreePage.FIRST_KEY_OFFSET +
+                        aIndex * 2);
+            case ClassDescriptor.TP_OBJECT:
+            case ClassDescriptor.TP_INT:
+            case ClassDescriptor.TP_ENUM:
+                i4 = Bytes.unpack4(aPage.myData, BtreePage.FIRST_KEY_OFFSET + aIndex * 4);
+                return aKey.myIntValue < i4 ? -1 : aKey.myIntValue == i4 ? 0 : 1;
+            case ClassDescriptor.TP_LONG:
+            case ClassDescriptor.TP_DATE:
+                i8 = Bytes.unpack8(aPage.myData, BtreePage.FIRST_KEY_OFFSET + aIndex * 8);
+                return aKey.myLongValue < i8 ? -1 : aKey.myLongValue == i8 ? 0 : 1;
+            case ClassDescriptor.TP_FLOAT:
+                r4 = Float.intBitsToFloat(Bytes.unpack4(aPage.myData, BtreePage.FIRST_KEY_OFFSET + aIndex * 4));
+                return aKey.myDoubleValue < r4 ? -1 : aKey.myDoubleValue == r4 ? 0 : 1;
+            case ClassDescriptor.TP_DOUBLE:
+                r8 = Double.longBitsToDouble(Bytes.unpack8(aPage.myData, BtreePage.FIRST_KEY_OFFSET + aIndex * 8));
+                return aKey.myDoubleValue < r8 ? -1 : aKey.myDoubleValue == r8 ? 0 : 1;
+            default:
+                // FIXME
         }
+
         Assert.failed("Invalid type");
         return 0;
     }
 
+    static int compareStr(final Key aKey, final Page aPage, final int aIndex) {
+        final char[] chars = (char[]) aKey.myObjectValue;
+        final int alen = chars.length;
+        final int blen = BtreePage.getKeyStrSize(aPage, aIndex);
+        final int minlen = alen < blen ? alen : blen;
+        int offs = BtreePage.getKeyStrOffs(aPage, aIndex) + BtreePage.FIRST_KEY_OFFSET;
+        final byte[] b = aPage.myData;
 
-    final static int compareStr(Key key, Page pg, int i) { 
-        char[] chars = (char[])key.oval;
-        int alen = chars.length;
-        int blen = BtreePage.getKeyStrSize(pg, i);
-        int minlen = alen < blen ? alen : blen;
-        int offs = BtreePage.getKeyStrOffs(pg, i) + BtreePage.firstKeyOffs;
-        byte[] b = pg.data;
-        for (int j = 0; j < minlen; j++) { 
-            int diff = chars[j] - (char)Bytes.unpack2(b, offs);
-            if (diff != 0) { 
+        for (int j = 0; j < minlen; j++) {
+            final int diff = chars[j] - (char) Bytes.unpack2(b, offs);
+
+            if (diff != 0) {
                 return diff;
             }
+
             offs += 2;
         }
+
         return alen - blen;
     }
 
-    final static int comparePrefix(char[] key, Page pg, int i) { 
-        int alen = key.length;
-        int blen = BtreePage.getKeyStrSize(pg, i);
-        int minlen = alen < blen ? alen : blen;
-        int offs = BtreePage.getKeyStrOffs(pg, i) + BtreePage.firstKeyOffs;
-        byte[] b = pg.data;
-        for (int j = 0; j < minlen; j++) { 
-            int diff = key[j] - (char)Bytes.unpack2(b, offs);
-            if (diff != 0) { 
+    static int comparePrefix(final char[] aKey, final Page aPage, final int aIndex) {
+        final int alen = aKey.length;
+        final int blen = BtreePage.getKeyStrSize(aPage, aIndex);
+        final int minlen = alen < blen ? alen : blen;
+        int offs = BtreePage.getKeyStrOffs(aPage, aIndex) + BtreePage.FIRST_KEY_OFFSET;
+        final byte[] b = aPage.myData;
+
+        for (int j = 0; j < minlen; j++) {
+            final int diff = aKey[j] - (char) Bytes.unpack2(b, offs);
+
+            if (diff != 0) {
                 return diff;
             }
+
             offs += 2;
         }
+
         return minlen - blen;
     }
 
+    @SuppressWarnings("unchecked")
+    static boolean find(final StorageImpl aStorage, final int aPageID, final Key aFirstKey, final Key aLastKey,
+            final Btree aBtree, final int aHeight, final ArrayList aResult) {
+        final Page page = aStorage.getPage(aPageID);
+        final int n = getnItems(page);
+        final int height = aHeight - 1;
 
-    static boolean find(StorageImpl db, int pageId, Key firstKey, Key lastKey, 
-                        Btree tree, int height, ArrayList result)
-    {
-        Page pg = db.getPage(pageId);
-        int l = 0, n = getnItems(pg), r = n;
+        int l = 0;
+        int r = n;
         int oid;
-        height -= 1;
-        try { 
-            if (tree.type == ClassDescriptor.tpString) { 
-                if (firstKey != null) { 
-                    while (l < r)  {
-                        int i = (l+r) >> 1;
-                        if (compareStr(firstKey, pg, i) >= firstKey.inclusion) {
-                            l = i + 1; 
-                        } else { 
-                            r = i;
-                        }
-                    }
-                    Assert.that(r == l); 
-                }
-                if (lastKey != null) { 
-                    if (height == 0) { 
-                        while (l < n) { 
-                            if (-compareStr(lastKey, pg, l) >= lastKey.inclusion) { 
-                                return false;
-                            }
-                            oid = getKeyStrOid(pg, l);
-                            result.add(db.lookupObject(oid, null));
-                            l += 1;
-                        }
-                    } else { 
-                        do {
-                            if (!find(db, getKeyStrOid(pg, l), firstKey, lastKey, tree, height, result)) {
-                                return false;
-                            }
-                            if (l == n) { 
-                                return true;
-                            }
-                        } while (compareStr(lastKey, pg, l++) >= 0);
-                        return false;
-                    }
-                } else { 
-                    if (height == 0) { 
-                        while (l < n) { 
-                            oid = getKeyStrOid(pg, l); 
-                            result.add(db.lookupObject(oid, null));
-                            l += 1;
-                        }
-                    } else {
-                        do {
-                            if (!find(db, getKeyStrOid(pg, l), firstKey, lastKey, tree, height, result)) {
-                                return false;
-                            }
-                        } while (++l <= n);
-                    }
-                }
-            } else if (tree.type == ClassDescriptor.tpArrayOfByte) { 
-                if (firstKey != null) { 
-                    while (l < r)  {
-                        int i = (l+r) >> 1;
-                        if (tree.compareByteArrays(firstKey, pg, i) >= firstKey.inclusion) {
-                            l = i + 1; 
-                        } else { 
-                            r = i;
-                        }
-                    }
-                    Assert.that(r == l); 
-                }
-                if (lastKey != null) { 
-                    if (height == 0) { 
-                        while (l < n) { 
-                            if (-tree.compareByteArrays(lastKey, pg, l) >= lastKey.inclusion) { 
-                                return false;
-                            }
-                            oid = getKeyStrOid(pg, l);
-                            result.add(db.lookupObject(oid, null));
-                            l += 1;
-                        }
-                    } else { 
-                        do {
-                            if (!find(db, getKeyStrOid(pg, l), firstKey, lastKey, tree, height, result)) {
-                                return false;
-                            }
-                            if (l == n) { 
-                                return true;
-                            }
-                        } while (tree.compareByteArrays(lastKey, pg, l++) >= 0);
-                        return false;
-                    }
-                } else { 
-                    if (height == 0) { 
-                        while (l < n) { 
-                            oid = getKeyStrOid(pg, l); 
-                            result.add(db.lookupObject(oid, null));
-                            l += 1;
-                        }
-                    } else {
-                        do {
-                            if (!find(db, getKeyStrOid(pg, l), firstKey, lastKey, tree, height, result)) {
-                                return false;
-                            }
-                        } while (++l <= n);
-                    }
-                }
-            } else { 
-                if (firstKey != null) {
-                    while (l < r)  {
-                        int i = (l+r) >> 1;
-                        if (compare(firstKey, pg, i) >= firstKey.inclusion) {
-                            l = i+1;
+
+        try {
+            if (aBtree.myType == ClassDescriptor.TP_STRING) {
+                if (aFirstKey != null) {
+                    while (l < r) {
+                        final int i = l + r >> 1;
+
+                        if (compareStr(aFirstKey, page, i) >= aFirstKey.myInclusion) {
+                            l = i + 1;
                         } else {
                             r = i;
                         }
                     }
+
                     Assert.that(r == l);
                 }
-                if (lastKey != null) {
+
+                if (aLastKey != null) {
                     if (height == 0) {
                         while (l < n) {
-                            if (-compare(lastKey, pg, l) >= lastKey.inclusion) {
+                            if (-compareStr(aLastKey, page, l) >= aLastKey.myInclusion) {
                                 return false;
                             }
-                            oid = getReference(pg, maxItems-1-l);
-                            result.add(db.lookupObject(oid, null));
+
+                            oid = getKeyStrOid(page, l);
+                            aResult.add(aStorage.lookupObject(oid, null));
                             l += 1;
                         }
-                        return true;
                     } else {
                         do {
-                            if (!find(db, getReference(pg, maxItems-1-l), firstKey, lastKey, tree, height, result)) {
+                            if (!find(aStorage, getKeyStrOid(page, l), aFirstKey, aLastKey, aBtree, height,
+                                    aResult)) {
                                 return false;
                             }
+
                             if (l == n) {
                                 return true;
                             }
-                        } while (compare(lastKey, pg, l++) >= 0);
+                        } while (compareStr(aLastKey, page, l++) >= 0);
                         return false;
                     }
-                } 
-                if (height == 0) { 
-                    while (l < n) { 
-                        oid = getReference(pg, maxItems-1-l);
-                        result.add(db.lookupObject(oid, null));
+                } else {
+                    if (height == 0) {
+                        while (l < n) {
+                            oid = getKeyStrOid(page, l);
+                            aResult.add(aStorage.lookupObject(oid, null));
+                            l += 1;
+                        }
+                    } else {
+                        do {
+                            if (!find(aStorage, getKeyStrOid(page, l), aFirstKey, aLastKey, aBtree, height,
+                                    aResult)) {
+                                return false;
+                            }
+                        } while (++l <= n);
+                    }
+                }
+            } else if (aBtree.myType == ClassDescriptor.TP_ARRAY_OF_BYTES) {
+                if (aFirstKey != null) {
+                    while (l < r) {
+                        final int i = l + r >> 1;
+
+                        if (aBtree.compareByteArrays(aFirstKey, page, i) >= aFirstKey.myInclusion) {
+                            l = i + 1;
+                        } else {
+                            r = i;
+                        }
+                    }
+
+                    Assert.that(r == l);
+                }
+
+                if (aLastKey != null) {
+                    if (height == 0) {
+                        while (l < n) {
+                            if (-aBtree.compareByteArrays(aLastKey, page, l) >= aLastKey.myInclusion) {
+                                return false;
+                            }
+
+                            oid = getKeyStrOid(page, l);
+                            aResult.add(aStorage.lookupObject(oid, null));
+                            l += 1;
+                        }
+                    } else {
+                        do {
+                            if (!find(aStorage, getKeyStrOid(page, l), aFirstKey, aLastKey, aBtree, height,
+                                    aResult)) {
+                                return false;
+                            }
+
+                            if (l == n) {
+                                return true;
+                            }
+                        } while (aBtree.compareByteArrays(aLastKey, page, l++) >= 0);
+                        return false;
+                    }
+                } else {
+                    if (height == 0) {
+                        while (l < n) {
+                            oid = getKeyStrOid(page, l);
+                            aResult.add(aStorage.lookupObject(oid, null));
+                            l += 1;
+                        }
+                    } else {
+                        do {
+                            if (!find(aStorage, getKeyStrOid(page, l), aFirstKey, aLastKey, aBtree, height,
+                                    aResult)) {
+                                return false;
+                            }
+                        } while (++l <= n);
+                    }
+                }
+            } else {
+                if (aFirstKey != null) {
+                    while (l < r) {
+                        final int i = l + r >> 1;
+                        if (compare(aFirstKey, page, i) >= aFirstKey.myInclusion) {
+                            l = i + 1;
+                        } else {
+                            r = i;
+                        }
+                    }
+
+                    Assert.that(r == l);
+                }
+
+                if (aLastKey != null) {
+                    if (height == 0) {
+                        while (l < n) {
+                            if (-compare(aLastKey, page, l) >= aLastKey.myInclusion) {
+                                return false;
+                            }
+
+                            oid = getReference(page, MAX_ITEMS - 1 - l);
+                            aResult.add(aStorage.lookupObject(oid, null));
+                            l += 1;
+                        }
+
+                        return true;
+                    } else {
+                        do {
+                            if (!find(aStorage, getReference(page, MAX_ITEMS - 1 - l), aFirstKey, aLastKey, aBtree,
+                                    height, aResult)) {
+                                return false;
+                            }
+
+                            if (l == n) {
+                                return true;
+                            }
+                        } while (compare(aLastKey, page, l++) >= 0);
+                        return false;
+                    }
+                }
+                if (height == 0) {
+                    while (l < n) {
+                        oid = getReference(page, MAX_ITEMS - 1 - l);
+                        aResult.add(aStorage.lookupObject(oid, null));
                         l += 1;
                     }
-                } else { 
+                } else {
                     do {
-                        if (!find(db, getReference(pg, maxItems-1-l), firstKey, lastKey, tree, height, result)) {
+                        if (!find(aStorage, getReference(page, MAX_ITEMS - 1 - l), aFirstKey, aLastKey, aBtree,
+                                height, aResult)) {
                             return false;
                         }
                     } while (++l <= n);
                 }
-            }    
-        } finally { 
-            db.pool.unfix(pg);
+            }
+        } finally {
+            aStorage.myPool.unfix(page);
         }
+
         return true;
-    }    
+    }
 
+    @SuppressWarnings("unchecked")
+    static boolean prefixSearch(final StorageImpl aStorage, final int aPageId, final char[] aKey, final int aHeight,
+            final ArrayList aResult) {
+        final Page page = aStorage.getPage(aPageId);
+        final int n = getnItems(page);
+        final int height = aHeight - 1;
 
-    static boolean prefixSearch(StorageImpl db, int pageId, char[] key,
-                                int height, ArrayList result)
-    {
-        Page pg = db.getPage(pageId);
-        int l = 0, n = getnItems(pg), r = n;
+        int l = 0;
+        int r = n;
         int oid;
-        height -= 1;
-        try { 
-            while (l < r)  {
-                int i = (l+r) >> 1;
-                if (comparePrefix(key, pg, i) > 0) {
-                    l = i + 1; 
-                } else { 
+
+        try {
+            while (l < r) {
+                final int i = l + r >> 1;
+
+                if (comparePrefix(aKey, page, i) > 0) {
+                    l = i + 1;
+                } else {
                     r = i;
                 }
             }
-            Assert.that(r == l); 
-            if (height == 0) { 
-                while (l < n) { 
-                    if (comparePrefix(key, pg, l) < 0) { 
+
+            Assert.that(r == l);
+
+            if (height == 0) {
+                while (l < n) {
+                    if (comparePrefix(aKey, page, l) < 0) {
                         return false;
                     }
-                    oid = getKeyStrOid(pg, l);
-                    result.add(db.lookupObject(oid, null));
+
+                    oid = getKeyStrOid(page, l);
+                    aResult.add(aStorage.lookupObject(oid, null));
                     l += 1;
                 }
-            } else { 
+            } else {
                 do {
-                    if (!prefixSearch(db, getKeyStrOid(pg, l), key, height, result)) {
+                    if (!prefixSearch(aStorage, getKeyStrOid(page, l), aKey, height, aResult)) {
                         return false;
                     }
-                    if (l == n) { 
+
+                    if (l == n) {
                         return true;
                     }
-                } while (comparePrefix(key, pg, l++) >= 0);
+                } while (comparePrefix(aKey, page, l++) >= 0);
+
                 return false;
             }
-        } finally { 
-            db.pool.unfix(pg);
+        } finally {
+            aStorage.myPool.unfix(page);
         }
+
         return true;
-    }    
+    }
 
+    static int allocate(final StorageImpl aStorage, final int aRoot, final int aType, final BtreeKey aInsert) {
+        final int pageId = aStorage.allocatePage();
+        final Page page = aStorage.putPage(pageId);
 
-    static int allocate(StorageImpl db, int root, int type, BtreeKey ins) 
-    {
-        int pageId = db.allocatePage();
-        Page pg = db.putPage(pageId);
-        setnItems(pg, 1);
-        if (type == ClassDescriptor.tpString) { 
-            char[] sval = (char[])ins.key.oval;
-            int len = sval.length;
-            setSize(pg, len*2);
-            setKeyStrOffs(pg, 0, keySpace - len*2);
-            setKeyStrSize(pg, 0, len);
-            setKeyStrOid(pg, 0, ins.oid);
-            setKeyStrOid(pg, 1, root); 
-            setKeyStrChars(pg, keySpace - len*2, sval);
-        } else if (type == ClassDescriptor.tpArrayOfByte) { 
-            byte[] bval =  (byte[])ins.key.oval;
-            int len = bval.length;
-            setSize(pg, len);
-            setKeyStrOffs(pg, 0, keySpace - len);
-            setKeyStrSize(pg, 0, len);
-            setKeyStrOid(pg, 0, ins.oid);
-            setKeyStrOid(pg, 1, root); 
-            setKeyBytes(pg, keySpace - len, bval);
-        } else { 
-            ins.pack(pg, 0);
-            setReference(pg, maxItems-2, root);
+        setnItems(page, 1);
+
+        if (aType == ClassDescriptor.TP_STRING) {
+            final char[] sval = (char[]) aInsert.myKey.myObjectValue;
+            final int len = sval.length;
+
+            setSize(page, len * 2);
+            setKeyStrOffs(page, 0, KEY_SPACE - len * 2);
+            setKeyStrSize(page, 0, len);
+            setKeyStrOid(page, 0, aInsert.myOID);
+            setKeyStrOid(page, 1, aRoot);
+            setKeyStrChars(page, KEY_SPACE - len * 2, sval);
+        } else if (aType == ClassDescriptor.TP_ARRAY_OF_BYTES) {
+            final byte[] bytes = (byte[]) aInsert.myKey.myObjectValue;
+            final int length = bytes.length;
+
+            setSize(page, length);
+            setKeyStrOffs(page, 0, KEY_SPACE - length);
+            setKeyStrSize(page, 0, length);
+            setKeyStrOid(page, 0, aInsert.myOID);
+            setKeyStrOid(page, 1, aRoot);
+            setKeyBytes(page, KEY_SPACE - length, bytes);
+        } else {
+            aInsert.pack(page, 0);
+            setReference(page, MAX_ITEMS - 2, aRoot);
         }
-        db.pool.unfix(pg);
+
+        aStorage.myPool.unfix(page);
+
         return pageId;
     }
 
-    static void memcpy(Page dst_pg, int dst_idx, Page src_pg, int src_idx, 
-                       int len, int itemSize) 
-    { 
-        System.arraycopy(src_pg.data, firstKeyOffs + src_idx*itemSize, 
-                         dst_pg.data, firstKeyOffs + dst_idx*itemSize, 
-                         len*itemSize);
+    static void memcpy(final Page aDestPage, final int aDestIndex, final Page aSrcPage, final int aSrcIndex,
+            final int aLength, final int aItemSize) {
+        System.arraycopy(aSrcPage.myData, FIRST_KEY_OFFSET + aSrcIndex * aItemSize, aDestPage.myData,
+                FIRST_KEY_OFFSET + aDestIndex * aItemSize, aLength * aItemSize);
     }
 
-    static int insert(StorageImpl db, int pageId, Btree tree, BtreeKey ins, int height, 
-                      boolean unique, boolean overwrite)
-    {
-        Page pg = db.getPage(pageId);
-        int result;
-        int l = 0, n = getnItems(pg), r = n;
-        int ahead = unique ? 1 : 0;
-        try { 
-            if (tree.type == ClassDescriptor.tpString) {         
-                while (l < r)  {
-                    int i = (l+r) >> 1;
-                    if (compareStr(ins.key, pg, i) >= ahead) { 
-                        l = i+1; 
-                    } else { 
+    static int insert(final StorageImpl aStorage, final int aPageID, final Btree aBtree, final BtreeKey aInsert,
+            final int aHeight, final boolean aUniqueRestriction, final boolean aOverwrite) {
+        final int result;
+
+        int pageID = aPageID;
+        Page page = aStorage.getPage(pageID);
+        int height = aHeight;
+        int l = 0;
+        int n = getnItems(page);
+        int r = n;
+
+        final int ahead = aUniqueRestriction ? 1 : 0;
+
+        try {
+            if (aBtree.myType == ClassDescriptor.TP_STRING) {
+                while (l < r) {
+                    final int i = l + r >> 1;
+
+                    if (compareStr(aInsert.myKey, page, i) >= ahead) {
+                        l = i + 1;
+                    } else {
                         r = i;
                     }
                 }
+
                 Assert.that(l == r);
-                if (--height != 0) { 
-                    result = insert(db, getKeyStrOid(pg, r), tree, ins, height, unique, overwrite);
-                    Assert.that(result != Btree.op_not_found);
-                    if (result != Btree.op_overflow) {
-                        return result;                              
-                    }                                             
-                } else if (r < n && compareStr(ins.key, pg, r) == 0) {
-                    if (overwrite) { 
-                        db.pool.unfix(pg);
-                        pg = null;
-                        pg = db.putPage(pageId);
-                        ins.oldOid = getKeyStrOid(pg, r);
-                        setKeyStrOid(pg, r, ins.oid);
-                        return Btree.op_overwrite;
-                    } else if (unique) { 
-                        return Btree.op_duplicate;
+
+                if (--height != 0) {
+                    result = insert(aStorage, getKeyStrOid(page, r), aBtree, aInsert, height, aUniqueRestriction,
+                            aOverwrite);
+                    Assert.that(result != Btree.OP_NOT_FOUND);
+
+                    if (result != Btree.OP_OVERFLOW) {
+                        return result;
+                    }
+                } else if (r < n && compareStr(aInsert.myKey, page, r) == 0) {
+                    if (aOverwrite) {
+                        aStorage.myPool.unfix(page);
+                        page = null;
+                        page = aStorage.putPage(pageID);
+                        aInsert.myOldOID = getKeyStrOid(page, r);
+                        setKeyStrOid(page, r, aInsert.myOID);
+                        return Btree.OP_OVERWRITE;
+                    } else if (aUniqueRestriction) {
+                        return Btree.OP_DUPLICATE;
                     }
                 }
-                db.pool.unfix(pg);
-                pg = null;
-                pg = db.putPage(pageId);
-                return insertStrKey(db, pg, r, ins, height);
-            } else if (tree.type == ClassDescriptor.tpArrayOfByte) {         
-                while (l < r)  {
-                    int i = (l+r) >> 1;
-                    if (tree.compareByteArrays(ins.key, pg, i) >= ahead) { 
-                        l = i+1; 
-                    } else { 
+
+                aStorage.myPool.unfix(page);
+                page = null;
+                page = aStorage.putPage(pageID);
+                return insertStrKey(aStorage, page, r, aInsert, height);
+            } else if (aBtree.myType == ClassDescriptor.TP_ARRAY_OF_BYTES) {
+                while (l < r) {
+                    final int i = l + r >> 1;
+
+                    if (aBtree.compareByteArrays(aInsert.myKey, page, i) >= ahead) {
+                        l = i + 1;
+                    } else {
                         r = i;
                     }
                 }
+
                 Assert.that(l == r);
-                if (--height != 0) { 
-                    result = insert(db, getKeyStrOid(pg, r), tree, ins, height, unique, overwrite);
-                    Assert.that(result != Btree.op_not_found);
-                    if (result != Btree.op_overflow) {
-                        return result;                              
-                    }                                             
-                } else if (r < n && tree.compareByteArrays(ins.key, pg, r) == 0) {
-                    if (overwrite) { 
-                        db.pool.unfix(pg);
-                        pg = null;
-                        pg = db.putPage(pageId);
-                        ins.oldOid = getKeyStrOid(pg, r);
-                        setKeyStrOid(pg, r, ins.oid);
-                        return Btree.op_overwrite;
-                    } else if (unique) { 
-                        return Btree.op_duplicate;
+
+                if (--height != 0) {
+                    result = insert(aStorage, getKeyStrOid(page, r), aBtree, aInsert, height, aUniqueRestriction,
+                            aOverwrite);
+                    Assert.that(result != Btree.OP_NOT_FOUND);
+
+                    if (result != Btree.OP_OVERFLOW) {
+                        return result;
+                    }
+                } else if (r < n && aBtree.compareByteArrays(aInsert.myKey, page, r) == 0) {
+                    if (aOverwrite) {
+                        aStorage.myPool.unfix(page);
+                        page = null;
+                        page = aStorage.putPage(pageID);
+                        aInsert.myOldOID = getKeyStrOid(page, r);
+                        setKeyStrOid(page, r, aInsert.myOID);
+                        return Btree.OP_OVERWRITE;
+                    } else if (aUniqueRestriction) {
+                        return Btree.OP_DUPLICATE;
                     }
                 }
-                db.pool.unfix(pg);
-                pg = null;
-                pg = db.putPage(pageId);
-                return insertByteArrayKey(db, pg, r, ins, height);
-            } else { 
-                while (l < r)  {
-                    int i = (l+r) >> 1;
-                    if (compare(ins.key, pg, i) >= ahead) l = i+1; else r = i;
+
+                aStorage.myPool.unfix(page);
+                page = null;
+                page = aStorage.putPage(pageID);
+                return insertByteArrayKey(aStorage, page, r, aInsert, height);
+            } else {
+                while (l < r) {
+                    final int i = l + r >> 1;
+
+                    if (compare(aInsert.myKey, page, i) >= ahead) {
+                        l = i + 1;
+                    } else {
+                        r = i;
+                    }
                 }
+
                 Assert.that(l == r);
                 /* insert before e[r] */
                 if (--height != 0) {
-                    result = insert(db, getReference(pg, maxItems-r-1), tree, ins, height, unique, overwrite);
-                    Assert.that(result != Btree.op_not_found);
-                    if (result != Btree.op_overflow) {
+                    result = insert(aStorage, getReference(page, MAX_ITEMS - r - 1), aBtree, aInsert, height,
+                            aUniqueRestriction, aOverwrite);
+
+                    Assert.that(result != Btree.OP_NOT_FOUND);
+
+                    if (result != Btree.OP_OVERFLOW) {
                         return result;
                     }
+
                     n += 1;
-                } else if (r < n && compare(ins.key, pg, r) == 0) { 
-                    if (overwrite) { 
-                        db.pool.unfix(pg);
-                        pg = null;
-                        pg = db.putPage(pageId);
-                        ins.oldOid = getReference(pg, maxItems-r-1);
-                        setReference(pg, maxItems-r-1, ins.oid);
-                        return Btree.op_overwrite;
-                    } else if (unique) { 
-                        return Btree.op_duplicate;
+                } else if (r < n && compare(aInsert.myKey, page, r) == 0) {
+                    if (aOverwrite) {
+                        aStorage.myPool.unfix(page);
+                        page = null;
+                        page = aStorage.putPage(pageID);
+                        aInsert.myOldOID = getReference(page, MAX_ITEMS - r - 1);
+                        setReference(page, MAX_ITEMS - r - 1, aInsert.myOID);
+                        return Btree.OP_OVERWRITE;
+                    } else if (aUniqueRestriction) {
+                        return Btree.OP_DUPLICATE;
                     }
                 }
-                db.pool.unfix(pg);
-                pg = null;
-                pg = db.putPage(pageId);
-                int itemSize = ClassDescriptor.sizeof[tree.type];
-                int max = keySpace / (4 + itemSize);
+
+                aStorage.myPool.unfix(page);
+                page = null;
+                page = aStorage.putPage(pageID);
+
+                final int itemSize = ClassDescriptor.SIZE_OF[aBtree.myType];
+                final int max = KEY_SPACE / (4 + itemSize);
+
                 if (n < max) {
-                    memcpy(pg, r+1, pg, r, n - r, itemSize);
-                    memcpy(pg, maxItems-n-1, pg, maxItems-n, n-r, 4);
-                    ins.pack(pg, r);
-                    setnItems(pg, getnItems(pg)+1);
-                    return Btree.op_done;
+                    memcpy(page, r + 1, page, r, n - r, itemSize);
+                    memcpy(page, MAX_ITEMS - n - 1, page, MAX_ITEMS - n, n - r, 4);
+                    aInsert.pack(page, r);
+                    setnItems(page, getnItems(page) + 1);
+                    return Btree.OP_DONE;
                 } else { /* page is full then divide page */
-                    pageId = db.allocatePage();
-                    Page b = db.putPage(pageId);
+                    pageID = aStorage.allocatePage();
+
+                    final Page b = aStorage.putPage(pageID);
                     Assert.that(n == max);
-                    int m = (max+1)/2;
+                    final int m = (max + 1) / 2;
+
                     if (r < m) {
-                        memcpy(b, 0, pg, 0, r, itemSize);
-                        memcpy(b, r+1, pg, r, m-r-1, itemSize);
-                        memcpy(pg, 0, pg, m-1, max-m+1, itemSize);
-                        memcpy(b, maxItems-r, pg, maxItems-r, r, 4);
-                        ins.pack(b, r);
-                        memcpy(b, maxItems-m, pg, maxItems-m+1, m-r-1, 4);
-                        memcpy(pg, maxItems-max+m-1, pg, maxItems-max, max-m+1, 4);
+                        memcpy(b, 0, page, 0, r, itemSize);
+                        memcpy(b, r + 1, page, r, m - r - 1, itemSize);
+                        memcpy(page, 0, page, m - 1, max - m + 1, itemSize);
+                        memcpy(b, MAX_ITEMS - r, page, MAX_ITEMS - r, r, 4);
+                        aInsert.pack(b, r);
+                        memcpy(b, MAX_ITEMS - m, page, MAX_ITEMS - m + 1, m - r - 1, 4);
+                        memcpy(page, MAX_ITEMS - max + m - 1, page, MAX_ITEMS - max, max - m + 1, 4);
                     } else {
-                        memcpy(b, 0, pg, 0, m, itemSize);
-                        memcpy(pg, 0, pg, m, r-m, itemSize);
-                        memcpy(pg, r-m+1, pg, r, max-r, itemSize);
-                        memcpy(b, maxItems-m, pg, maxItems-m, m, 4);
-                        memcpy(pg, maxItems-r+m, pg, maxItems-r, r-m, 4);
-                        ins.pack(pg, r-m);
-                        memcpy(pg, maxItems-max+m-1, pg, maxItems-max, max-r, 4);
+                        memcpy(b, 0, page, 0, m, itemSize);
+                        memcpy(page, 0, page, m, r - m, itemSize);
+                        memcpy(page, r - m + 1, page, r, max - r, itemSize);
+                        memcpy(b, MAX_ITEMS - m, page, MAX_ITEMS - m, m, 4);
+                        memcpy(page, MAX_ITEMS - r + m, page, MAX_ITEMS - r, r - m, 4);
+                        aInsert.pack(page, r - m);
+                        memcpy(page, MAX_ITEMS - max + m - 1, page, MAX_ITEMS - max, max - r, 4);
                     }
-                    ins.oid = pageId;
-                    ins.extract(b, firstKeyOffs + (m-1)*itemSize, tree.type);
+
+                    aInsert.myOID = pageID;
+                    aInsert.extract(b, FIRST_KEY_OFFSET + (m - 1) * itemSize, aBtree.myType);
+
                     if (height == 0) {
-                        setnItems(pg, max - m + 1);
+                        setnItems(page, max - m + 1);
                         setnItems(b, m);
                     } else {
-                        setnItems(pg, max - m);
+                        setnItems(page, max - m);
                         setnItems(b, m - 1);
-                    }                            
-                    db.pool.unfix(b);
-                    return Btree.op_overflow;
+                    }
+
+                    aStorage.myPool.unfix(b);
+                    return Btree.OP_OVERFLOW;
                 }
             }
-        } finally { 
-            if (pg != null) { 
-                db.pool.unfix(pg);
+        } finally {
+            if (page != null) {
+                aStorage.myPool.unfix(page);
             }
         }
     }
 
-    static int insertStrKey(StorageImpl db, Page pg, int r, BtreeKey ins, int height)
-    {
-        int nItems = getnItems(pg);
-        int size = getSize(pg);
-        int n = (height != 0) ? nItems + 1 : nItems;
-        // insert before e[r]
-        char[] sval = (char[])ins.key.oval;        
-        int len = sval.length;
-        if (size + len*2 + (n+1)*strKeySize <= keySpace) { 
-            memcpy(pg, r+1, pg, r, n-r, strKeySize);
-            size += len*2;
-            setKeyStrOffs(pg, r, keySpace - size);
-            setKeyStrSize(pg, r, len);
-            setKeyStrOid(pg, r, ins.oid);
-            setKeyStrChars(pg, keySpace - size, sval);
-            nItems += 1;
-        } else { // page is full then divide page
-            int  pageId = db.allocatePage();
-            Page b = db.putPage(pageId);
-            int  moved = 0;
-            int  inserted = len*2 + strKeySize;
-            int  prevDelta = (1 << 31) + 1;
+    static int insertStrKey(final StorageImpl aStorage, final Page aPage, final int aStart, final BtreeKey aInsert,
+            final int aHeight) {
+        int numOfItems = getnItems(aPage);
+        int size = getSize(aPage);
 
-            for (int bn = 0, i = 0; ; bn += 1) {
-                int addSize, subSize;
-                int j = nItems - i - 1;
-                int keyLen = getKeyStrSize(pg, i);
-                if (bn == r) {
-                    keyLen = len;
+        final int n = aHeight != 0 ? numOfItems + 1 : numOfItems;
+        final char[] chars = (char[]) aInsert.myKey.myObjectValue;
+        final int length = chars.length;
+
+        if (size + length * 2 + (n + 1) * STRING_KEY_SIZE <= KEY_SPACE) {
+            memcpy(aPage, aStart + 1, aPage, aStart, n - aStart, STRING_KEY_SIZE);
+            size += length * 2;
+            setKeyStrOffs(aPage, aStart, KEY_SPACE - size);
+            setKeyStrSize(aPage, aStart, length);
+            setKeyStrOid(aPage, aStart, aInsert.myOID);
+            setKeyStrChars(aPage, KEY_SPACE - size, chars);
+            numOfItems += 1;
+        } else { // page is full then divide page
+            final int pageId = aStorage.allocatePage();
+            final Page page = aStorage.putPage(pageId);
+
+            int moved = 0;
+            int inserted = length * 2 + STRING_KEY_SIZE;
+            int prevDelta = (1 << 31) + 1;
+
+            for (int bn = 0, i = 0;; bn += 1) {
+                final int addSize;
+
+                int j = numOfItems - i - 1;
+                int keyLen = getKeyStrSize(aPage, i);
+                int subSize;
+
+                if (bn == aStart) {
+                    keyLen = length;
                     inserted = 0;
-                    addSize = len;
-                    if (height == 0) {
+                    addSize = length;
+
+                    if (aHeight == 0) {
                         subSize = 0;
                         j += 1;
-                    } else { 
-                        subSize = getKeyStrSize(pg, i);
+                    } else {
+                        subSize = getKeyStrSize(aPage, i);
                     }
-                } else { 
+                } else {
                     addSize = subSize = keyLen;
-                    if (height != 0) {
-                        if (i + 1 != r) { 
-                            subSize += getKeyStrSize(pg, i+1);
+
+                    if (aHeight != 0) {
+                        if (i + 1 != aStart) {
+                            subSize += getKeyStrSize(aPage, i + 1);
                             j -= 1;
-                        } else { 
+                        } else {
                             inserted = 0;
                         }
                     }
                 }
-                int delta = (moved + addSize*2 + (bn+1)*strKeySize) 
-                    - (j*strKeySize + size - subSize*2 + inserted);
+
+                final int delta = moved + addSize * 2 + (bn + 1) * STRING_KEY_SIZE - (j * STRING_KEY_SIZE + size -
+                        subSize * 2 + inserted);
+
                 if (delta >= -prevDelta) {
-                    if (height == 0) { 
-                        ins.getStr(b, bn-1);
+                    if (aHeight == 0) {
+                        aInsert.getStr(page, bn - 1);
                     } else {
-                        Assert.that("String fits in the B-Tree page", 
-                                    moved + (bn+1)*strKeySize <= keySpace);
-                        if (bn != r) { 
-                            ins.getStr(pg, i);
-                            setKeyStrOid(b, bn, getKeyStrOid(pg, i));
-                            size -= keyLen*2;
+                        Assert.that(ASSERTION_MSG, moved + (bn + 1) * STRING_KEY_SIZE <= KEY_SPACE);
+
+                        if (bn != aStart) {
+                            aInsert.getStr(aPage, i);
+                            setKeyStrOid(page, bn, getKeyStrOid(aPage, i));
+                            size -= keyLen * 2;
                             i += 1;
                         } else {
-                            setKeyStrOid(b, bn, ins.oid);
+                            setKeyStrOid(page, bn, aInsert.myOID);
                         }
                     }
-                    nItems = compactifyStrings(pg, i);             
-                    if (bn < r || (bn == r && height == 0)) { 
-                        memcpy(pg, r-i+1, pg, r-i, n - r, strKeySize);
-                        size += len*2;
-                        nItems += 1;
-                        Assert.that("String fits in the B-Tree page", 
-                                    size + (n-i+1)*strKeySize <= keySpace);
-                        setKeyStrOffs(pg, r-i, keySpace - size);
-                        setKeyStrSize(pg, r-i, len);
-                        setKeyStrOid(pg, r-i, ins.oid);
-                        setKeyStrChars(pg, keySpace - size, sval);
+
+                    numOfItems = compactifyStrings(aPage, i);
+
+                    if (bn < aStart || bn == aStart && aHeight == 0) {
+                        memcpy(aPage, aStart - i + 1, aPage, aStart - i, n - aStart, STRING_KEY_SIZE);
+
+                        size += length * 2;
+                        numOfItems += 1;
+
+                        Assert.that(ASSERTION_MSG, size + (n - i + 1) * STRING_KEY_SIZE <= KEY_SPACE);
+
+                        setKeyStrOffs(aPage, aStart - i, KEY_SPACE - size);
+                        setKeyStrSize(aPage, aStart - i, length);
+                        setKeyStrOid(aPage, aStart - i, aInsert.myOID);
+                        setKeyStrChars(aPage, KEY_SPACE - size, chars);
                     }
-                    setnItems(b, bn);
-                    setSize(b, moved);
-                    setSize(pg, size);
-                    setnItems(pg, nItems);
-                    ins.oid = pageId;
-                    db.pool.unfix(b);
-                    return Btree.op_overflow;
+
+                    setnItems(page, bn);
+                    setSize(page, moved);
+                    setSize(aPage, size);
+                    setnItems(aPage, numOfItems);
+                    aInsert.myOID = pageId;
+                    aStorage.myPool.unfix(page);
+                    return Btree.OP_OVERFLOW;
                 }
-                moved += keyLen*2;
+
+                moved += keyLen * 2;
                 prevDelta = delta;
-                Assert.that("String fits in the B-Tree page", 
-                            moved + (bn+1)*strKeySize <= keySpace);
-                setKeyStrSize(b, bn, keyLen);
-                setKeyStrOffs(b, bn, keySpace - moved);
-                if (bn == r) { 
-                    setKeyStrOid(b, bn, ins.oid);
-                    setKeyStrChars(b, keySpace - moved, sval);
-                } else { 
-                    setKeyStrOid(b, bn, getKeyStrOid(pg, i));
-                    memcpy(b, keySpace - moved, pg, getKeyStrOffs(pg, i), keyLen*2, 1);
-                    size -= keyLen*2;
+
+                Assert.that(ASSERTION_MSG, moved + (bn + 1) * STRING_KEY_SIZE <= KEY_SPACE);
+
+                setKeyStrSize(page, bn, keyLen);
+                setKeyStrOffs(page, bn, KEY_SPACE - moved);
+
+                if (bn == aStart) {
+                    setKeyStrOid(page, bn, aInsert.myOID);
+                    setKeyStrChars(page, KEY_SPACE - moved, chars);
+                } else {
+                    setKeyStrOid(page, bn, getKeyStrOid(aPage, i));
+                    memcpy(page, KEY_SPACE - moved, aPage, getKeyStrOffs(aPage, i), keyLen * 2, 1);
+                    size -= keyLen * 2;
                     i += 1;
                 }
             }
         }
-        setnItems(pg, nItems);
-        setSize(pg, size);
-        return size + strKeySize*(nItems+1) < keySpace/3 
-            ? Btree.op_underflow : Btree.op_done;
+
+        setnItems(aPage, numOfItems);
+        setSize(aPage, size);
+
+        return size + STRING_KEY_SIZE * (numOfItems + 1) < KEY_SPACE / 3 ? Btree.OP_UNDERFLOW : Btree.OP_DONE;
     }
 
-    static int insertByteArrayKey(StorageImpl db, Page pg, int r, BtreeKey ins, int height)
-    {
-        int nItems = getnItems(pg);
-        int size = getSize(pg);
-        int n = (height != 0) ? nItems + 1 : nItems;
-        byte[] bval = (byte[])ins.key.oval;
-        // insert before e[r]
-        int len = bval.length;
-        if (size + len + (n+1)*strKeySize <= keySpace) { 
-            memcpy(pg, r+1, pg, r, n-r, strKeySize);
-            size += len;
-            setKeyStrOffs(pg, r, keySpace - size);
-            setKeyStrSize(pg, r, len);
-            setKeyStrOid(pg, r, ins.oid);
-            setKeyBytes(pg, keySpace - size, bval);
+    static int insertByteArrayKey(final StorageImpl aStorage, final Page aPage, final int aStart,
+            final BtreeKey aInsert, final int aHeight) {
+        int nItems = getnItems(aPage);
+        int size = getSize(aPage);
+
+        final int n = aHeight != 0 ? nItems + 1 : nItems;
+        final byte[] bytes = (byte[]) aInsert.myKey.myObjectValue;
+        final int length = bytes.length;
+
+        if (size + length + (n + 1) * STRING_KEY_SIZE <= KEY_SPACE) {
+            memcpy(aPage, aStart + 1, aPage, aStart, n - aStart, STRING_KEY_SIZE);
+            size += length;
+            setKeyStrOffs(aPage, aStart, KEY_SPACE - size);
+            setKeyStrSize(aPage, aStart, length);
+            setKeyStrOid(aPage, aStart, aInsert.myOID);
+            setKeyBytes(aPage, KEY_SPACE - size, bytes);
             nItems += 1;
         } else { // page is full then divide page
-            int  pageId = db.allocatePage();
-            Page b = db.putPage(pageId);
-            int  moved = 0;
-            int  inserted = len + strKeySize;
-            int  prevDelta = (1 << 31) + 1;
+            final int pageId = aStorage.allocatePage();
+            final Page b = aStorage.putPage(pageId);
 
-            for (int bn = 0, i = 0; ; bn += 1) {
-                int addSize, subSize;
+            int moved = 0;
+            int inserted = length + STRING_KEY_SIZE;
+            int prevDelta = (1 << 31) + 1;
+
+            for (int bn = 0, i = 0;; bn += 1) {
+                final int addSize;
+
+                int subSize;
                 int j = nItems - i - 1;
-                int keyLen = getKeyStrSize(pg, i);
-                if (bn == r) {
-                    keyLen = len;
+                int keyLen = getKeyStrSize(aPage, i);
+
+                if (bn == aStart) {
+                    keyLen = length;
                     inserted = 0;
-                    addSize = len;
-                    if (height == 0) {
+                    addSize = length;
+
+                    if (aHeight == 0) {
                         subSize = 0;
                         j += 1;
-                    } else { 
-                        subSize = getKeyStrSize(pg, i);
+                    } else {
+                        subSize = getKeyStrSize(aPage, i);
                     }
-                } else { 
+                } else {
                     addSize = subSize = keyLen;
-                    if (height != 0) {
-                        if (i + 1 != r) { 
-                            subSize += getKeyStrSize(pg, i+1);
+
+                    if (aHeight != 0) {
+                        if (i + 1 != aStart) {
+                            subSize += getKeyStrSize(aPage, i + 1);
                             j -= 1;
-                        } else { 
+                        } else {
                             inserted = 0;
                         }
                     }
                 }
-                int delta = (moved + addSize + (bn+1)*strKeySize) 
-                    - (j*strKeySize + size - subSize + inserted);
+
+                final int delta = moved + addSize + (bn + 1) * STRING_KEY_SIZE - (j * STRING_KEY_SIZE + size -
+                        subSize + inserted);
+
                 if (delta >= -prevDelta) {
-                    if (height == 0) { 
-                        ins.getByteArray(b, bn-1);
+                    if (aHeight == 0) {
+                        aInsert.getByteArray(b, bn - 1);
                     } else {
-                        Assert.that("String fits in the B-Tree page", 
-                                    moved + (bn+1)*strKeySize <= keySpace);
-                        if (bn != r) { 
-                            ins.getByteArray(pg, i);
-                            setKeyStrOid(b, bn, getKeyStrOid(pg, i));
+                        Assert.that(ASSERTION_MSG, moved + (bn + 1) * STRING_KEY_SIZE <= KEY_SPACE);
+
+                        if (bn != aStart) {
+                            aInsert.getByteArray(aPage, i);
+                            setKeyStrOid(b, bn, getKeyStrOid(aPage, i));
                             size -= keyLen;
                             i += 1;
                         } else {
-                            setKeyStrOid(b, bn, ins.oid);
+                            setKeyStrOid(b, bn, aInsert.myOID);
                         }
                     }
-                    nItems = compactifyByteArrays(pg, i);             
-                    if (bn < r || (bn == r && height == 0)) { 
-                        memcpy(pg, r-i+1, pg, r-i, n - r, strKeySize);
-                        size += len;
+
+                    nItems = compactifyByteArrays(aPage, i);
+
+                    if (bn < aStart || bn == aStart && aHeight == 0) {
+                        memcpy(aPage, aStart - i + 1, aPage, aStart - i, n - aStart, STRING_KEY_SIZE);
+                        size += length;
                         nItems += 1;
-                        Assert.that("String fits in the B-Tree page", 
-                                    size + (n-i+1)*strKeySize <= keySpace);
-                        setKeyStrOffs(pg, r-i, keySpace - size);
-                        setKeyStrSize(pg, r-i, len);
-                        setKeyStrOid(pg, r-i, ins.oid);
-                        setKeyBytes(pg, keySpace - size, bval);
+
+                        Assert.that(ASSERTION_MSG, size + (n - i + 1) * STRING_KEY_SIZE <= KEY_SPACE);
+
+                        setKeyStrOffs(aPage, aStart - i, KEY_SPACE - size);
+                        setKeyStrSize(aPage, aStart - i, length);
+                        setKeyStrOid(aPage, aStart - i, aInsert.myOID);
+                        setKeyBytes(aPage, KEY_SPACE - size, bytes);
                     }
+
                     setnItems(b, bn);
                     setSize(b, moved);
-                    setSize(pg, size);
-                    setnItems(pg, nItems);
-                    ins.oid = pageId;
-                    db.pool.unfix(b);
-                    return Btree.op_overflow;
+                    setSize(aPage, size);
+                    setnItems(aPage, nItems);
+                    aInsert.myOID = pageId;
+                    aStorage.myPool.unfix(b);
+                    return Btree.OP_OVERFLOW;
                 }
+
                 moved += keyLen;
                 prevDelta = delta;
-                Assert.that("String fits in the B-Tree page", 
-                            moved + (bn+1)*strKeySize <= keySpace);
+
+                Assert.that(ASSERTION_MSG, moved + (bn + 1) * STRING_KEY_SIZE <= KEY_SPACE);
+
                 setKeyStrSize(b, bn, keyLen);
-                setKeyStrOffs(b, bn, keySpace - moved);
-                if (bn == r) { 
-                    setKeyStrOid(b, bn, ins.oid);
-                    setKeyBytes(b, keySpace - moved, bval);
-                } else { 
-                    setKeyStrOid(b, bn, getKeyStrOid(pg, i));
-                    memcpy(b, keySpace - moved, pg, getKeyStrOffs(pg, i), keyLen, 1);
+                setKeyStrOffs(b, bn, KEY_SPACE - moved);
+
+                if (bn == aStart) {
+                    setKeyStrOid(b, bn, aInsert.myOID);
+                    setKeyBytes(b, KEY_SPACE - moved, bytes);
+                } else {
+                    setKeyStrOid(b, bn, getKeyStrOid(aPage, i));
+                    memcpy(b, KEY_SPACE - moved, aPage, getKeyStrOffs(aPage, i), keyLen, 1);
                     size -= keyLen;
                     i += 1;
                 }
             }
         }
-        setnItems(pg, nItems);
-        setSize(pg, size);
-        return size + strKeySize*(nItems+1) < keySpace/3 
-            ? Btree.op_underflow : Btree.op_done;
+
+        setnItems(aPage, nItems);
+        setSize(aPage, size);
+
+        return size + STRING_KEY_SIZE * (nItems + 1) < KEY_SPACE / 3 ? Btree.OP_UNDERFLOW : Btree.OP_DONE;
     }
 
+    static int compactifyStrings(final Page aPage, final int aCount) {
+        final int[] size = new int[KEY_SPACE / 2 + 1];
+        final int[] index = new int[KEY_SPACE / 2 + 1];
 
-    static int compactifyStrings(Page pg, int m) 
-    {
-        int i, j, offs, len, n = getnItems(pg);
-        int[] size  = new int[keySpace/2+1];
-        int[] index = new int[keySpace/2+1];
-        if (m == 0) { 
-            return n;
+        int count = aCount;
+        int i;
+        int j;
+        int offset;
+        int length;
+        int numOfItems = getnItems(aPage);
+
+        if (count == 0) {
+            return numOfItems;
         }
+
         int nZeroLengthStrings = 0;
-        if (m < 0) {
-            m = -m;
-            for (i = 0; i < n-m; i++) { 
-                len = getKeyStrSize(pg, i);
-                if (len != 0) { 
-                    offs = getKeyStrOffs(pg, i) >>> 1;
-                    size[offs + len] = len;
-                    index[offs + len] = i;
-                } else { 
+
+        if (count < 0) {
+            count = -count;
+
+            for (i = 0; i < numOfItems - count; i++) {
+                length = getKeyStrSize(aPage, i);
+
+                if (length != 0) {
+                    offset = getKeyStrOffs(aPage, i) >>> 1;
+                    size[offset + length] = length;
+                    index[offset + length] = i;
+                } else {
                     nZeroLengthStrings += 1;
                 }
-            }   
-            for (; i < n; i++) { 
-                len = getKeyStrSize(pg, i);
-                if (len != 0) { 
-                    offs = getKeyStrOffs(pg, i) >>> 1;
-                    size[offs + len] = len;
-                    index[offs + len] = -1;
+            }
+
+            for (; i < numOfItems; i++) {
+                length = getKeyStrSize(aPage, i);
+
+                if (length != 0) {
+                    offset = getKeyStrOffs(aPage, i) >>> 1;
+                    size[offset + length] = length;
+                    index[offset + length] = -1;
                 }
             }
-        } else { 
-            for (i = 0; i < m; i++) { 
-                len = getKeyStrSize(pg, i);
-                if (len != 0) { 
-                    offs = getKeyStrOffs(pg, i) >>> 1;
-                    size[offs + len] = len;
-                    index[offs + len] = -1;
+        } else {
+            for (i = 0; i < count; i++) {
+                length = getKeyStrSize(aPage, i);
+
+                if (length != 0) {
+                    offset = getKeyStrOffs(aPage, i) >>> 1;
+                    size[offset + length] = length;
+                    index[offset + length] = -1;
                 }
             }
-            for (; i < n; i++) { 
-                len = getKeyStrSize(pg, i);
-                if (len != 0) { 
-                    offs = getKeyStrOffs(pg, i) >>> 1;
-                    size[offs + len] = len;
-                    index[offs + len] = i - m;
-                } else { 
+
+            for (; i < numOfItems; i++) {
+                length = getKeyStrSize(aPage, i);
+
+                if (length != 0) {
+                    offset = getKeyStrOffs(aPage, i) >>> 1;
+                    size[offset + length] = length;
+                    index[offset + length] = i - count;
+                } else {
                     nZeroLengthStrings += 1;
-                }                   
-                setKeyStrOid(pg, i-m, getKeyStrOid(pg, i));
-                setKeyStrSize(pg, i-m, len);
-            }   
-            setKeyStrOid(pg, i-m, getKeyStrOid(pg, i));
+                }
+
+                setKeyStrOid(aPage, i - count, getKeyStrOid(aPage, i));
+                setKeyStrSize(aPage, i - count, length);
+            }
+
+            setKeyStrOid(aPage, i - count, getKeyStrOid(aPage, i));
         }
-        int nItems = n -= m;
-        n -= nZeroLengthStrings;
-        for (offs = keySpace/2, i = offs; n != 0; i -= len) { 
-            len = size[i];
+
+        final int nItems = numOfItems -= count;
+
+        numOfItems -= nZeroLengthStrings;
+
+        for (offset = KEY_SPACE / 2, i = offset; numOfItems != 0; i -= length) {
+            length = size[i];
             j = index[i];
+
             if (j >= 0) {
-                offs -= len;
-                n -= 1;
-                setKeyStrOffs(pg, j, offs*2);
-                if (offs != i - len) { 
-                    memcpy(pg, offs, pg, i - len, len, 2);
+                offset -= length;
+                numOfItems -= 1;
+
+                setKeyStrOffs(aPage, j, offset * 2);
+
+                if (offset != i - length) {
+                    memcpy(aPage, offset, aPage, i - length, length, 2);
                 }
             }
         }
+
         return nItems;
-    }
-    
-    static int compactifyByteArrays(Page pg, int m) 
-    {
-        int i, j, offs, len, n = getnItems(pg);
-        int[] size  = new int[keySpace+1];
-        int[] index = new int[keySpace+1];
-        if (m == 0) { 
-            return n;
-        }
-        int nZeroLengthArrays = 0;
-        if (m < 0) {
-            m = -m;
-            for (i = 0; i < n-m; i++) { 
-                len = getKeyStrSize(pg, i);
-                if (len != 0) { 
-                    offs = getKeyStrOffs(pg, i);
-                    size[offs + len] = len;
-                    index[offs + len] = i;
-                } else { 
-                    nZeroLengthArrays += 1;
-                }
-            }   
-            for (; i < n; i++) { 
-                len = getKeyStrSize(pg, i);
-                if (len != 0) { 
-                    offs = getKeyStrOffs(pg, i);
-                    size[offs + len] = len;
-                    index[offs + len] = -1;
-                }
-            }
-        } else { 
-            for (i = 0; i < m; i++) { 
-                len = getKeyStrSize(pg, i);
-                if (len != 0) { 
-                    offs = getKeyStrOffs(pg, i);
-                    size[offs + len] = len;
-                    index[offs + len] = -1;
-                }
-            }
-            for (; i < n; i++) { 
-                len = getKeyStrSize(pg, i);
-                if (len != 0) { 
-                    offs = getKeyStrOffs(pg, i);
-                    size[offs + len] = len;
-                    index[offs + len] = i - m;
-                } else { 
-                    nZeroLengthArrays += 1;
-                }                   
-                setKeyStrOid(pg, i-m, getKeyStrOid(pg, i));
-                setKeyStrSize(pg, i-m, len);
-            }   
-            setKeyStrOid(pg, i-m, getKeyStrOid(pg, i));
-        }
-        int nItems = n -= m;
-        n -= nZeroLengthArrays;
-        for (offs = keySpace, i = offs; n != 0; i -= len) { 
-            len = size[i];
-            j = index[i];
-            if (j >= 0) {
-                offs -= len;
-                n -= 1;
-                setKeyStrOffs(pg, j, offs);
-                if (offs != i - len) { 
-                    memcpy(pg, offs, pg, i - len, len, 1);
-                }
-            }
-        }
-        return nItems;
-    }
-    
-    static int removeStrKey(Page pg, int r)
-    {
-        int len = getKeyStrSize(pg, r)*2;
-        int offs = getKeyStrOffs(pg, r);
-        int size = getSize(pg);
-        int nItems = getnItems(pg);
-        if ((nItems+1)*strKeySize >= keySpace) { 
-            memcpy(pg, r, pg, r+1, nItems-r-1, strKeySize);
-        } else { 
-            memcpy(pg, r, pg, r+1, nItems-r, strKeySize);
-        } 
-        if (len != 0) { 
-            memcpy(pg, keySpace - size + len, pg, keySpace - size, size - keySpace + offs, 1);
-            for (int i = nItems; --i >= 0; ) { 
-                if (getKeyStrOffs(pg, i) < offs) { 
-                    setKeyStrOffs(pg, i, getKeyStrOffs(pg, i) + len);
-                }
-            }
-            setSize(pg, size -= len);
-        }
-        setnItems(pg, nItems - 1);
-        return size + strKeySize*nItems < keySpace/3 
-            ? Btree.op_underflow : Btree.op_done;
     }
 
-    static int removeByteArrayKey(Page pg, int r)
-    {
-        int len = getKeyStrSize(pg, r);
-        int offs = getKeyStrOffs(pg, r);
-        int size = getSize(pg);
-        int nItems = getnItems(pg);
-        if ((nItems+1)*strKeySize >= keySpace) { 
-            memcpy(pg, r, pg, r+1, nItems-r-1, strKeySize);
-        } else { 
-            memcpy(pg, r, pg, r+1, nItems-r, strKeySize);
-        } 
-        if (len != 0) { 
-            memcpy(pg, keySpace - size + len, pg, keySpace - size, size - keySpace + offs, 1);
-            for (int i = nItems; --i >= 0; ) { 
-                if (getKeyStrOffs(pg, i) < offs) { 
-                    setKeyStrOffs(pg, i, getKeyStrOffs(pg, i) + len);
+    static int compactifyByteArrays(final Page aPage, final int aCount) {
+        final int[] size = new int[KEY_SPACE + 1];
+        final int[] index = new int[KEY_SPACE + 1];
+
+        int count = aCount;
+        int i;
+        int j;
+        int offset;
+        int length;
+        int numOfItems = getnItems(aPage);
+
+        if (count == 0) {
+            return numOfItems;
+        }
+
+        int nZeroLengthArrays = 0;
+
+        if (count < 0) {
+            count = -count;
+
+            for (i = 0; i < numOfItems - count; i++) {
+                length = getKeyStrSize(aPage, i);
+
+                if (length != 0) {
+                    offset = getKeyStrOffs(aPage, i);
+                    size[offset + length] = length;
+                    index[offset + length] = i;
+                } else {
+                    nZeroLengthArrays += 1;
                 }
             }
-            setSize(pg, size -= len);
-        }
-        setnItems(pg, nItems - 1);
-        return size + strKeySize*nItems < keySpace/3 
-            ? Btree.op_underflow : Btree.op_done;
-    }
-    
-    
-    static int replaceStrKey(StorageImpl db, Page pg, int r, BtreeKey ins, int height)
-    {
-        ins.oid = getKeyStrOid(pg, r);
-        removeStrKey(pg, r);
-        return insertStrKey(db, pg, r, ins, height);
-    }
-    
-    static int replaceByteArrayKey(StorageImpl db, Page pg, int r, BtreeKey ins, int height)
-    {
-        ins.oid = getKeyStrOid(pg, r);
-        removeByteArrayKey(pg, r);
-        return insertByteArrayKey(db, pg, r, ins, height);
-    }
-    
-    static int handlePageUnderflow(StorageImpl db, Page pg, int r, int type, BtreeKey rem, int height)
-    {
-        int nItems = getnItems(pg);
-        if (type == ClassDescriptor.tpString) { 
-            Page a = db.putPage(getKeyStrOid(pg, r));
-            int an = getnItems(a);
-            if (r < nItems) { // exists greater page
-                Page b = db.getPage(getKeyStrOid(pg, r+1));
-                int bn = getnItems(b); 
-                int merged_size = (an+bn)*strKeySize + getSize(a) + getSize(b);
-                if (height != 1) { 
-                    merged_size += getKeyStrSize(pg, r)*2 + strKeySize*2;
+
+            for (; i < numOfItems; i++) {
+                length = getKeyStrSize(aPage, i);
+
+                if (length != 0) {
+                    offset = getKeyStrOffs(aPage, i);
+                    size[offset + length] = length;
+                    index[offset + length] = -1;
                 }
-                if (merged_size > keySpace) {
+            }
+        } else {
+            for (i = 0; i < count; i++) {
+                length = getKeyStrSize(aPage, i);
+
+                if (length != 0) {
+                    offset = getKeyStrOffs(aPage, i);
+                    size[offset + length] = length;
+                    index[offset + length] = -1;
+                }
+            }
+
+            for (; i < numOfItems; i++) {
+                length = getKeyStrSize(aPage, i);
+
+                if (length != 0) {
+                    offset = getKeyStrOffs(aPage, i);
+                    size[offset + length] = length;
+                    index[offset + length] = i - count;
+                } else {
+                    nZeroLengthArrays += 1;
+                }
+
+                setKeyStrOid(aPage, i - count, getKeyStrOid(aPage, i));
+                setKeyStrSize(aPage, i - count, length);
+            }
+
+            setKeyStrOid(aPage, i - count, getKeyStrOid(aPage, i));
+        }
+
+        final int nItems = numOfItems -= count;
+
+        numOfItems -= nZeroLengthArrays;
+
+        for (offset = KEY_SPACE, i = offset; numOfItems != 0; i -= length) {
+            length = size[i];
+            j = index[i];
+
+            if (j >= 0) {
+                offset -= length;
+                numOfItems -= 1;
+                setKeyStrOffs(aPage, j, offset);
+
+                if (offset != i - length) {
+                    memcpy(aPage, offset, aPage, i - length, length, 1);
+                }
+            }
+        }
+
+        return nItems;
+    }
+
+    static int removeStrKey(final Page aPage, final int aIndex) {
+        final int len = getKeyStrSize(aPage, aIndex) * 2;
+        final int offs = getKeyStrOffs(aPage, aIndex);
+
+        int size = getSize(aPage);
+
+        final int numOfItems = getnItems(aPage);
+
+        if ((numOfItems + 1) * STRING_KEY_SIZE >= KEY_SPACE) {
+            memcpy(aPage, aIndex, aPage, aIndex + 1, numOfItems - aIndex - 1, STRING_KEY_SIZE);
+        } else {
+            memcpy(aPage, aIndex, aPage, aIndex + 1, numOfItems - aIndex, STRING_KEY_SIZE);
+        }
+
+        if (len != 0) {
+            memcpy(aPage, KEY_SPACE - size + len, aPage, KEY_SPACE - size, size - KEY_SPACE + offs, 1);
+
+            for (int i = numOfItems; --i >= 0;) {
+                if (getKeyStrOffs(aPage, i) < offs) {
+                    setKeyStrOffs(aPage, i, getKeyStrOffs(aPage, i) + len);
+                }
+            }
+
+            setSize(aPage, size -= len);
+        }
+
+        setnItems(aPage, numOfItems - 1);
+
+        return size + STRING_KEY_SIZE * numOfItems < KEY_SPACE / 3 ? Btree.OP_UNDERFLOW : Btree.OP_DONE;
+    }
+
+    static int removeByteArrayKey(final Page aPage, final int aIndex) {
+        final int length = getKeyStrSize(aPage, aIndex);
+        final int offset = getKeyStrOffs(aPage, aIndex);
+        final int itemCount = getnItems(aPage);
+
+        int size = getSize(aPage);
+
+        if ((itemCount + 1) * STRING_KEY_SIZE >= KEY_SPACE) {
+            memcpy(aPage, aIndex, aPage, aIndex + 1, itemCount - aIndex - 1, STRING_KEY_SIZE);
+        } else {
+            memcpy(aPage, aIndex, aPage, aIndex + 1, itemCount - aIndex, STRING_KEY_SIZE);
+        }
+
+        if (length != 0) {
+            memcpy(aPage, KEY_SPACE - size + length, aPage, KEY_SPACE - size, size - KEY_SPACE + offset, 1);
+
+            for (int i = itemCount; --i >= 0;) {
+                if (getKeyStrOffs(aPage, i) < offset) {
+                    setKeyStrOffs(aPage, i, getKeyStrOffs(aPage, i) + length);
+                }
+            }
+
+            setSize(aPage, size -= length);
+        }
+
+        setnItems(aPage, itemCount - 1);
+
+        return size + STRING_KEY_SIZE * itemCount < KEY_SPACE / 3 ? Btree.OP_UNDERFLOW : Btree.OP_DONE;
+    }
+
+    static int replaceStrKey(final StorageImpl aStorage, final Page aPage, final int aIndex, final BtreeKey aInsert,
+            final int aHeight) {
+        aInsert.myOID = getKeyStrOid(aPage, aIndex);
+        removeStrKey(aPage, aIndex);
+        return insertStrKey(aStorage, aPage, aIndex, aInsert, aHeight);
+    }
+
+    static int replaceByteArrayKey(final StorageImpl aStorage, final Page aPage, final int aIndex,
+            final BtreeKey aInsert, final int aHeight) {
+        aInsert.myOID = getKeyStrOid(aPage, aIndex);
+        removeByteArrayKey(aPage, aIndex);
+        return insertByteArrayKey(aStorage, aPage, aIndex, aInsert, aHeight);
+    }
+
+    static int handlePageUnderflow(final StorageImpl aStorage, final Page aPage, final int aIndex, final int aType,
+            final BtreeKey aRemove, final int aHeight) {
+        final int nItems = getnItems(aPage);
+
+        if (aType == ClassDescriptor.TP_STRING) {
+            final Page a = aStorage.putPage(getKeyStrOid(aPage, aIndex));
+            int an = getnItems(a);
+
+            if (aIndex < nItems) { // exists greater page
+                Page b = aStorage.getPage(getKeyStrOid(aPage, aIndex + 1));
+                final int bn = getnItems(b);
+                int merged_size = (an + bn) * STRING_KEY_SIZE + getSize(a) + getSize(b);
+
+                if (aHeight != 1) {
+                    merged_size += getKeyStrSize(aPage, aIndex) * 2 + STRING_KEY_SIZE * 2;
+                }
+
+                if (merged_size > KEY_SPACE) {
                     // reallocation of nodes between pages a and b
-                    int i, j, k;
-                    db.pool.unfix(b);
-                    b = db.putPage(getKeyStrOid(pg, r+1));
+                    int i;
+                    int j;
+                    int k;
+
+                    aStorage.myPool.unfix(b);
+                    b = aStorage.putPage(getKeyStrOid(aPage, aIndex + 1));
+
                     int size_a = getSize(a);
                     int size_b = getSize(b);
-                    int addSize, subSize;
-                    if (height != 1) {
-                        addSize = getKeyStrSize(pg, r);
+                    int addSize;
+                    int subSize;
+
+                    if (aHeight != 1) {
+                        addSize = getKeyStrSize(aPage, aIndex);
                         subSize = getKeyStrSize(b, 0);
-                    } else { 
+                    } else {
                         addSize = subSize = getKeyStrSize(b, 0);
                     }
+
                     i = 0;
-                    int prevDelta = (an*strKeySize + size_a) - (bn*strKeySize + size_b);
-                    while (true) { 
+
+                    int prevDelta = an * STRING_KEY_SIZE + size_a - (bn * STRING_KEY_SIZE + size_b);
+
+                    while (true) {
                         i += 1;
-                        int delta = ((an+i)*strKeySize + size_a + addSize*2)
-                            - ((bn-i)*strKeySize + size_b - subSize*2);
+
+                        final int delta = (an + i) * STRING_KEY_SIZE + size_a + addSize * 2 - ((bn - i) *
+                                STRING_KEY_SIZE + size_b - subSize * 2);
+
                         if (delta >= 0) {
-                            if (delta >= -prevDelta) { 
+                            if (delta >= -prevDelta) {
                                 i -= 1;
                             }
                             break;
                         }
-                        size_a += addSize*2;
-                        size_b -= subSize*2;
+
+                        size_a += addSize * 2;
+                        size_b -= subSize * 2;
                         prevDelta = delta;
-                        if (height != 1) { 
-                            addSize = subSize;  
+
+                        if (aHeight != 1) {
+                            addSize = subSize;
                             subSize = getKeyStrSize(b, i);
-                        } else { 
+                        } else {
                             addSize = subSize = getKeyStrSize(b, i);
                         }
                     }
-                    int result = Btree.op_done;
-                    if (i > 0) { 
+
+                    int result = Btree.OP_DONE;
+
+                    if (i > 0) {
                         k = i;
-                        if (height != 1) { 
-                            int len = getKeyStrSize(pg, r);
-                            setSize(a, getSize(a) + len*2);
-                            setKeyStrOffs(a, an, keySpace - getSize(a));
+
+                        if (aHeight != 1) {
+                            final int len = getKeyStrSize(aPage, aIndex);
+
+                            setSize(a, getSize(a) + len * 2);
+                            setKeyStrOffs(a, an, KEY_SPACE - getSize(a));
                             setKeyStrSize(a, an, len);
-                            memcpy(a, getKeyStrOffs(a, an),
-                                   pg, getKeyStrOffs(pg, r), len*2, 1);
+                            memcpy(a, getKeyStrOffs(a, an), aPage, getKeyStrOffs(aPage, aIndex), len * 2, 1);
                             k -= 1;
                             an += 1;
-                            setKeyStrOid(a, an+k, getKeyStrOid(b, k));
-                            setSize(b, getSize(b) - getKeyStrSize(b, k)*2);
+                            setKeyStrOid(a, an + k, getKeyStrOid(b, k));
+                            setSize(b, getSize(b) - getKeyStrSize(b, k) * 2);
                         }
-                        for (j = 0; j < k; j++) { 
-                            int len = getKeyStrSize(b, j);
-                            setSize(a, getSize(a) + len*2);
-                            setSize(b, getSize(b) - len*2);
-                            setKeyStrOffs(a, an, keySpace - getSize(a));
+
+                        for (j = 0; j < k; j++) {
+                            final int len = getKeyStrSize(b, j);
+
+                            setSize(a, getSize(a) + len * 2);
+                            setSize(b, getSize(b) - len * 2);
+                            setKeyStrOffs(a, an, KEY_SPACE - getSize(a));
                             setKeyStrSize(a, an, len);
                             setKeyStrOid(a, an, getKeyStrOid(b, j));
-                            memcpy(a, getKeyStrOffs(a, an),
-                                   b, getKeyStrOffs(b, j), len*2, 1);
+                            memcpy(a, getKeyStrOffs(a, an), b, getKeyStrOffs(b, j), len * 2, 1);
                             an += 1;
                         }
-                        rem.getStr(b, i-1);
-                        result = replaceStrKey(db, pg, r, rem, height);
+
+                        aRemove.getStr(b, i - 1);
+                        result = replaceStrKey(aStorage, aPage, aIndex, aRemove, aHeight);
                         setnItems(a, an);
                         setnItems(b, compactifyStrings(b, i));
                     }
-                    db.pool.unfix(a);
-                    db.pool.unfix(b);
+
+                    aStorage.myPool.unfix(a);
+                    aStorage.myPool.unfix(b);
+
                     return result;
                 } else { // merge page b to a
-                    if (height != 1) { 
-                        int r_len = getKeyStrSize(pg, r);
+                    if (aHeight != 1) {
+                        final int r_len = getKeyStrSize(aPage, aIndex);
+
                         setKeyStrSize(a, an, r_len);
-                        setSize(a, getSize(a) + r_len*2);
-                        setKeyStrOffs(a, an, keySpace - getSize(a));
-                        memcpy(a, getKeyStrOffs(a, an), 
-                               pg, getKeyStrOffs(pg, r), r_len*2, 1);
+                        setSize(a, getSize(a) + r_len * 2);
+                        setKeyStrOffs(a, an, KEY_SPACE - getSize(a));
+                        memcpy(a, getKeyStrOffs(a, an), aPage, getKeyStrOffs(aPage, aIndex), r_len * 2, 1);
                         an += 1;
-                        setKeyStrOid(a, an+bn, getKeyStrOid(b, bn));
+                        setKeyStrOid(a, an + bn, getKeyStrOid(b, bn));
                     }
-                    for (int i = 0; i < bn; i++, an++) { 
+
+                    for (int i = 0; i < bn; i++, an++) {
                         setKeyStrSize(a, an, getKeyStrSize(b, i));
                         setKeyStrOffs(a, an, getKeyStrOffs(b, i) - getSize(a));
                         setKeyStrOid(a, an, getKeyStrOid(b, i));
                     }
+
                     setSize(a, getSize(a) + getSize(b));
                     setnItems(a, an);
-                    memcpy(a, keySpace - getSize(a), b, keySpace - getSize(b), getSize(b), 1);
-                    db.pool.unfix(a);
-                    db.pool.unfix(b);
-                    db.freePage(getKeyStrOid(pg, r+1));
-                    setKeyStrOid(pg, r+1, getKeyStrOid(pg, r));
-                    return removeStrKey(pg, r);
+                    memcpy(a, KEY_SPACE - getSize(a), b, KEY_SPACE - getSize(b), getSize(b), 1);
+                    aStorage.myPool.unfix(a);
+                    aStorage.myPool.unfix(b);
+                    aStorage.freePage(getKeyStrOid(aPage, aIndex + 1));
+                    setKeyStrOid(aPage, aIndex + 1, getKeyStrOid(aPage, aIndex));
+
+                    return removeStrKey(aPage, aIndex);
                 }
             } else { // page b is before a
-                Page b = db.getPage(getKeyStrOid(pg, r-1));
-                int bn = getnItems(b); 
-                int merged_size = (an+bn)*strKeySize + getSize(a) + getSize(b);
-                if (height != 1) { 
-                    merged_size += getKeyStrSize(pg, r-1)*2 + strKeySize*2;
+                Page b = aStorage.getPage(getKeyStrOid(aPage, aIndex - 1));
+                final int bn = getnItems(b);
+                int merged_size = (an + bn) * STRING_KEY_SIZE + getSize(a) + getSize(b);
+
+                if (aHeight != 1) {
+                    merged_size += getKeyStrSize(aPage, aIndex - 1) * 2 + STRING_KEY_SIZE * 2;
                 }
-                if (merged_size > keySpace) {
+
+                if (merged_size > KEY_SPACE) {
                     // reallocation of nodes between pages a and b
-                    int i, j, k, len;
-                    db.pool.unfix(b);
-                    b = db.putPage(getKeyStrOid(pg, r-1));
+                    int i;
+                    int j;
+                    int k;
+                    int length;
+
+                    aStorage.myPool.unfix(b);
+                    b = aStorage.putPage(getKeyStrOid(aPage, aIndex - 1));
+
                     int size_a = getSize(a);
                     int size_b = getSize(b);
-                    int addSize, subSize;
-                    if (height != 1) {
-                        addSize = getKeyStrSize(pg, r-1);
-                        subSize = getKeyStrSize(b, bn-1);
-                    } else { 
-                        addSize = subSize = getKeyStrSize(b, bn-1);
+                    int addSize;
+                    int subSize;
+
+                    if (aHeight != 1) {
+                        addSize = getKeyStrSize(aPage, aIndex - 1);
+                        subSize = getKeyStrSize(b, bn - 1);
+                    } else {
+                        addSize = subSize = getKeyStrSize(b, bn - 1);
                     }
+
                     i = 0;
-                    int prevDelta = (an*strKeySize + size_a) - (bn*strKeySize + size_b);
-                    while (true) { 
+
+                    int prevDelta = an * STRING_KEY_SIZE + size_a - (bn * STRING_KEY_SIZE + size_b);
+
+                    while (true) {
                         i += 1;
-                        int delta = ((an+i)*strKeySize + size_a + addSize*2)
-                            - ((bn-i)*strKeySize + size_b - subSize*2);
+
+                        final int delta = (an + i) * STRING_KEY_SIZE + size_a + addSize * 2 - ((bn - i) *
+                                STRING_KEY_SIZE + size_b - subSize * 2);
+
                         if (delta >= 0) {
-                            if (delta >= -prevDelta) { 
+                            if (delta >= -prevDelta) {
                                 i -= 1;
                             }
+
                             break;
                         }
+
                         prevDelta = delta;
-                        size_a += addSize*2;
-                        size_b -= subSize*2;
-                        if (height != 1) { 
-                            addSize = subSize;  
-                            subSize = getKeyStrSize(b, bn-i-1);
-                        } else { 
-                            addSize = subSize = getKeyStrSize(b, bn-i-1);
+                        size_a += addSize * 2;
+                        size_b -= subSize * 2;
+
+                        if (aHeight != 1) {
+                            addSize = subSize;
+                            subSize = getKeyStrSize(b, bn - i - 1);
+                        } else {
+                            addSize = subSize = getKeyStrSize(b, bn - i - 1);
                         }
                     }
-                    int result = Btree.op_done;
-                    if (i > 0) { 
+
+                    int result = Btree.OP_DONE;
+
+                    if (i > 0) {
                         k = i;
+
                         Assert.that(i < bn);
-                        if (height != 1) { 
-                            setSize(b, getSize(b) - getKeyStrSize(b, bn-k)*2);
-                            memcpy(a, i, a, 0, an+1, strKeySize);
+
+                        if (aHeight != 1) {
+                            setSize(b, getSize(b) - getKeyStrSize(b, bn - k) * 2);
+                            memcpy(a, i, a, 0, an + 1, STRING_KEY_SIZE);
                             k -= 1;
                             setKeyStrOid(a, k, getKeyStrOid(b, bn));
-                            len = getKeyStrSize(pg, r-1);
-                            setKeyStrSize(a, k, len);
-                            setSize(a, getSize(a) + len*2);
-                            setKeyStrOffs(a, k, keySpace - getSize(a));
-                            memcpy(a, getKeyStrOffs(a, k), 
-                                   pg, getKeyStrOffs(pg, r-1), len*2, 1);
-                        } else { 
-                            memcpy(a, i, a, 0, an, strKeySize);
+                            length = getKeyStrSize(aPage, aIndex - 1);
+                            setKeyStrSize(a, k, length);
+                            setSize(a, getSize(a) + length * 2);
+                            setKeyStrOffs(a, k, KEY_SPACE - getSize(a));
+                            memcpy(a, getKeyStrOffs(a, k), aPage, getKeyStrOffs(aPage, aIndex - 1), length * 2, 1);
+                        } else {
+                            memcpy(a, i, a, 0, an, STRING_KEY_SIZE);
                         }
-                        for (j = 0; j < k; j++) { 
-                            len = getKeyStrSize(b, bn-k+j);
-                            setSize(a, getSize(a) + len*2);
-                            setSize(b, getSize(b) - len*2);
-                            setKeyStrOffs(a, j, keySpace - getSize(a));
-                            setKeyStrSize(a, j, len);
-                            setKeyStrOid(a, j, getKeyStrOid(b, bn-k+j));
-                            memcpy(a, getKeyStrOffs(a, j),
-                                   b, getKeyStrOffs(b, bn-k+j), len*2, 1);
+
+                        for (j = 0; j < k; j++) {
+                            length = getKeyStrSize(b, bn - k + j);
+                            setSize(a, getSize(a) + length * 2);
+                            setSize(b, getSize(b) - length * 2);
+                            setKeyStrOffs(a, j, KEY_SPACE - getSize(a));
+                            setKeyStrSize(a, j, length);
+                            setKeyStrOid(a, j, getKeyStrOid(b, bn - k + j));
+                            memcpy(a, getKeyStrOffs(a, j), b, getKeyStrOffs(b, bn - k + j), length * 2, 1);
                         }
+
                         an += i;
                         setnItems(a, an);
-                        rem.getStr(b, bn-k-1);
-                        result = replaceStrKey(db, pg, r-1, rem, height);
+                        aRemove.getStr(b, bn - k - 1);
+                        result = replaceStrKey(aStorage, aPage, aIndex - 1, aRemove, aHeight);
                         setnItems(b, compactifyStrings(b, -i));
                     }
-                    db.pool.unfix(a);
-                    db.pool.unfix(b);               
+
+                    aStorage.myPool.unfix(a);
+                    aStorage.myPool.unfix(b);
+
                     return result;
                 } else { // merge page b to a
-                    if (height != 1) { 
-                        memcpy(a, bn + 1, a, 0, an+1, strKeySize);
-                        int len = getKeyStrSize(pg, r-1);
-                        setKeyStrSize(a, bn, len);
-                        setSize(a, getSize(a) + len*2);
-                        setKeyStrOffs(a, bn, keySpace - getSize(a));
+                    if (aHeight != 1) {
+                        memcpy(a, bn + 1, a, 0, an + 1, STRING_KEY_SIZE);
+                        final int length = getKeyStrSize(aPage, aIndex - 1);
+                        setKeyStrSize(a, bn, length);
+                        setSize(a, getSize(a) + length * 2);
+                        setKeyStrOffs(a, bn, KEY_SPACE - getSize(a));
                         setKeyStrOid(a, bn, getKeyStrOid(b, bn));
-                        memcpy(a, getKeyStrOffs(a, bn), 
-                               pg, getKeyStrOffs(pg, r-1), len*2, 1);
+                        memcpy(a, getKeyStrOffs(a, bn), aPage, getKeyStrOffs(aPage, aIndex - 1), length * 2, 1);
                         an += 1;
-                    } else { 
-                        memcpy(a, bn, a, 0, an, strKeySize);
+                    } else {
+                        memcpy(a, bn, a, 0, an, STRING_KEY_SIZE);
                     }
-                    for (int i = 0; i < bn; i++) { 
+
+                    for (int i = 0; i < bn; i++) {
                         setKeyStrOid(a, i, getKeyStrOid(b, i));
                         setKeyStrSize(a, i, getKeyStrSize(b, i));
                         setKeyStrOffs(a, i, getKeyStrOffs(b, i) - getSize(a));
                     }
+
                     an += bn;
                     setnItems(a, an);
                     setSize(a, getSize(a) + getSize(b));
-                    memcpy(a, keySpace - getSize(a), b, keySpace - getSize(b), getSize(b), 1);
-                    db.pool.unfix(a);
-                    db.pool.unfix(b);
-                    db.freePage(getKeyStrOid(pg, r-1));
-                    return removeStrKey(pg, r-1);
+                    memcpy(a, KEY_SPACE - getSize(a), b, KEY_SPACE - getSize(b), getSize(b), 1);
+                    aStorage.myPool.unfix(a);
+                    aStorage.myPool.unfix(b);
+                    aStorage.freePage(getKeyStrOid(aPage, aIndex - 1));
+
+                    return removeStrKey(aPage, aIndex - 1);
                 }
             }
-        } else if (type == ClassDescriptor.tpArrayOfByte) { 
-            Page a = db.putPage(getKeyStrOid(pg, r));
+        } else if (aType == ClassDescriptor.TP_ARRAY_OF_BYTES) {
+            final Page a = aStorage.putPage(getKeyStrOid(aPage, aIndex));
+
             int an = getnItems(a);
-            if (r < nItems) { // exists greater page
-                Page b = db.getPage(getKeyStrOid(pg, r+1));
-                int bn = getnItems(b); 
-                int merged_size = (an+bn)*strKeySize + getSize(a) + getSize(b);
-                if (height != 1) { 
-                    merged_size += getKeyStrSize(pg, r) + strKeySize*2;
+
+            if (aIndex < nItems) { // exists greater page
+                Page b = aStorage.getPage(getKeyStrOid(aPage, aIndex + 1));
+                final int bn = getnItems(b);
+                int merged_size = (an + bn) * STRING_KEY_SIZE + getSize(a) + getSize(b);
+
+                if (aHeight != 1) {
+                    merged_size += getKeyStrSize(aPage, aIndex) + STRING_KEY_SIZE * 2;
                 }
-                if (merged_size > keySpace) {
+
+                if (merged_size > KEY_SPACE) {
                     // reallocation of nodes between pages a and b
-                    int i, j, k;
-                    db.pool.unfix(b);
-                    b = db.putPage(getKeyStrOid(pg, r+1));
+                    int i;
+                    int j;
+                    int k;
+
+                    aStorage.myPool.unfix(b);
+                    b = aStorage.putPage(getKeyStrOid(aPage, aIndex + 1));
+
                     int size_a = getSize(a);
                     int size_b = getSize(b);
-                    int addSize, subSize;
-                    if (height != 1) {
-                        addSize = getKeyStrSize(pg, r);
+                    int prevDelta;
+                    int addSize;
+                    int subSize;
+
+                    if (aHeight != 1) {
+                        addSize = getKeyStrSize(aPage, aIndex);
                         subSize = getKeyStrSize(b, 0);
-                    } else { 
+                    } else {
                         addSize = subSize = getKeyStrSize(b, 0);
                     }
+
                     i = 0;
-                    int prevDelta = (an*strKeySize + size_a) - (bn*strKeySize + size_b);
-                    while (true) { 
+                    prevDelta = an * STRING_KEY_SIZE + size_a - (bn * STRING_KEY_SIZE + size_b);
+
+                    while (true) {
                         i += 1;
-                        int delta = ((an+i)*strKeySize + size_a + addSize)
-                            - ((bn-i)*strKeySize + size_b - subSize);
+
+                        final int delta = (an + i) * STRING_KEY_SIZE + size_a + addSize - ((bn - i) *
+                                STRING_KEY_SIZE + size_b - subSize);
+
                         if (delta >= 0) {
-                            if (delta >= -prevDelta) { 
+                            if (delta >= -prevDelta) {
                                 i -= 1;
                             }
+
                             break;
                         }
+
                         size_a += addSize;
                         size_b -= subSize;
                         prevDelta = delta;
-                        if (height != 1) { 
-                            addSize = subSize;  
+
+                        if (aHeight != 1) {
+                            addSize = subSize;
                             subSize = getKeyStrSize(b, i);
-                        } else { 
+                        } else {
                             addSize = subSize = getKeyStrSize(b, i);
                         }
                     }
-                    int result = Btree.op_done;
-                    if (i > 0) { 
+
+                    int result = Btree.OP_DONE;
+
+                    if (i > 0) {
                         k = i;
-                        if (height != 1) { 
-                            int len = getKeyStrSize(pg, r);
+
+                        if (aHeight != 1) {
+                            final int len = getKeyStrSize(aPage, aIndex);
+
                             setSize(a, getSize(a) + len);
-                            setKeyStrOffs(a, an, keySpace - getSize(a));
+                            setKeyStrOffs(a, an, KEY_SPACE - getSize(a));
                             setKeyStrSize(a, an, len);
-                            memcpy(a, getKeyStrOffs(a, an),
-                                   pg, getKeyStrOffs(pg, r), len, 1);
+                            memcpy(a, getKeyStrOffs(a, an), aPage, getKeyStrOffs(aPage, aIndex), len, 1);
                             k -= 1;
                             an += 1;
-                            setKeyStrOid(a, an+k, getKeyStrOid(b, k));
+                            setKeyStrOid(a, an + k, getKeyStrOid(b, k));
                             setSize(b, getSize(b) - getKeyStrSize(b, k));
                         }
-                        for (j = 0; j < k; j++) { 
-                            int len = getKeyStrSize(b, j);
+
+                        for (j = 0; j < k; j++) {
+                            final int len = getKeyStrSize(b, j);
+
                             setSize(a, getSize(a) + len);
                             setSize(b, getSize(b) - len);
-                            setKeyStrOffs(a, an, keySpace - getSize(a));
+                            setKeyStrOffs(a, an, KEY_SPACE - getSize(a));
                             setKeyStrSize(a, an, len);
                             setKeyStrOid(a, an, getKeyStrOid(b, j));
-                            memcpy(a, getKeyStrOffs(a, an),
-                                   b, getKeyStrOffs(b, j), len, 1);
+                            memcpy(a, getKeyStrOffs(a, an), b, getKeyStrOffs(b, j), len, 1);
                             an += 1;
                         }
-                        rem.getByteArray(b, i-1);
-                        result = replaceByteArrayKey(db, pg, r, rem, height);
+
+                        aRemove.getByteArray(b, i - 1);
+                        result = replaceByteArrayKey(aStorage, aPage, aIndex, aRemove, aHeight);
                         setnItems(a, an);
                         setnItems(b, compactifyByteArrays(b, i));
                     }
-                    db.pool.unfix(a);
-                    db.pool.unfix(b);
+
+                    aStorage.myPool.unfix(a);
+                    aStorage.myPool.unfix(b);
+
                     return result;
                 } else { // merge page b to a
-                    if (height != 1) { 
-                        int r_len = getKeyStrSize(pg, r);
+                    if (aHeight != 1) {
+                        final int r_len = getKeyStrSize(aPage, aIndex);
+
                         setKeyStrSize(a, an, r_len);
                         setSize(a, getSize(a) + r_len);
-                        setKeyStrOffs(a, an, keySpace - getSize(a));
-                        memcpy(a, getKeyStrOffs(a, an), 
-                               pg, getKeyStrOffs(pg, r), r_len, 1);
+                        setKeyStrOffs(a, an, KEY_SPACE - getSize(a));
+                        memcpy(a, getKeyStrOffs(a, an), aPage, getKeyStrOffs(aPage, aIndex), r_len, 1);
                         an += 1;
-                        setKeyStrOid(a, an+bn, getKeyStrOid(b, bn));
+                        setKeyStrOid(a, an + bn, getKeyStrOid(b, bn));
                     }
-                    for (int i = 0; i < bn; i++, an++) { 
+                    for (int i = 0; i < bn; i++, an++) {
                         setKeyStrSize(a, an, getKeyStrSize(b, i));
                         setKeyStrOffs(a, an, getKeyStrOffs(b, i) - getSize(a));
                         setKeyStrOid(a, an, getKeyStrOid(b, i));
                     }
+
                     setSize(a, getSize(a) + getSize(b));
                     setnItems(a, an);
-                    memcpy(a, keySpace - getSize(a), b, keySpace - getSize(b), getSize(b), 1);
-                    db.pool.unfix(a);
-                    db.pool.unfix(b);
-                    db.freePage(getKeyStrOid(pg, r+1));
-                    setKeyStrOid(pg, r+1, getKeyStrOid(pg, r));
-                    return removeByteArrayKey(pg, r);
+                    memcpy(a, KEY_SPACE - getSize(a), b, KEY_SPACE - getSize(b), getSize(b), 1);
+                    aStorage.myPool.unfix(a);
+                    aStorage.myPool.unfix(b);
+                    aStorage.freePage(getKeyStrOid(aPage, aIndex + 1));
+                    setKeyStrOid(aPage, aIndex + 1, getKeyStrOid(aPage, aIndex));
+
+                    return removeByteArrayKey(aPage, aIndex);
                 }
             } else { // page b is before a
-                Page b = db.getPage(getKeyStrOid(pg, r-1));
-                int bn = getnItems(b); 
-                int merged_size = (an+bn)*strKeySize + getSize(a) + getSize(b);
-                if (height != 1) { 
-                    merged_size += getKeyStrSize(pg, r-1) + strKeySize*2;
+                Page b = aStorage.getPage(getKeyStrOid(aPage, aIndex - 1));
+                final int bn = getnItems(b);
+                int merged_size = (an + bn) * STRING_KEY_SIZE + getSize(a) + getSize(b);
+
+                if (aHeight != 1) {
+                    merged_size += getKeyStrSize(aPage, aIndex - 1) + STRING_KEY_SIZE * 2;
                 }
-                if (merged_size > keySpace) {
+
+                if (merged_size > KEY_SPACE) {
                     // reallocation of nodes between pages a and b
-                    int i, j, k, len;
-                    db.pool.unfix(b);
-                    b = db.putPage(getKeyStrOid(pg, r-1));
+                    int i;
+                    int j;
+                    int k;
+                    int length;
+
+                    aStorage.myPool.unfix(b);
+                    b = aStorage.putPage(getKeyStrOid(aPage, aIndex - 1));
+
                     int size_a = getSize(a);
                     int size_b = getSize(b);
-                    int addSize, subSize;
-                    if (height != 1) {
-                        addSize = getKeyStrSize(pg, r-1);
-                        subSize = getKeyStrSize(b, bn-1);
-                    } else { 
-                        addSize = subSize = getKeyStrSize(b, bn-1);
+                    int prevDelta;
+                    int addSize;
+                    int subSize;
+
+                    if (aHeight != 1) {
+                        addSize = getKeyStrSize(aPage, aIndex - 1);
+                        subSize = getKeyStrSize(b, bn - 1);
+                    } else {
+                        addSize = subSize = getKeyStrSize(b, bn - 1);
                     }
+
                     i = 0;
-                    int prevDelta = (an*strKeySize + size_a) - (bn*strKeySize + size_b);
-                    while (true) { 
+                    prevDelta = an * STRING_KEY_SIZE + size_a - (bn * STRING_KEY_SIZE + size_b);
+
+                    while (true) {
                         i += 1;
-                        int delta = ((an+i)*strKeySize + size_a + addSize)
-                            - ((bn-i)*strKeySize + size_b - subSize);
+
+                        final int delta = (an + i) * STRING_KEY_SIZE + size_a + addSize - ((bn - i) *
+                                STRING_KEY_SIZE + size_b - subSize);
+
                         if (delta >= 0) {
-                            if (delta >= -prevDelta) { 
+                            if (delta >= -prevDelta) {
                                 i -= 1;
                             }
+
                             break;
                         }
+
                         prevDelta = delta;
                         size_a += addSize;
                         size_b -= subSize;
-                        if (height != 1) { 
-                            addSize = subSize;  
-                            subSize = getKeyStrSize(b, bn-i-1);
-                        } else { 
-                            addSize = subSize = getKeyStrSize(b, bn-i-1);
+
+                        if (aHeight != 1) {
+                            addSize = subSize;
+                            subSize = getKeyStrSize(b, bn - i - 1);
+                        } else {
+                            addSize = subSize = getKeyStrSize(b, bn - i - 1);
                         }
                     }
-                    int result = Btree.op_done;
-                    if (i > 0) { 
+
+                    int result = Btree.OP_DONE;
+
+                    if (i > 0) {
                         k = i;
+
                         Assert.that(i < bn);
-                        if (height != 1) { 
-                            setSize(b, getSize(b) - getKeyStrSize(b, bn-k));
-                            memcpy(a, i, a, 0, an+1, strKeySize);
+
+                        if (aHeight != 1) {
+                            setSize(b, getSize(b) - getKeyStrSize(b, bn - k));
+                            memcpy(a, i, a, 0, an + 1, STRING_KEY_SIZE);
                             k -= 1;
                             setKeyStrOid(a, k, getKeyStrOid(b, bn));
-                            len = getKeyStrSize(pg, r-1);
-                            setKeyStrSize(a, k, len);
-                            setSize(a, getSize(a) + len);
-                            setKeyStrOffs(a, k, keySpace - getSize(a));
-                            memcpy(a, getKeyStrOffs(a, k), 
-                                   pg, getKeyStrOffs(pg, r-1), len, 1);
-                        } else { 
-                            memcpy(a, i, a, 0, an, strKeySize);
+                            length = getKeyStrSize(aPage, aIndex - 1);
+                            setKeyStrSize(a, k, length);
+                            setSize(a, getSize(a) + length);
+                            setKeyStrOffs(a, k, KEY_SPACE - getSize(a));
+                            memcpy(a, getKeyStrOffs(a, k), aPage, getKeyStrOffs(aPage, aIndex - 1), length, 1);
+                        } else {
+                            memcpy(a, i, a, 0, an, STRING_KEY_SIZE);
                         }
-                        for (j = 0; j < k; j++) { 
-                            len = getKeyStrSize(b, bn-k+j);
-                            setSize(a, getSize(a) + len);
-                            setSize(b, getSize(b) - len);
-                            setKeyStrOffs(a, j, keySpace - getSize(a));
-                            setKeyStrSize(a, j, len);
-                            setKeyStrOid(a, j, getKeyStrOid(b, bn-k+j));
-                            memcpy(a, getKeyStrOffs(a, j),
-                                   b, getKeyStrOffs(b, bn-k+j), len, 1);
+
+                        for (j = 0; j < k; j++) {
+                            length = getKeyStrSize(b, bn - k + j);
+                            setSize(a, getSize(a) + length);
+                            setSize(b, getSize(b) - length);
+                            setKeyStrOffs(a, j, KEY_SPACE - getSize(a));
+                            setKeyStrSize(a, j, length);
+                            setKeyStrOid(a, j, getKeyStrOid(b, bn - k + j));
+                            memcpy(a, getKeyStrOffs(a, j), b, getKeyStrOffs(b, bn - k + j), length, 1);
                         }
+
                         an += i;
                         setnItems(a, an);
-                        rem.getByteArray(b, bn-k-1);
-                        result = replaceByteArrayKey(db, pg, r-1, rem, height);
+                        aRemove.getByteArray(b, bn - k - 1);
+                        result = replaceByteArrayKey(aStorage, aPage, aIndex - 1, aRemove, aHeight);
                         setnItems(b, compactifyByteArrays(b, -i));
                     }
-                    db.pool.unfix(a);
-                    db.pool.unfix(b);               
+
+                    aStorage.myPool.unfix(a);
+                    aStorage.myPool.unfix(b);
+
                     return result;
                 } else { // merge page b to a
-                    if (height != 1) { 
-                        memcpy(a, bn + 1, a, 0, an+1, strKeySize);
-                        int len = getKeyStrSize(pg, r-1);
-                        setKeyStrSize(a, bn, len);
-                        setSize(a, getSize(a) + len);
-                        setKeyStrOffs(a, bn, keySpace - getSize(a));
+                    if (aHeight != 1) {
+                        memcpy(a, bn + 1, a, 0, an + 1, STRING_KEY_SIZE);
+                        final int length = getKeyStrSize(aPage, aIndex - 1);
+                        setKeyStrSize(a, bn, length);
+                        setSize(a, getSize(a) + length);
+                        setKeyStrOffs(a, bn, KEY_SPACE - getSize(a));
                         setKeyStrOid(a, bn, getKeyStrOid(b, bn));
-                        memcpy(a, getKeyStrOffs(a, bn), 
-                               pg, getKeyStrOffs(pg, r-1), len, 1);
+                        memcpy(a, getKeyStrOffs(a, bn), aPage, getKeyStrOffs(aPage, aIndex - 1), length, 1);
                         an += 1;
-                    } else { 
-                        memcpy(a, bn, a, 0, an, strKeySize);
+                    } else {
+                        memcpy(a, bn, a, 0, an, STRING_KEY_SIZE);
                     }
-                    for (int i = 0; i < bn; i++) { 
+
+                    for (int i = 0; i < bn; i++) {
                         setKeyStrOid(a, i, getKeyStrOid(b, i));
                         setKeyStrSize(a, i, getKeyStrSize(b, i));
                         setKeyStrOffs(a, i, getKeyStrOffs(b, i) - getSize(a));
                     }
+
                     an += bn;
                     setnItems(a, an);
                     setSize(a, getSize(a) + getSize(b));
-                    memcpy(a, keySpace - getSize(a), b, keySpace - getSize(b), getSize(b), 1);
-                    db.pool.unfix(a);
-                    db.pool.unfix(b);
-                    db.freePage(getKeyStrOid(pg, r-1));
-                    return removeByteArrayKey(pg, r-1);
+                    memcpy(a, KEY_SPACE - getSize(a), b, KEY_SPACE - getSize(b), getSize(b), 1);
+                    aStorage.myPool.unfix(a);
+                    aStorage.myPool.unfix(b);
+                    aStorage.freePage(getKeyStrOid(aPage, aIndex - 1));
+
+                    return removeByteArrayKey(aPage, aIndex - 1);
                 }
             }
         } else { // scalar types
-            Page a = db.putPage(getReference(pg, maxItems-r-1));
+            final Page a = aStorage.putPage(getReference(aPage, MAX_ITEMS - aIndex - 1));
             int an = getnItems(a);
-            int itemSize = ClassDescriptor.sizeof[type];
-            if (r < nItems) { // exists greater page
-                Page b = db.getPage(getReference(pg, maxItems-r-2));
-                int bn = getnItems(b); 
+            final int itemSize = ClassDescriptor.SIZE_OF[aType];
+
+            if (aIndex < nItems) { // exists greater page
+                Page b = aStorage.getPage(getReference(aPage, MAX_ITEMS - aIndex - 2));
+                int bn = getnItems(b);
                 Assert.that(bn >= an);
-                if (height != 1) { 
-                    memcpy(a, an, pg, r, 1, itemSize);
+
+                if (aHeight != 1) {
+                    memcpy(a, an, aPage, aIndex, 1, itemSize);
                     an += 1;
                     bn += 1;
                 }
-                int merged_size = (an+bn)*(4 + itemSize);
-                if (merged_size > keySpace) { 
+
+                final int merged_size = (an + bn) * (4 + itemSize);
+
+                if (merged_size > KEY_SPACE) {
                     // reallocation of nodes between pages a and b
-                    int i = bn - ((an + bn) >> 1);
-                    db.pool.unfix(b);
-                    b = db.putPage(getReference(pg, maxItems-r-2));
+                    final int i = bn - (an + bn >> 1);
+
+                    aStorage.myPool.unfix(b);
+                    b = aStorage.putPage(getReference(aPage, MAX_ITEMS - aIndex - 2));
                     memcpy(a, an, b, 0, i, itemSize);
-                    memcpy(b, 0, b, i, bn-i, itemSize);
-                    memcpy(a, maxItems-an-i, b, maxItems-i, i, 4);
-                    memcpy(b, maxItems-bn+i, b, maxItems-bn, bn-i, 4);
-                    memcpy(pg, r, a, an+i-1, 1, itemSize);
+                    memcpy(b, 0, b, i, bn - i, itemSize);
+                    memcpy(a, MAX_ITEMS - an - i, b, MAX_ITEMS - i, i, 4);
+                    memcpy(b, MAX_ITEMS - bn + i, b, MAX_ITEMS - bn, bn - i, 4);
+                    memcpy(aPage, aIndex, a, an + i - 1, 1, itemSize);
                     setnItems(b, getnItems(b) - i);
                     setnItems(a, getnItems(a) + i);
-                    db.pool.unfix(a);
-                    db.pool.unfix(b);
-                    return Btree.op_done;
-                } else { // merge page b to a  
+                    aStorage.myPool.unfix(a);
+                    aStorage.myPool.unfix(b);
+
+                    return Btree.OP_DONE;
+                } else { // merge page b to a
                     memcpy(a, an, b, 0, bn, itemSize);
-                    memcpy(a, maxItems-an-bn, b, maxItems-bn, bn, 4);
-                    db.freePage(getReference(pg, maxItems-r-2));
-                    memcpy(pg, maxItems-nItems, pg, maxItems-nItems-1, 
-                           nItems - r - 1, 4);
-                    memcpy(pg, r, pg, r+1, nItems - r - 1, itemSize);
+                    memcpy(a, MAX_ITEMS - an - bn, b, MAX_ITEMS - bn, bn, 4);
+                    aStorage.freePage(getReference(aPage, MAX_ITEMS - aIndex - 2));
+                    memcpy(aPage, MAX_ITEMS - nItems, aPage, MAX_ITEMS - nItems - 1, nItems - aIndex - 1, 4);
+                    memcpy(aPage, aIndex, aPage, aIndex + 1, nItems - aIndex - 1, itemSize);
                     setnItems(a, getnItems(a) + bn);
-                    setnItems(pg, nItems - 1);
-                    db.pool.unfix(a);
-                    db.pool.unfix(b);
-                    return nItems*(itemSize + 4) < keySpace/3
-                        ? Btree.op_underflow : Btree.op_done;
+                    setnItems(aPage, nItems - 1);
+                    aStorage.myPool.unfix(a);
+                    aStorage.myPool.unfix(b);
+
+                    return nItems * (itemSize + 4) < KEY_SPACE / 3 ? Btree.OP_UNDERFLOW : Btree.OP_DONE;
                 }
             } else { // page b is before a
-                Page b = db.getPage(getReference(pg, maxItems-r));
-                int bn = getnItems(b); 
+                Page b = aStorage.getPage(getReference(aPage, MAX_ITEMS - aIndex));
+                int bn = getnItems(b);
                 Assert.that(bn >= an);
-                if (height != 1) { 
+
+                if (aHeight != 1) {
                     an += 1;
                     bn += 1;
                 }
-                int merged_size = (an+bn)*(4 + itemSize);
-                if (merged_size > keySpace) { 
+
+                final int merged_size = (an + bn) * (4 + itemSize);
+
+                if (merged_size > KEY_SPACE) {
                     // reallocation of nodes between pages a and b
-                    int i = bn - ((an + bn) >> 1);
-                    db.pool.unfix(b);
-                    b = db.putPage(getReference(pg, maxItems-r));
+                    final int i = bn - (an + bn >> 1);
+
+                    aStorage.myPool.unfix(b);
+                    b = aStorage.putPage(getReference(aPage, MAX_ITEMS - aIndex));
                     memcpy(a, i, a, 0, an, itemSize);
-                    memcpy(a, 0, b, bn-i, i, itemSize);
-                    memcpy(a, maxItems-an-i, a, maxItems-an, an, 4);
-                    memcpy(a, maxItems-i, b, maxItems-bn, i, 4);
-                    if (height != 1) { 
-                        memcpy(a, i-1, pg, r-1, 1, itemSize);
+                    memcpy(a, 0, b, bn - i, i, itemSize);
+                    memcpy(a, MAX_ITEMS - an - i, a, MAX_ITEMS - an, an, 4);
+                    memcpy(a, MAX_ITEMS - i, b, MAX_ITEMS - bn, i, 4);
+
+                    if (aHeight != 1) {
+                        memcpy(a, i - 1, aPage, aIndex - 1, 1, itemSize);
                     }
-                    memcpy(pg, r-1, b, bn-i-1, 1, itemSize);
+
+                    memcpy(aPage, aIndex - 1, b, bn - i - 1, 1, itemSize);
                     setnItems(b, getnItems(b) - i);
                     setnItems(a, getnItems(a) + i);
-                    db.pool.unfix(a);
-                    db.pool.unfix(b);
-                    return Btree.op_done;
+                    aStorage.myPool.unfix(a);
+                    aStorage.myPool.unfix(b);
+
+                    return Btree.OP_DONE;
                 } else { // merge page b to a
                     memcpy(a, bn, a, 0, an, itemSize);
                     memcpy(a, 0, b, 0, bn, itemSize);
-                    memcpy(a, maxItems-an-bn, a, maxItems-an, an, 4);
-                    memcpy(a, maxItems-bn, b, maxItems-bn, bn, 4);
-                    if (height != 1) { 
-                        memcpy(a, bn-1, pg, r-1, 1, itemSize);
+                    memcpy(a, MAX_ITEMS - an - bn, a, MAX_ITEMS - an, an, 4);
+                    memcpy(a, MAX_ITEMS - bn, b, MAX_ITEMS - bn, bn, 4);
+
+                    if (aHeight != 1) {
+                        memcpy(a, bn - 1, aPage, aIndex - 1, 1, itemSize);
                     }
-                    db.freePage(getReference(pg, maxItems-r));
-                    setReference(pg, maxItems-r, getReference(pg, maxItems-r-1));
+
+                    aStorage.freePage(getReference(aPage, MAX_ITEMS - aIndex));
+                    setReference(aPage, MAX_ITEMS - aIndex, getReference(aPage, MAX_ITEMS - aIndex - 1));
                     setnItems(a, getnItems(a) + bn);
-                    setnItems(pg, nItems - 1);
-                    db.pool.unfix(a);
-                    db.pool.unfix(b);
-                    return nItems*(itemSize + 4) < keySpace/3
-                        ? Btree.op_underflow : Btree.op_done;
+                    setnItems(aPage, nItems - 1);
+                    aStorage.myPool.unfix(a);
+                    aStorage.myPool.unfix(b);
+
+                    return nItems * (itemSize + 4) < KEY_SPACE / 3 ? Btree.OP_UNDERFLOW : Btree.OP_DONE;
                 }
             }
         }
     }
-   
-    static int remove(StorageImpl db, int pageId, Btree tree, BtreeKey rem, int height)
-    {
-        Page pg = db.getPage(pageId);
-        try { 
-            int i, n = getnItems(pg), l = 0, r = n;
-            
-            if (tree.type == ClassDescriptor.tpString) { 
-                while (l < r)  {
-                    i = (l+r) >> 1;
-                    if (compareStr(rem.key, pg, i) > 0) { 
-                        l = i+1; 
-                    } else { 
+
+    static int remove(final StorageImpl aStorage, final int aPageID, final Btree aBtree, final BtreeKey aRemove,
+            final int aHeight) {
+        Page pg = aStorage.getPage(aPageID);
+        int height = aHeight;
+
+        try {
+            int n = getnItems(pg);
+            int l = 0;
+            int r = n;
+            int i;
+
+            if (aBtree.myType == ClassDescriptor.TP_STRING) {
+                while (l < r) {
+                    i = l + r >> 1;
+
+                    if (compareStr(aRemove.myKey, pg, i) > 0) {
+                        l = i + 1;
+                    } else {
                         r = i;
                     }
                 }
+
                 if (--height != 0) {
-                    do {  
-                        switch (remove(db, getKeyStrOid(pg, r), tree, rem, height)) {
-                          case Btree.op_underflow: 
-                            db.pool.unfix(pg);
-                            pg = null;
-                            pg = db.putPage(pageId);
-                            return handlePageUnderflow(db, pg, r, tree.type, rem, height);
-                          case Btree.op_done:
-                            return Btree.op_done;
-                          case Btree.op_overflow:
-                            db.pool.unfix(pg);
-                            pg = null;
-                            pg = db.putPage(pageId);
-                            return insertStrKey(db, pg, r, rem, height);
+                    do {
+                        switch (remove(aStorage, getKeyStrOid(pg, r), aBtree, aRemove, height)) {
+                            case Btree.OP_UNDERFLOW:
+                                aStorage.myPool.unfix(pg);
+                                pg = null;
+                                pg = aStorage.putPage(aPageID);
+                                return handlePageUnderflow(aStorage, pg, r, aBtree.myType, aRemove, height);
+                            case Btree.OP_DONE:
+                                return Btree.OP_DONE;
+                            case Btree.OP_OVERFLOW:
+                                aStorage.myPool.unfix(pg);
+                                pg = null;
+                                pg = aStorage.putPage(aPageID);
+                                return insertStrKey(aStorage, pg, r, aRemove, height);
+                            default:
+                                // FIXME
                         }
                     } while (++r <= n);
-                } else { 
-                    while (r < n) { 
-                        if (compareStr(rem.key, pg, r) == 0) {
-                            int oid = getKeyStrOid(pg, r);
-                            if (oid == rem.oid || rem.oid == 0) { 
-                                rem.oldOid = oid;
-                                db.pool.unfix(pg);
-                                pg = null;
-                                pg = db.putPage(pageId);
-                                return removeStrKey(pg, r);
-                            }
-                        } else { 
-                            break;
-                        }
-                        r += 1;
-                    }
-                }
-            } else if (tree.type == ClassDescriptor.tpArrayOfByte) {
-                while (l < r)  {
-                    i = (l+r) >> 1;
-                    if (tree.compareByteArrays(rem.key, pg, i) > 0) { 
-                        l = i+1; 
-                    } else { 
-                        r = i;
-                    }
-                }
-                if (--height != 0) {
-                    do {  
-                        switch (remove(db, getKeyStrOid(pg, r), tree, rem, height)) {
-                          case Btree.op_underflow: 
-                            db.pool.unfix(pg);
-                            pg = null;
-                            pg = db.putPage(pageId);
-                            return handlePageUnderflow(db, pg, r, tree.type, rem, height);
-                          case Btree.op_done:
-                            return Btree.op_done;
-                          case Btree.op_overflow:
-                            db.pool.unfix(pg);
-                            pg = null;
-                            pg = db.putPage(pageId);
-                            return insertByteArrayKey(db, pg, r, rem, height);
-                        }
-                    } while (++r <= n);
-                } else { 
-                    while (r < n) { 
-                        if (tree.compareByteArrays(rem.key, pg, r) == 0) { 
-                            int oid = getKeyStrOid(pg, r);
-                            if (oid == rem.oid || rem.oid == 0) { 
-                                rem.oldOid = oid;
-                                db.pool.unfix(pg);
-                                pg = null;
-                                pg = db.putPage(pageId);
-                                return removeByteArrayKey(pg, r);
-                            }
-                        } else { 
-                            break;
-                        }
-                        r += 1;
-                    }
-                }
-            } else { // scalar types
-                int itemSize = ClassDescriptor.sizeof[tree.type];
-                while (l < r)  {
-                    i = (l+r) >> 1;
-                    if (compare(rem.key, pg, i) > 0) { 
-                        l = i+1; 
-                    } else { 
-                        r = i;
-                    }
-                }
-                if (--height == 0) {
-                    int oid = rem.oid;
+                } else {
                     while (r < n) {
-                        if (compare(rem.key, pg, r) == 0) {
-                            if (getReference(pg, maxItems-r-1) == oid || oid == 0) {
-                                rem.oldOid = getReference(pg, maxItems-r-1);
-                                db.pool.unfix(pg);
+                        if (compareStr(aRemove.myKey, pg, r) == 0) {
+                            final int oid = getKeyStrOid(pg, r);
+
+                            if (oid == aRemove.myOID || aRemove.myOID == 0) {
+                                aRemove.myOldOID = oid;
+                                aStorage.myPool.unfix(pg);
                                 pg = null;
-                                pg = db.putPage(pageId);
-                                memcpy(pg, r, pg, r+1, n - r - 1, itemSize);
-                                memcpy(pg, maxItems-n+1, pg, maxItems-n, n - r - 1, 4);
-                                setnItems(pg, --n);
-                                return n*(itemSize + 4) < keySpace/3
-                                    ? Btree.op_underflow : Btree.op_done;
+                                pg = aStorage.putPage(aPageID);
+
+                                return removeStrKey(pg, r);
                             }
                         } else {
                             break;
                         }
+
                         r += 1;
                     }
-                    return Btree.op_not_found;
                 }
-                do { 
-                    switch (remove(db, getReference(pg, maxItems-r-1), tree, rem, height)) {
-                      case Btree.op_underflow: 
-                        db.pool.unfix(pg);
-                        pg = null;
-                        pg = db.putPage(pageId);
-                        return handlePageUnderflow(db, pg, r, tree.type, rem, height);
-                      case Btree.op_done:
-                        return Btree.op_done;
-                    } 
+            } else if (aBtree.myType == ClassDescriptor.TP_ARRAY_OF_BYTES) {
+                while (l < r) {
+                    i = l + r >> 1;
+
+                    if (aBtree.compareByteArrays(aRemove.myKey, pg, i) > 0) {
+                        l = i + 1;
+                    } else {
+                        r = i;
+                    }
+                }
+
+                if (--height != 0) {
+                    do {
+                        switch (remove(aStorage, getKeyStrOid(pg, r), aBtree, aRemove, height)) {
+                            case Btree.OP_UNDERFLOW:
+                                aStorage.myPool.unfix(pg);
+                                pg = null;
+                                pg = aStorage.putPage(aPageID);
+                                return handlePageUnderflow(aStorage, pg, r, aBtree.myType, aRemove, height);
+                            case Btree.OP_DONE:
+                                return Btree.OP_DONE;
+                            case Btree.OP_OVERFLOW:
+                                aStorage.myPool.unfix(pg);
+                                pg = null;
+                                pg = aStorage.putPage(aPageID);
+                                return insertByteArrayKey(aStorage, pg, r, aRemove, height);
+                            default:
+                                // FIXME
+                        }
+                    } while (++r <= n);
+                } else {
+                    while (r < n) {
+                        if (aBtree.compareByteArrays(aRemove.myKey, pg, r) == 0) {
+                            final int oid = getKeyStrOid(pg, r);
+
+                            if (oid == aRemove.myOID || aRemove.myOID == 0) {
+                                aRemove.myOldOID = oid;
+                                aStorage.myPool.unfix(pg);
+                                pg = null;
+                                pg = aStorage.putPage(aPageID);
+
+                                return removeByteArrayKey(pg, r);
+                            }
+                        } else {
+                            break;
+                        }
+
+                        r += 1;
+                    }
+                }
+            } else { // scalar types
+                final int itemSize = ClassDescriptor.SIZE_OF[aBtree.myType];
+
+                while (l < r) {
+                    i = l + r >> 1;
+
+                    if (compare(aRemove.myKey, pg, i) > 0) {
+                        l = i + 1;
+                    } else {
+                        r = i;
+                    }
+                }
+
+                if (--height == 0) {
+                    final int oid = aRemove.myOID;
+
+                    while (r < n) {
+                        if (compare(aRemove.myKey, pg, r) == 0) {
+                            if (getReference(pg, MAX_ITEMS - r - 1) == oid || oid == 0) {
+                                aRemove.myOldOID = getReference(pg, MAX_ITEMS - r - 1);
+                                aStorage.myPool.unfix(pg);
+                                pg = null;
+                                pg = aStorage.putPage(aPageID);
+                                memcpy(pg, r, pg, r + 1, n - r - 1, itemSize);
+                                memcpy(pg, MAX_ITEMS - n + 1, pg, MAX_ITEMS - n, n - r - 1, 4);
+                                setnItems(pg, --n);
+
+                                return n * (itemSize + 4) < KEY_SPACE / 3 ? Btree.OP_UNDERFLOW : Btree.OP_DONE;
+                            }
+                        } else {
+                            break;
+                        }
+
+                        r += 1;
+                    }
+
+                    return Btree.OP_NOT_FOUND;
+                }
+                do {
+                    switch (remove(aStorage, getReference(pg, MAX_ITEMS - r - 1), aBtree, aRemove, height)) {
+                        case Btree.OP_UNDERFLOW:
+                            aStorage.myPool.unfix(pg);
+                            pg = null;
+                            pg = aStorage.putPage(aPageID);
+                            return handlePageUnderflow(aStorage, pg, r, aBtree.myType, aRemove, height);
+                        case Btree.OP_DONE:
+                            return Btree.OP_DONE;
+                        default:
+                            // FIXME
+                    }
                 } while (++r <= n);
             }
-            return Btree.op_not_found;
-        } finally { 
-            if (pg != null) { 
-                db.pool.unfix(pg);
+
+            return Btree.OP_NOT_FOUND;
+        } finally {
+            if (pg != null) {
+                aStorage.myPool.unfix(pg);
             }
         }
     }
 
-    static void purge(StorageImpl db, int pageId, int type, int height)
-    {
-        if (--height != 0) { 
-            Page pg = db.getPage(pageId);
-            int n = getnItems(pg)+1;
-            if (type == ClassDescriptor.tpString || type == ClassDescriptor.tpArrayOfByte) { // page of strings
-                while (--n >= 0) { 
-                    purge(db, getKeyStrOid(pg, n), type, height);
+    static void purge(final StorageImpl aStorage, final int aPageID, final int aType, final int aHeight) {
+        int height = aHeight;
+
+        if (--height != 0) {
+            final Page pg = aStorage.getPage(aPageID);
+
+            int n = getnItems(pg) + 1;
+
+            if (aType == ClassDescriptor.TP_STRING || aType == ClassDescriptor.TP_ARRAY_OF_BYTES) { // page of strings
+                while (--n >= 0) {
+                    purge(aStorage, getKeyStrOid(pg, n), aType, height);
                 }
-            } else { 
-                while (--n >= 0) { 
-                    purge(db, getReference(pg, maxItems-n-1), type, height);
+            } else {
+                while (--n >= 0) {
+                    purge(aStorage, getReference(pg, MAX_ITEMS - n - 1), aType, height);
                 }
             }
-            db.pool.unfix(pg);
-        } 
-        db.freePage(pageId);
+
+            aStorage.myPool.unfix(pg);
+        }
+
+        aStorage.freePage(aPageID);
     }
 
-    static int traverseForward(StorageImpl db, int pageId, int type, int height, 
-                               Object[] result, int pos)
-    {
-        Page pg = db.getPage(pageId);
+    static int traverseForward(final StorageImpl aStorage, final int aPageID, final int aType, final int aHeight,
+            final Object[] aResult, final int aPosition) {
+        final Page pg = aStorage.getPage(aPageID);
+
+        int position = aPosition;
+        int height = aHeight;
         int oid;
-        try { 
-            int i, n = getnItems(pg);
+
+        try {
+            final int n = getnItems(pg);
+
+            int index;
+
             if (--height != 0) {
-                if (type == ClassDescriptor.tpString || type == ClassDescriptor.tpArrayOfByte) { // page of strings
-                    for (i = 0; i <= n; i++) { 
-                        pos = traverseForward(db, getKeyStrOid(pg, i), type, height, result, pos);
+                if (aType == ClassDescriptor.TP_STRING || aType == ClassDescriptor.TP_ARRAY_OF_BYTES) { // page of
+                                                                                                        // strings
+                    for (index = 0; index <= n; index++) {
+                        position = traverseForward(aStorage, getKeyStrOid(pg, index), aType, height, aResult,
+                                position);
                     }
-                } else { 
-                    for (i = 0; i <= n; i++) { 
-                        pos = traverseForward(db, getReference(pg, maxItems-i-1), type, height, result, pos);
+                } else {
+                    for (index = 0; index <= n; index++) {
+                        position = traverseForward(aStorage, getReference(pg, MAX_ITEMS - index - 1), aType, height,
+                                aResult, position);
                     }
                 }
-            } else { 
-                if (type == ClassDescriptor.tpString || type == ClassDescriptor.tpArrayOfByte) { // page of strings
-                    for (i = 0; i < n; i++) {
-                        oid = getKeyStrOid(pg, i);
-                        result[pos++] = db.lookupObject(oid, null);
+            } else {
+                if (aType == ClassDescriptor.TP_STRING || aType == ClassDescriptor.TP_ARRAY_OF_BYTES) { // page of
+                                                                                                        // strings
+                    for (index = 0; index < n; index++) {
+                        oid = getKeyStrOid(pg, index);
+                        aResult[position++] = aStorage.lookupObject(oid, null);
                     }
                 } else { // page of scalars
-                    for (i = 0; i < n; i++) { 
-                        oid = getReference(pg, maxItems-1-i);
-                        result[pos++] = db.lookupObject(oid, null);
+                    for (index = 0; index < n; index++) {
+                        oid = getReference(pg, MAX_ITEMS - 1 - index);
+                        aResult[position++] = aStorage.lookupObject(oid, null);
                     }
                 }
             }
-            return pos;
-        } finally { 
-            db.pool.unfix(pg);
+
+            return position;
+        } finally {
+            aStorage.myPool.unfix(pg);
         }
     }
 
-    static int markPage(StorageImpl db, int pageId, int type, int height)
-    {
-        int nPages = 1;
-        Page pg = db.getGCPage(pageId);
-        try { 
-            int i, n = getnItems(pg);
+    static int markPage(final StorageImpl aStorage, final int aPageID, final int aType, final int aHeight) {
+        final Page page = aStorage.getGCPage(aPageID);
+
+        int height = aHeight;
+        int pageCount = 1;
+
+        try {
+            final int n = getnItems(page);
+
+            int index;
+
             if (--height != 0) {
-                if (type == ClassDescriptor.tpString || type == ClassDescriptor.tpArrayOfByte) { // page of strings
-                    for (i = 0; i <= n; i++) { 
-                        nPages += markPage(db, getKeyStrOid(pg, i), type, height);
+                if (aType == ClassDescriptor.TP_STRING || aType == ClassDescriptor.TP_ARRAY_OF_BYTES) { // page of
+                                                                                                        // strings
+                    for (index = 0; index <= n; index++) {
+                        pageCount += markPage(aStorage, getKeyStrOid(page, index), aType, height);
                     }
-                } else { 
-                    for (i = 0; i <= n; i++) { 
-                        nPages += markPage(db, getReference(pg, maxItems-i-1), type, height);
+                } else {
+                    for (index = 0; index <= n; index++) {
+                        pageCount += markPage(aStorage, getReference(page, MAX_ITEMS - index - 1), aType, height);
                     }
                 }
-            } else { 
-                if (type == ClassDescriptor.tpString || type == ClassDescriptor.tpArrayOfByte) { // page of strings
-                    for (i = 0; i < n; i++) {
-                        db.markOid(getKeyStrOid(pg, i));
+            } else {
+                if (aType == ClassDescriptor.TP_STRING || aType == ClassDescriptor.TP_ARRAY_OF_BYTES) { // page of
+                                                                                                        // strings
+                    for (index = 0; index < n; index++) {
+                        aStorage.markOid(getKeyStrOid(page, index));
                     }
                 } else { // page of scalars
-                    for (i = 0; i < n; i++) { 
-                        db.markOid(getReference(pg, maxItems-1-i));
+                    for (index = 0; index < n; index++) {
+                        aStorage.markOid(getReference(page, MAX_ITEMS - 1 - index));
                     }
                 }
             }
-        } finally { 
-            db.pool.unfix(pg);
+        } finally {
+            aStorage.myPool.unfix(page);
         }
-        return nPages;
+
+        return pageCount;
     }
 
-    static void exportPage(StorageImpl db, XMLExporter exporter, int pageId, int type, int height)
-      throws java.io.IOException
-    {
-        Page pg = db.getPage(pageId);
-        try { 
-            int i, n = getnItems(pg);
+    static void exportPage(final StorageImpl aStorage, final XMLExporter aExporter, final int aPageID,
+            final int aType, final int aHeight) throws IOException {
+        final Page page = aStorage.getPage(aPageID);
+
+        int height = aHeight;
+
+        try {
+            final int itemCount = getnItems(page);
+
+            int i;
+
             if (--height != 0) {
-                if (type == ClassDescriptor.tpString || type == ClassDescriptor.tpArrayOfByte) { // page of strings
-                    for (i = 0; i <= n; i++) { 
-                        exportPage(db, exporter, getKeyStrOid(pg, i), type, height);
+                if (aType == ClassDescriptor.TP_STRING || aType == ClassDescriptor.TP_ARRAY_OF_BYTES) { // page of
+                                                                                                        // strings
+                    for (i = 0; i <= itemCount; i++) {
+                        exportPage(aStorage, aExporter, getKeyStrOid(page, i), aType, height);
                     }
-                } else { 
-                    for (i = 0; i <= n; i++) { 
-                        exportPage(db, exporter, getReference(pg, maxItems-i-1), type, height);
+                } else {
+                    for (i = 0; i <= itemCount; i++) {
+                        exportPage(aStorage, aExporter, getReference(page, MAX_ITEMS - i - 1), aType, height);
                     }
                 }
-            } else { 
-                if (type == ClassDescriptor.tpString || type == ClassDescriptor.tpArrayOfByte) { // page of strings
-                    for (i = 0; i < n; i++) {
-                        exporter.exportAssoc(getKeyStrOid(pg, i), 
-                                             pg.data, 
-                                             BtreePage.firstKeyOffs + BtreePage.getKeyStrOffs(pg, i),
-                                             BtreePage.getKeyStrSize(pg, i),
-                                             type);
+            } else {
+                if (aType == ClassDescriptor.TP_STRING || aType == ClassDescriptor.TP_ARRAY_OF_BYTES) { // page of
+                                                                                                        // strings
+                    for (i = 0; i < itemCount; i++) {
+                        aExporter.exportAssoc(getKeyStrOid(page, i), page.myData, BtreePage.FIRST_KEY_OFFSET +
+                                BtreePage.getKeyStrOffs(page, i), BtreePage.getKeyStrSize(page, i), aType);
                     }
-                } else { 
-                    for (i = 0; i < n; i++) { 
-                        exporter.exportAssoc(getReference(pg, maxItems-1-i), 
-                                             pg.data, 
-                                             BtreePage.firstKeyOffs + i*ClassDescriptor.sizeof[type], 
-                                             ClassDescriptor.sizeof[type],
-                                             type);
-                                             
+                } else {
+                    for (i = 0; i < itemCount; i++) {
+                        aExporter.exportAssoc(getReference(page, MAX_ITEMS - 1 - i), page.myData,
+                                BtreePage.FIRST_KEY_OFFSET + i * ClassDescriptor.SIZE_OF[aType],
+                                ClassDescriptor.SIZE_OF[aType], aType);
+
                     }
                 }
             }
-        } finally { 
-            db.pool.unfix(pg);
+        } finally {
+            aStorage.myPool.unfix(page);
         }
     }
+
 }

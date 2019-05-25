@@ -1,463 +1,622 @@
+
 package info.freelibrary.sodbox.impl;
 
-import  info.freelibrary.sodbox.*;
+import java.util.ArrayList;
+import java.util.Collection;
+import java.util.Iterator;
+import java.util.Map;
+import java.util.NoSuchElementException;
 
-import java.util.*;
+import info.freelibrary.sodbox.Assert;
+import info.freelibrary.sodbox.IPersistent;
+import info.freelibrary.sodbox.IPersistentSet;
+import info.freelibrary.sodbox.Index;
+import info.freelibrary.sodbox.IterableIterator;
+import info.freelibrary.sodbox.Key;
+import info.freelibrary.sodbox.PersistentCollection;
+import info.freelibrary.sodbox.PersistentIterator;
+import info.freelibrary.sodbox.Relation;
+import info.freelibrary.sodbox.Storage;
+import info.freelibrary.sodbox.StorageError;
 
-class ThickIndex<T> extends PersistentCollection<T> implements Index<T> { 
-    Index<Object> index;
-    int           nElems;
+class ThickIndex<T> extends PersistentCollection<T> implements Index<T> {
 
     static final int BTREE_THRESHOLD = 128;
 
-    ThickIndex(StorageImpl db, Class keyType) { 
-        super(db);
-        index = db.<Object>createIndex(keyType, true);
+    Index<Object> myIndex;
+
+    int myIndexSize;
+
+    ThickIndex(final StorageImpl aStorage, final Class aKeyType) {
+        super(aStorage);
+
+        myIndex = aStorage.<Object>createIndex(aKeyType, true);
     }
-    
-    ThickIndex() {}
-    
-    private final T getFromRelation(Object s) {
-        if (s == null) { 
+
+    ThickIndex() {
+    }
+
+    private T getFromRelation(final Object aObj) {
+        if (aObj == null) {
             return null;
         }
-        if (s instanceof Relation) { 
-            Relation r = (Relation)s;
-            if (r.size() == 1) { 
-                return (T)r.get(0);
+
+        if (aObj instanceof Relation) {
+            final Relation relation = (Relation) aObj;
+
+            if (relation.size() == 1) {
+                return (T) relation.get(0);
             }
         }
+
         throw new StorageError(StorageError.KEY_NOT_UNIQUE);
     }
 
-    public T get(Key key) {
-        return getFromRelation(index.get(key));
-    }
-                  
-    public T get(Object key) {
-        return getFromRelation(index.get(key));
+    @Override
+    public T get(final Key aKey) {
+        return getFromRelation(myIndex.get(aKey));
     }
 
-    public ArrayList<T> getList(Key from, Key till) { 
-        return extendList(index.getList(from, till));
+    @Override
+    public T get(final Object aKey) {
+        return getFromRelation(myIndex.get(aKey));
     }
 
-    public ArrayList<T> getList(Object from, Object till) { 
-        return extendList(index.getList(from, till));
+    @Override
+    public ArrayList<T> getList(final Key aFrom, final Key aTo) {
+        return extendList(myIndex.getList(aFrom, aTo));
     }
-   
-    public Object[] get(Key from, Key till) {
-        return extend(index.get(from, till));
+
+    @Override
+    public ArrayList<T> getList(final Object aFrom, final Object aTo) {
+        return extendList(myIndex.getList(aFrom, aTo));
     }
-     
-    public Object[] get(Object from, Object till) {
-        return extend(index.get(from, till));
+
+    @Override
+    public Object[] get(final Key aFrom, final Key aTo) {
+        return extend(myIndex.get(aFrom, aTo));
     }
-     
-    private ArrayList<T> extendList(ArrayList s) { 
-        ArrayList<T> list = new ArrayList<T>();
-        for (int i = 0, n = s.size(); i < n; i++) { 
-            list.addAll((Collection<T>)s.get(i));
+
+    @Override
+    public Object[] get(final Object aFrom, final Object aTo) {
+        return extend(myIndex.get(aFrom, aTo));
+    }
+
+    private ArrayList<T> extendList(final ArrayList aList) {
+        final ArrayList<T> list = new ArrayList<>();
+
+        for (int index = 0, count = aList.size(); index < count; index++) {
+            list.addAll((Collection<T>) aList.get(index));
         }
+
         return list;
     }
 
+    protected Object[] extend(final Object[] aObjArray) {
+        final ArrayList list = new ArrayList();
 
-    protected Object[] extend(Object[] s) { 
-        ArrayList list = new ArrayList();
-        for (int i = 0; i < s.length; i++) { 
-            list.addAll((Collection)s[i]);
+        for (int index = 0; index < aObjArray.length; index++) {
+            list.addAll((Collection) aObjArray[index]);
         }
+
         return list.toArray();
     }
 
-    public T get(String key) {
-        return get(new Key(key));
+    public T get(final String aKey) {
+        return get(new Key(aKey));
     }
-                      
-    public Object[] getPrefix(String prefix) { 
-        return extend(index.getPrefix(prefix));
+
+    @Override
+    public Object[] getPrefix(final String aPrefix) {
+        return extend(myIndex.getPrefix(aPrefix));
     }
-    
-    public ArrayList<T> getPrefixList(String prefix) { 
-        return extendList(index.getPrefixList(prefix));
+
+    @Override
+    public ArrayList<T> getPrefixList(final String aPrefix) {
+        return extendList(myIndex.getPrefixList(aPrefix));
     }
-    
-    public Object[] prefixSearch(String word) { 
-        return extend(index.prefixSearch(word));
+
+    @Override
+    public Object[] prefixSearch(final String aWord) {
+        return extend(myIndex.prefixSearch(aWord));
     }
-           
-    public ArrayList<T> prefixSearchList(String word) { 
-        return extendList(index.prefixSearchList(word));
+
+    @Override
+    public ArrayList<T> prefixSearchList(final String aWord) {
+        return extendList(myIndex.prefixSearchList(aWord));
     }
-           
-    public int size() { 
-        return nElems;
+
+    @Override
+    public int size() {
+        return myIndexSize;
     }
-    
-    public void clear() { 
-        for (Object p : index) { 
-            ((IPersistent)p).deallocate();
+
+    @Override
+    public void clear() {
+        for (final Object obj : myIndex) {
+            ((IPersistent) obj).deallocate();
         }
-        index.clear();
-        nElems = 0;
+
+        myIndex.clear();
+        myIndexSize = 0;
+
         modify();
     }
 
-    public Object[] toArray() { 
-        return extend(index.toArray());
-    }
-        
-    public <E> E[] toArray(E[] arr) { 
-        ArrayList<E> list = new ArrayList<E>();
-        for (Object c : index) { 
-            list.addAll((Collection<E>)c);
-        }
-        return list.toArray(arr);
+    @Override
+    public Object[] toArray() {
+        return extend(myIndex.toArray());
     }
 
-    static class ExtendIterator<E> extends IterableIterator<E> implements PersistentIterator {  
-        public boolean hasNext() { 
-            return inner != null;
+    @Override
+    public <E> E[] toArray(final E[] aArray) {
+        final ArrayList<E> list = new ArrayList<>();
+
+        for (final Object obj : myIndex) {
+            list.addAll((Collection<E>) obj);
         }
 
-        public E next() { 
-            if (inner == null) { 
-                throw new NoSuchElementException();
-            }
-            E obj = inner.next();
-            if (!inner.hasNext()) {                 
-                if (outer.hasNext()) {
-                    inner = ((Iterable<E>)outer.next()).iterator();
-                } else { 
-                    inner = null;
-                }
-            }
-            return obj;
-        }
-
-        public int nextOid() { 
-            if (inner == null) { 
-                return 0;
-            }
-            int oid = ((PersistentIterator)inner).nextOid();
-            if (!inner.hasNext()) {                 
-                if (outer.hasNext()) {
-                    Object p = outer.next();
-                    inner = ((Iterable<E>)outer.next()).iterator();
-                } else { 
-                    inner = null;
-                }
-            }
-            return oid;
-        }
-
-        public void remove() { 
-            throw new UnsupportedOperationException();
-        }
-
-        ExtendIterator(IterableIterator<?> iterable) { 
-            this(iterable.iterator());
-        }
-
-        ExtendIterator(Iterator<?> iterator) { 
-            outer = iterator;
-            if (iterator.hasNext()) { 
-                inner = ((Iterable<E>)iterator.next()).iterator();
-            }
-        }
-
-        private Iterator    outer;
-        private Iterator<E> inner;
+        return list.toArray(aArray);
     }
 
-    static class ExtendEntry<E> implements Map.Entry<Object,E> {
-        public Object getKey() { 
-            return key;
-        }
-
-        public E getValue() { 
-            return value;
-        }
-
-        public E setValue(E value) { 
-            throw new UnsupportedOperationException();
-        }
-
-        ExtendEntry(Object key, E value) {
-            this.key = key;
-            this.value = value;
-        }
-
-        private Object key;
-        private E      value;
+    @Override
+    public Iterator<T> iterator() {
+        return new ExtendIterator<>(myIndex.iterator());
     }
 
-    static class ExtendEntryIterator<E> extends IterableIterator<Map.Entry<Object,E>> {  
-        public boolean hasNext() { 
-            return inner != null;
-        }
-
-        public Map.Entry<Object,E> next() { 
-            ExtendEntry<E> curr = new ExtendEntry<E>(key, inner.next());
-            if (!inner.hasNext()) {                 
-                if (outer.hasNext()) {
-                    Map.Entry entry = (Map.Entry)outer.next();
-                    key = entry.getKey();
-                    inner = ((Iterable<E>)entry.getValue()).iterator();
-                } else { 
-                    inner = null;
-                }
-            }
-            return curr;
-        }
-
-        public void remove() { 
-            throw new UnsupportedOperationException();
-        }
-
-        ExtendEntryIterator(IterableIterator<?> iterator) { 
-            outer = iterator;
-            if (iterator.hasNext()) { 
-                Map.Entry entry = (Map.Entry)iterator.next();
-                key = entry.getKey();
-                inner = ((Iterable<E>)entry.getValue()).iterator();
-            }
-        }
-
-        private Iterator    outer;
-        private Iterator<E> inner;
-        private Object      key;
+    @Override
+    public IterableIterator<Map.Entry<Object, T>> entryIterator() {
+        return new ExtendEntryIterator<>(myIndex.entryIterator());
     }
 
-    class ExtendEntryStartFromIterator extends ExtendEntryIterator<T> {  
-        ExtendEntryStartFromIterator(int start, int order) { 
-            super(entryIterator(null, null, order));
-            int skip = (order == ASCENT_ORDER) ? start : nElems - start - 1;
-            while (--skip >= 0 && hasNext()) {
-                next();
-            }
-        }
-    }            
-
-    public Iterator<T> iterator() { 
-        return new ExtendIterator<T>(index.iterator());
-    }
-    
-    public IterableIterator<Map.Entry<Object,T>> entryIterator() { 
-        return new ExtendEntryIterator<T>(index.entryIterator());
+    @Override
+    public IterableIterator<T> iterator(final Key aFrom, final Key aTo, final int aOrder) {
+        return new ExtendIterator<>(myIndex.iterator(aFrom, aTo, aOrder));
     }
 
-    public IterableIterator<T> iterator(Key from, Key till, int order) { 
-        return new ExtendIterator<T>(index.iterator(from, till, order));
-    }
-        
-    public IterableIterator<T> iterator(Object from, Object till, int order) { 
-        return new ExtendIterator<T>(index.iterator(from, till, order));
-    }
-        
-    public IterableIterator<Map.Entry<Object,T>> entryIterator(Key from, Key till, int order) { 
-        return new ExtendEntryIterator<T>(index.entryIterator(from, till, order));
+    @Override
+    public IterableIterator<T> iterator(final Object aFrom, final Object aTo, final int aOrder) {
+        return new ExtendIterator<>(myIndex.iterator(aFrom, aTo, aOrder));
     }
 
-    public IterableIterator<Map.Entry<Object,T>> entryIterator(Object from, Object till, int order) { 
-        return new ExtendEntryIterator<T>(index.entryIterator(from, till, order));
+    @Override
+    public IterableIterator<Map.Entry<Object, T>> entryIterator(final Key aFrom, final Key aTo, final int aOrder) {
+        return new ExtendEntryIterator<>(myIndex.entryIterator(aFrom, aTo, aOrder));
     }
 
-    public IterableIterator<T> prefixIterator(String prefix) { 
-        return prefixIterator(prefix, ASCENT_ORDER);
+    @Override
+    public IterableIterator<Map.Entry<Object, T>> entryIterator(final Object aFrom, final Object aTo,
+            final int aOrder) {
+        return new ExtendEntryIterator<>(myIndex.entryIterator(aFrom, aTo, aOrder));
     }
 
-    public IterableIterator<T> prefixIterator(String prefix, int order) { 
-        return new ExtendIterator<T>(index.prefixIterator(prefix, order));
+    @Override
+    public IterableIterator<T> prefixIterator(final String aPrefix) {
+        return prefixIterator(aPrefix, ASCENT_ORDER);
     }
 
-    public Class getKeyType() { 
-        return index.getKeyType();
+    @Override
+    public IterableIterator<T> prefixIterator(final String aPrefix, final int aOrder) {
+        return new ExtendIterator<>(myIndex.prefixIterator(aPrefix, aOrder));
     }
 
+    @Override
+    public Class getKeyType() {
+        return myIndex.getKeyType();
+    }
+
+    @Override
     public Class[] getKeyTypes() {
-        return new Class[]{getKeyType()};
+        return new Class[] { getKeyType() };
     }
 
-    public boolean put(Key key, T obj) { 
-        Object s = index.get(key);
-        Storage storage = getStorage();
-        int oid = storage.getOid(obj);
-        if (oid == 0) { 
-            oid = storage.makePersistent(obj);
+    @Override
+    public boolean put(final Key aKey, final T aObj) {
+        final Object obj = myIndex.get(aKey);
+        final Storage storage = getStorage();
+
+        int oid = storage.getOid(aObj);
+
+        if (oid == 0) {
+            oid = storage.makePersistent(aObj);
         }
-        if (s == null) { 
-            Relation<T,ThickIndex> r = storage.<T,ThickIndex>createRelation(null);
-            r.add(obj);
-            index.put(key, r);
-        } else if (s instanceof Relation) { 
-            Relation rel = (Relation)s;
-            if (rel.size() == BTREE_THRESHOLD) {
-                IPersistentSet<T> ps = storage.<T>createBag();
-                for (int i = 0; i < BTREE_THRESHOLD; i++) { 
-                    ps.add((T)rel.get(i));
+
+        if (obj == null) {
+            final Relation<T, ThickIndex> relation = storage.<T, ThickIndex>createRelation(null);
+
+            relation.add(aObj);
+            myIndex.put(aKey, relation);
+        } else if (obj instanceof Relation) {
+            final Relation relation = (Relation) obj;
+
+            if (relation.size() == BTREE_THRESHOLD) {
+                final IPersistentSet<T> persistentSet = storage.<T>createBag();
+
+                for (int index = 0; index < BTREE_THRESHOLD; index++) {
+                    persistentSet.add((T) relation.get(index));
                 }
-                Assert.that(ps.add(obj));
-                index.set(key, ps);
-                rel.deallocate();
-            } else { 
-                int l = 0, n = rel.size(), r = n;
-                while (l < r) { 
-                    int m = (l + r) >>> 1;
-                    if (storage.getOid(rel.getRaw(m)) <= oid) { 
-                        l = m + 1;
-                    } else { 
-                        r = m;
+
+                Assert.that(persistentSet.add(aObj));
+
+                myIndex.set(aKey, persistentSet);
+                relation.deallocate();
+            } else {
+                final int count = relation.size();
+
+                int left = 0;
+                int right = count;
+
+                while (left < right) {
+                    final int m = left + right >>> 1;
+
+                    if (storage.getOid(relation.getRaw(m)) <= oid) {
+                        left = m + 1;
+                    } else {
+                        right = m;
                     }
                 }
-                rel.insert(r, obj);
+
+                relation.insert(right, aObj);
             }
-        } else { 
-            Assert.that(((IPersistentSet<T>)s).add(obj));
+        } else {
+            Assert.that(((IPersistentSet<T>) obj).add(aObj));
         }
-        nElems += 1;
+
+        myIndexSize += 1;
         modify();
         return true;
     }
 
-    public T set(Key key, T obj) {
-        Object s = index.get(key);
-        Storage storage = getStorage();
-        int oid = storage.getOid(obj);
-        if (oid == 0) { 
-            oid = storage.makePersistent(obj);
+    @Override
+    public T set(final Key aKey, final T aObj) {
+        final Object obj = myIndex.get(aKey);
+        final Storage storage = getStorage();
+
+        int oid = storage.getOid(aObj);
+
+        if (oid == 0) {
+            oid = storage.makePersistent(aObj);
         }
-        if (s == null) { 
-            Relation<T,ThickIndex> r = storage.<T,ThickIndex>createRelation(null);
-            r.add(obj);
-            index.put(key, r);
-            nElems += 1;
+
+        if (obj == null) {
+            final Relation<T, ThickIndex> relation = storage.<T, ThickIndex>createRelation(null);
+
+            relation.add(aObj);
+            myIndex.put(aKey, relation);
+            myIndexSize += 1;
+
             modify();
+
             return null;
-        } else if (s instanceof Relation) { 
-            Relation r = (Relation)s;
-            if (r.size() == 1) {
-                Object prev = r.get(0);
-                r.set(0, obj);
-                return (T)prev;
-            } 
+        } else if (obj instanceof Relation) {
+            final Relation relation = (Relation) obj;
+
+            if (relation.size() == 1) {
+                final Object prev = relation.get(0);
+
+                relation.set(0, aObj);
+
+                return (T) prev;
+            }
         }
+
         throw new StorageError(StorageError.KEY_NOT_UNIQUE);
     }
 
-    public boolean unlink(Key key, T obj) {
-        return removeIfExists(key, obj);
+    @Override
+    public boolean unlink(final Key aKey, final T aObj) {
+        return removeIfExists(aKey, aObj);
     }
-    
-    boolean removeIfExists(Key key, T obj) { 
-        Object s = index.get(key);
-        if (s instanceof Relation) { 
-            Relation rel = (Relation)s;
-            Storage storage = getStorage();
-            int oid = storage.getOid(obj);
-            int l = 0, n = rel.size(), r = n;
-            while (l < r) { 
-                int m = (l + r) >>> 1;
-                if (storage.getOid(rel.getRaw(m)) < oid) { 
-                    l = m + 1;
-                } else { 
-                    r = m;
+
+    boolean removeIfExists(final Key aKey, final T aObj) {
+        final Object obj = myIndex.get(aKey);
+
+        if (obj instanceof Relation) {
+            final Relation relation = (Relation) obj;
+            final Storage storage = getStorage();
+            final int oid = storage.getOid(aObj);
+            final int relationCount = relation.size();
+
+            int left = 0;
+            int right = relationCount;
+
+            while (left < right) {
+                final int m = left + right >>> 1;
+
+                if (storage.getOid(relation.getRaw(m)) < oid) {
+                    left = m + 1;
+                } else {
+                    right = m;
                 }
             }
-            if (r < n && storage.getOid(rel.getRaw(r)) == oid) { 
-                rel.remove(r);
-                if (rel.size() == 0) { 
-                    index.remove(key, rel);
-                    rel.deallocate();
+
+            if (right < relationCount && storage.getOid(relation.getRaw(right)) == oid) {
+                relation.remove(right);
+
+                if (relation.size() == 0) {
+                    myIndex.remove(aKey, relation);
+                    relation.deallocate();
                 }
-                nElems -= 1;
+
+                myIndexSize -= 1;
+
                 modify();
+
                 return true;
             }
-        } else if (s instanceof IPersistentSet) { 
-            IPersistentSet ps = (IPersistentSet)s;
-            if (ps.remove(obj)) { 
-                if (ps.size() == 0) { 
-                    index.remove(key, ps);
-                    ps.deallocate();
-                }                    
-                nElems -= 1;
+        } else if (obj instanceof IPersistentSet) {
+            final IPersistentSet persistentSet = (IPersistentSet) obj;
+
+            if (persistentSet.remove(aObj)) {
+                if (persistentSet.size() == 0) {
+                    myIndex.remove(aKey, persistentSet);
+                    persistentSet.deallocate();
+                }
+
+                myIndexSize -= 1;
+
                 modify();
+
                 return true;
             }
         }
+
         return false;
     }
 
-    public void remove(Key key, T obj) { 
-        if (!removeIfExists(key, obj)) { 
+    @Override
+    public void remove(final Key aKey, final T aObj) {
+        if (!removeIfExists(aKey, aObj)) {
             throw new StorageError(StorageError.KEY_NOT_FOUND);
         }
     }
 
-    public T remove(Key key) {
+    @Override
+    public T remove(final Key aKey) {
         throw new StorageError(StorageError.KEY_NOT_UNIQUE);
     }
 
-    public boolean put(Object key, T obj) {
-        return put(Btree.getKeyFromObject(key), obj);
+    @Override
+    public boolean put(final Object aKey, final T aObj) {
+        return put(Btree.getKeyFromObject(aKey), aObj);
     }
 
-    public T set(Object key, T obj) {
-        return set(Btree.getKeyFromObject(key), obj);
+    @Override
+    public T set(final Object aKey, final T aObj) {
+        return set(Btree.getKeyFromObject(aKey), aObj);
     }
 
-    public void remove(Object key, T obj) {
-        remove(Btree.getKeyFromObject(key), obj);
+    @Override
+    public void remove(final Object aKey, final T aObj) {
+        remove(Btree.getKeyFromObject(aKey), aObj);
     }
 
-    public T remove(String key) {
+    @Override
+    public T remove(final String aKey) {
         throw new StorageError(StorageError.KEY_NOT_UNIQUE);
     }
 
-    public T removeKey(Object key) {
+    @Override
+    public T removeKey(final Object aKey) {
         throw new StorageError(StorageError.KEY_NOT_UNIQUE);
     }
 
+    @Override
     public void deallocate() {
         clear();
-        index.deallocate();
+
+        myIndex.deallocate();
+
         super.deallocate();
     }
 
-    public int indexOf(Key key) { 
-        PersistentIterator iterator = (PersistentIterator)iterator(null, key, DESCENT_ORDER);
-        int i;
-        for (i = -1; iterator.nextOid() != 0; i++);
-        return i;
+    @Override
+    public int indexOf(final Key aKey) {
+        final PersistentIterator iterator = (PersistentIterator) iterator(null, aKey, DESCENT_ORDER);
+
+        int index;
+
+        for (index = -1; iterator.nextOID() != 0; index++) {
+
+        }
+
+        return index;
     }
 
-    public T getAt(int i) {
-        IterableIterator<Map.Entry<Object,T>> iterator;
-        if (i < 0 || i >= nElems) {
-            throw new IndexOutOfBoundsException("Position " + i + ", index size "  + nElems);
-        }            
-        if (i <= (nElems/2)) {
+    @Override
+    public T getAt(final int aIndex) {
+        final IterableIterator<Map.Entry<Object, T>> iterator;
+
+        int index = aIndex;
+
+        if (index < 0 || index >= myIndexSize) {
+            throw new IndexOutOfBoundsException("Position " + index + ", index size " + myIndexSize);
+        }
+
+        if (index <= myIndexSize / 2) {
             iterator = entryIterator(null, null, ASCENT_ORDER);
-            while (--i >= 0) { 
+
+            while (--index >= 0) {
                 iterator.next();
             }
         } else {
             iterator = entryIterator(null, null, DESCENT_ORDER);
-            i -= nElems;
-            while (++i < 0) { 
+            index -= myIndexSize;
+
+            while (++index < 0) {
                 iterator.next();
             }
         }
-        return iterator.next().getValue();   
+
+        return iterator.next().getValue();
     }
 
-    public IterableIterator<Map.Entry<Object,T>> entryIterator(int start, int order) {
-        return new ExtendEntryStartFromIterator(start, order);
+    @Override
+    public IterableIterator<Map.Entry<Object, T>> entryIterator(final int aStart, final int aOrder) {
+        return new ExtendEntryStartFromIterator(aStart, aOrder);
     }
 
+    @Override
     public boolean isUnique() {
         return false;
     }
+
+    static class ExtendIterator<E> extends IterableIterator<E> implements PersistentIterator {
+
+        private Iterator myOuter;
+
+        private Iterator<E> myInner;
+
+        ExtendIterator(final IterableIterator<?> aIterable) {
+            this(aIterable.iterator());
+        }
+
+        ExtendIterator(final Iterator<?> aIterator) {
+            myOuter = aIterator;
+
+            if (aIterator.hasNext()) {
+                myInner = ((Iterable<E>) aIterator.next()).iterator();
+            }
+        }
+
+        @Override
+        public boolean hasNext() {
+            return myInner != null;
+        }
+
+        @Override
+        public E next() {
+            if (myInner == null) {
+                throw new NoSuchElementException();
+            }
+
+            final E obj = myInner.next();
+
+            if (!myInner.hasNext()) {
+                if (myOuter.hasNext()) {
+                    myInner = ((Iterable<E>) myOuter.next()).iterator();
+                } else {
+                    myInner = null;
+                }
+            }
+
+            return obj;
+        }
+
+        @Override
+        public int nextOID() {
+            if (myInner == null) {
+                return 0;
+            }
+
+            final int oid = ((PersistentIterator) myInner).nextOID();
+
+            if (!myInner.hasNext()) {
+                if (myOuter.hasNext()) {
+                    myInner = ((Iterable<E>) myOuter.next()).iterator();
+                } else {
+                    myInner = null;
+                }
+            }
+
+            return oid;
+        }
+
+        @Override
+        public void remove() {
+            throw new UnsupportedOperationException();
+        }
+
+    }
+
+    static class ExtendEntry<E> implements Map.Entry<Object, E> {
+
+        private final Object myKey;
+
+        private final E myValue;
+
+        ExtendEntry(final Object aKey, final E aValue) {
+            myKey = aKey;
+            myValue = aValue;
+        }
+
+        @Override
+        public Object getKey() {
+            return myKey;
+        }
+
+        @Override
+        public E getValue() {
+            return myValue;
+        }
+
+        @Override
+        public E setValue(final E aValue) {
+            throw new UnsupportedOperationException();
+        }
+
+    }
+
+    static class ExtendEntryIterator<E> extends IterableIterator<Map.Entry<Object, E>> {
+
+        private final Iterator myOuter;
+
+        private Iterator<E> myInner;
+
+        private Object myKey;
+
+        ExtendEntryIterator(final IterableIterator<?> aIterator) {
+            myOuter = aIterator;
+
+            if (aIterator.hasNext()) {
+                final Map.Entry entry = (Map.Entry) aIterator.next();
+
+                myKey = entry.getKey();
+                myInner = ((Iterable<E>) entry.getValue()).iterator();
+            }
+        }
+
+        @Override
+        public boolean hasNext() {
+            return myInner != null;
+        }
+
+        @Override
+        public Map.Entry<Object, E> next() {
+            final ExtendEntry<E> current = new ExtendEntry<>(myKey, myInner.next());
+
+            if (!myInner.hasNext()) {
+                if (myOuter.hasNext()) {
+                    final Map.Entry entry = (Map.Entry) myOuter.next();
+
+                    myKey = entry.getKey();
+                    myInner = ((Iterable<E>) entry.getValue()).iterator();
+                } else {
+                    myInner = null;
+                }
+            }
+
+            return current;
+        }
+
+        @Override
+        public void remove() {
+            throw new UnsupportedOperationException();
+        }
+
+    }
+
+    class ExtendEntryStartFromIterator extends ExtendEntryIterator<T> {
+
+        ExtendEntryStartFromIterator(final int aStart, final int aOrder) {
+            super(entryIterator(null, null, aOrder));
+
+            int skip = aOrder == ASCENT_ORDER ? aStart : myIndexSize - aStart - 1;
+
+            while (--skip >= 0 && hasNext()) {
+                next();
+            }
+        }
+    }
+
 }

@@ -1,7 +1,0 @@
-<?xml version="1.0" encoding="UTF-8"?>
-<!DOCTYPE properties SYSTEM "http://java.sun.com/dtd/properties.dtd">
-<properties>
-    <entry key="classDescriptor.loadClass.clFound">Trying to load {} using {}</entry>
-    <entry key="classDescriptor.loadClass.clNotFound">Current thread&apos;s ClassLoader wasn&apos;t found</entry>
-    <entry key="classDescriptor.loadClass.clError">{} couldn&apos;t be loaded</entry>
-</properties>

@@ -1,12 +1,24 @@
-package info.freelibrary.sodbox.impl;
-import  java.lang.ref.*;
 
-public class SoftHashTable extends WeakHashTable { 
-    public SoftHashTable(StorageImpl db, int initialCapacity) {
-        super(db, initialCapacity);
+package info.freelibrary.sodbox.impl;
+
+import java.lang.ref.Reference;
+import java.lang.ref.SoftReference;
+
+public class SoftHashTable extends WeakHashTable {
+
+    /**
+     * Creates a <soft>SoftHashTable</code>.
+     *
+     * @param aStorageImpl
+     * @param aInitialCapacity
+     */
+    public SoftHashTable(final StorageImpl aStorageImpl, final int aInitialCapacity) {
+        super(aStorageImpl, aInitialCapacity);
     }
-    
-    protected Reference createReference(Object obj) { 
-        return new SoftReference(obj);
+
+    @Override
+    protected Reference createReference(final Object aObj) {
+        return new SoftReference(aObj);
     }
-}    
+
+}

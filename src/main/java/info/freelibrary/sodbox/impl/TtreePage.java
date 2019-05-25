@@ -1,647 +1,822 @@
-package info.freelibrary.sodbox.impl;
 
-import info.freelibrary.sodbox.*;
+package info.freelibrary.sodbox.impl;
 
 import java.util.ArrayList;
 
-public class TtreePage extends Persistent  { 
-    static final int maxItems = (Page.pageSize-ObjectHeader.sizeof-4*5)/4;
-    static final int minItems = maxItems - 2; // minimal number of items in internal node
+import info.freelibrary.sodbox.Persistent;
+import info.freelibrary.sodbox.PersistentComparator;
+import info.freelibrary.sodbox.Storage;
 
-    TtreePage   left;
-    TtreePage   right;
-    int         balance;
-    int         nItems;
-    Object      item[];
+public class TtreePage extends Persistent {
 
-    static class PageReference { 
-        TtreePage pg;
-        
-        PageReference(TtreePage p) { pg = p; }
+    static final int MAX_ITEMS = (Page.PAGE_SIZE - ObjectHeader.SIZE_OF - 4 * 5) / 4;
+
+    static final int MIN_ITEMS = MAX_ITEMS - 2; // minimal number of items in internal node
+
+    static final int OK = 0;
+
+    static final int NOT_UNIQUE = 1;
+
+    static final int NOT_FOUND = 2;
+
+    static final int OVERFLOW = 3;
+
+    static final int UNDERFLOW = 4;
+
+    TtreePage myLeft;
+
+    TtreePage myRight;
+
+    int myBalance;
+
+    int myItemCount;
+
+    Object[] myItems;
+
+    TtreePage() {
     }
 
+    TtreePage(final Storage aStorage, final Object aObj) {
+        super(aStorage);
+
+        myItemCount = 1;
+        myItems = new Object[MAX_ITEMS];
+        myItems[0] = aObj;
+    }
+
+    @Override
     public boolean recursiveLoading() {
         return false;
     }
 
-    TtreePage() {}
+    final Object loadItem(final int aIndex) {
+        final Object obj = myItems[aIndex];
 
-    TtreePage(Storage db, Object mbr) { 
-        super(db);
-        nItems = 1;
-        item = new Object[maxItems];
-        item[0] = mbr;
+        getStorage().load(obj);
+
+        return obj;
     }
 
-    final Object loadItem(int i) 
-    { 
-        Object mbr = item[i];
-        getStorage().load(mbr);
-        return mbr;
-    }
+    final boolean find(final PersistentComparator aComparator, final Object aMinValue, final int aMinInclusive,
+            final Object aMaxValue, final int aMaxInclusive, final ArrayList aSelection) {
+        final int count = myItemCount;
 
-    final boolean find(PersistentComparator comparator, Object minValue, int minInclusive, 
-                       Object maxValue, int maxInclusive, ArrayList selection)
-    { 
-        int l, r, m, n;
+        int left;
+        int right;
+        int m;
+
         load();
-        n = nItems;
-        if (minValue != null) { 
-            if (-comparator.compareMemberWithKey(loadItem(0), minValue) >= minInclusive) {       
-                if (-comparator.compareMemberWithKey(loadItem(n-1), minValue) >= minInclusive) { 
-                    if (right != null) { 
-                        return right.find(comparator, minValue, minInclusive, maxValue, maxInclusive, selection); 
-                    } 
+
+        if (aMinValue != null) {
+            if (-aComparator.compareMemberWithKey(loadItem(0), aMinValue) >= aMinInclusive) {
+                if (-aComparator.compareMemberWithKey(loadItem(count - 1), aMinValue) >= aMinInclusive) {
+                    if (myRight != null) {
+                        return myRight.find(aComparator, aMinValue, aMinInclusive, aMaxValue, aMaxInclusive,
+                                aSelection);
+                    }
+
                     return true;
                 }
-                for (l = 0, r = n; l < r;) { 
-                    m = (l + r) >> 1;
-                    if (-comparator.compareMemberWithKey(loadItem(m), minValue) >= minInclusive) {
-                        l = m+1;
-                    } else { 
-                        r = m;
+
+                for (left = 0, right = count; left < right;) {
+                    m = left + right >> 1;
+
+                    if (-aComparator.compareMemberWithKey(loadItem(m), aMinValue) >= aMinInclusive) {
+                        left = m + 1;
+                    } else {
+                        right = m;
                     }
                 }
-                while (r < n) { 
-                    if (maxValue != null
-                        && comparator.compareMemberWithKey(loadItem(r), maxValue) >= maxInclusive)
-                    { 
+
+                while (right < count) {
+                    if (aMaxValue != null && aComparator.compareMemberWithKey(loadItem(right),
+                            aMaxValue) >= aMaxInclusive) {
                         return false;
                     }
-                    selection.add(loadItem(r));
-                    r += 1;
+
+                    aSelection.add(loadItem(right));
+                    right += 1;
                 }
-                if (right != null) { 
-                    return right.find(comparator, minValue, minInclusive, maxValue, maxInclusive, selection); 
-                } 
-                return true;    
+
+                if (myRight != null) {
+                    return myRight.find(aComparator, aMinValue, aMinInclusive, aMaxValue, aMaxInclusive, aSelection);
+                }
+
+                return true;
             }
-        }       
-        if (left != null) { 
-            if (!left.find(comparator, minValue, minInclusive, maxValue, maxInclusive, selection)) { 
+        }
+
+        if (myLeft != null) {
+            if (!myLeft.find(aComparator, aMinValue, aMinInclusive, aMaxValue, aMaxInclusive, aSelection)) {
                 return false;
             }
         }
-        for (l = 0; l < n; l++) { 
-            if (maxValue != null && comparator.compareMemberWithKey(loadItem(l), maxValue) >= maxInclusive) {
+
+        for (left = 0; left < count; left++) {
+            if (aMaxValue != null && aComparator.compareMemberWithKey(loadItem(left), aMaxValue) >= aMaxInclusive) {
                 return false;
             }
-            selection.add(loadItem(l));
+
+            aSelection.add(loadItem(left));
         }
-        if (right != null) { 
-            return right.find(comparator, minValue, minInclusive, maxValue, maxInclusive, selection);
-        }         
+
+        if (myRight != null) {
+            return myRight.find(aComparator, aMinValue, aMinInclusive, aMaxValue, aMaxInclusive, aSelection);
+        }
+
         return true;
     }
-    
-    final boolean contains(PersistentComparator comparator, Object key)
-    { 
-        int l, r, m, n;
+
+    final boolean contains(final PersistentComparator aComparator, final Object aKey) {
+        final int count = myItemCount;
+
+        int left;
+        int right;
+        int m;
+
         load();
-        n = nItems;
-        if (comparator.compareMembers(loadItem(0), key) < 0) {      
-            if (comparator.compareMembers(loadItem(n-1), key) < 0) { 
-                if (right != null) { 
-                    return right.contains(comparator, key); 
-                } 
+
+        if (aComparator.compareMembers(loadItem(0), aKey) < 0) {
+            if (aComparator.compareMembers(loadItem(count - 1), aKey) < 0) {
+                if (myRight != null) {
+                    return myRight.contains(aComparator, aKey);
+                }
+
                 return false;
             }
-            for (l = 0, r = n; l < r;) { 
-                m = (l + r) >> 1;
-                if (comparator.compareMembers(loadItem(m), key) < 0) {
-                    l = m+1;
-                } else { 
-                    r = m;
+
+            for (left = 0, right = count; left < right;) {
+                m = left + right >> 1;
+
+                if (aComparator.compareMembers(loadItem(m), aKey) < 0) {
+                    left = m + 1;
+                } else {
+                    right = m;
                 }
             }
-            while (r < n) { 
-                if (key.equals(loadItem(r))) { 
+
+            while (right < count) {
+                if (aKey.equals(loadItem(right))) {
                     return true;
                 }
-                if (comparator.compareMembers(item[r], key) > 0) { 
+
+                if (aComparator.compareMembers(myItems[right], aKey) > 0) {
                     return false;
                 }
-                r += 1;
+
+                right += 1;
             }
-            if (right != null) { 
-                return right.contains(comparator, key); 
-            } 
-            return false;       
+
+            if (myRight != null) {
+                return myRight.contains(aComparator, aKey);
+            }
+
+            return false;
         }
-        if (left != null) { 
-            if (left.contains(comparator, key)) { 
+
+        if (myLeft != null) {
+            if (myLeft.contains(aComparator, aKey)) {
                 return true;
             }
         }
-        for (l = 0; l < n; l++) { 
-            if (key.equals(loadItem(l))) { 
+
+        for (left = 0; left < count; left++) {
+            if (aKey.equals(loadItem(left))) {
                 return true;
             }
-            if (comparator.compareMembers(item[l], key) > 0) {
+
+            if (aComparator.compareMembers(myItems[left], aKey) > 0) {
                 return false;
             }
         }
-        if (right != null) { 
-            return right.contains(comparator, key);
-        }         
+
+        if (myRight != null) {
+            return myRight.contains(aComparator, aKey);
+        }
+
         return false;
     }
 
-    final boolean containsKey(PersistentComparator comparator, Object key)
-    { 
-        int l, r, m, n;
+    final boolean containsKey(final PersistentComparator aComparator, final Object aKey) {
+        final int count = myItemCount;
+
+        int left;
+        int right;
+        int m;
+
         load();
-        n = nItems;
-        if (comparator.compareMemberWithKey(loadItem(0), key) < 0) {      
-            if (comparator.compareMemberWithKey(loadItem(n-1), key) < 0) { 
-                if (right != null) { 
-                    return right.containsKey(comparator, key); 
-                } 
+
+        if (aComparator.compareMemberWithKey(loadItem(0), aKey) < 0) {
+            if (aComparator.compareMemberWithKey(loadItem(count - 1), aKey) < 0) {
+                if (myRight != null) {
+                    return myRight.containsKey(aComparator, aKey);
+                }
+
                 return false;
             }
-            for (l = 0, r = n; l < r;) { 
-                m = (l + r) >> 1;
-                if (comparator.compareMemberWithKey(loadItem(m), key) < 0) {
-                    l = m+1;
-                } else { 
-                    r = m;
+
+            for (left = 0, right = count; left < right;) {
+                m = left + right >> 1;
+
+                if (aComparator.compareMemberWithKey(loadItem(m), aKey) < 0) {
+                    left = m + 1;
+                } else {
+                    right = m;
                 }
             }
-            while (r < n) { 
-                int diff = comparator.compareMemberWithKey(loadItem(r), key);
-                if (diff == 0) { 
+
+            while (right < count) {
+                final int diff = aComparator.compareMemberWithKey(loadItem(right), aKey);
+
+                if (diff == 0) {
                     return true;
-                } else if (diff > 0) { 
+                } else if (diff > 0) {
                     return false;
                 }
-                r += 1;
+
+                right += 1;
             }
-            if (right != null) { 
-                return right.containsKey(comparator, key); 
-            } 
-            return false;       
+
+            if (myRight != null) {
+                return myRight.containsKey(aComparator, aKey);
+            }
+
+            return false;
         }
-        if (left != null) { 
-            if (left.containsKey(comparator, key)) { 
+
+        if (myLeft != null) {
+            if (myLeft.containsKey(aComparator, aKey)) {
                 return true;
             }
         }
-        for (l = 0; l < n; l++) { 
-            int diff = comparator.compareMemberWithKey(loadItem(l), key);
-            if (diff == 0) { 
+
+        for (left = 0; left < count; left++) {
+            final int diff = aComparator.compareMemberWithKey(loadItem(left), aKey);
+
+            if (diff == 0) {
                 return true;
-            } else if (diff > 0) { 
+            } else if (diff > 0) {
                 return false;
             }
         }
-        if (right != null) { 
-            return right.containsKey(comparator, key);
-        }         
+
+        if (myRight != null) {
+            return myRight.containsKey(aComparator, aKey);
+        }
+
         return false;
     }
 
-    final boolean containsObject(PersistentComparator comparator, Object mbr)
-    { 
-        int l, r, m, n;
+    final boolean containsObject(final PersistentComparator aComparator, final Object aObj) {
+        final int count = myItemCount;
+
+        int left;
+        int right;
+        int m;
+
         load();
-        n = nItems;
-        if (comparator.compareMembers(loadItem(0), mbr) < 0) {      
-            if (comparator.compareMembers(loadItem(n-1), mbr) < 0) { 
-                if (right != null) { 
-                    return right.containsObject(comparator, mbr); 
-                } 
+
+        if (aComparator.compareMembers(loadItem(0), aObj) < 0) {
+            if (aComparator.compareMembers(loadItem(count - 1), aObj) < 0) {
+                if (myRight != null) {
+                    return myRight.containsObject(aComparator, aObj);
+                }
+
                 return false;
             }
-            for (l = 0, r = n; l < r;) { 
-                m = (l + r) >> 1;
-                if (comparator.compareMembers(loadItem(m), mbr) < 0) {
-                    l = m+1;
-                } else { 
-                    r = m;
+
+            for (left = 0, right = count; left < right;) {
+                m = left + right >> 1;
+
+                if (aComparator.compareMembers(loadItem(m), aObj) < 0) {
+                    left = m + 1;
+                } else {
+                    right = m;
                 }
             }
-            while (r < n) { 
-                if (mbr == item[r]) { 
+
+            while (right < count) {
+                if (aObj == myItems[right]) {
                     return true;
                 }
-                if (comparator.compareMembers(item[r], mbr) > 0) { 
+
+                if (aComparator.compareMembers(myItems[right], aObj) > 0) {
                     return false;
                 }
-                r += 1;
+
+                right += 1;
             }
-            if (right != null) { 
-                return right.containsObject(comparator, mbr); 
-            } 
-            return false;       
+
+            if (myRight != null) {
+                return myRight.containsObject(aComparator, aObj);
+            }
+
+            return false;
         }
-        if (left != null) { 
-            if (left.containsObject(comparator, mbr)) { 
+
+        if (myLeft != null) {
+            if (myLeft.containsObject(aComparator, aObj)) {
                 return true;
             }
         }
-        for (l = 0; l < n; l++) { 
-            if (mbr == item[l]) { 
+
+        for (left = 0; left < count; left++) {
+            if (aObj == myItems[left]) {
                 return true;
             }
-            if (comparator.compareMembers(item[l], mbr) > 0) {
+
+            if (aComparator.compareMembers(myItems[left], aObj) > 0) {
                 return false;
             }
         }
-        if (right != null) { 
-            return right.containsObject(comparator, mbr);
-        }         
+
+        if (myRight != null) {
+            return myRight.containsObject(aComparator, aObj);
+        }
+
         return false;
     }
 
-    
-    static final int OK         = 0;
-    static final int NOT_UNIQUE = 1;
-    static final int NOT_FOUND  = 2;
-    static final int OVERFLOW   = 3;
-    static final int UNDERFLOW  = 4;
-
-    final int insert(PersistentComparator comparator, Object mbr, boolean unique, PageReference ref) 
-    { 
+    final int insert(final PersistentComparator aComparator, final Object aObj, final boolean aUniqueInsert,
+            final PageReference aPageRef) {
         load();
-        int n = nItems;
-        TtreePage pg;
-        int diff = comparator.compareMembers(mbr, loadItem(0));
-        if (diff <= 0) { 
-            if (unique && diff == 0) { 
+
+        final int count = myItemCount;
+
+        TtreePage page;
+        int diff = aComparator.compareMembers(aObj, loadItem(0));
+
+        if (diff <= 0) {
+            if (aUniqueInsert && diff == 0) {
                 return NOT_UNIQUE;
             }
-            if ((left == null || diff == 0) && n != maxItems) { 
+
+            if ((myLeft == null || diff == 0) && count != MAX_ITEMS) {
                 modify();
-                //for (int i = n; i > 0; i--) item[i] = item[i-1];
-                System.arraycopy(item, 0, item, 1, n);
-                item[0] = mbr;
-                nItems += 1;
+
+                System.arraycopy(myItems, 0, myItems, 1, count);
+
+                myItems[0] = aObj;
+                myItemCount += 1;
+
                 return OK;
-            } 
-            if (left == null) { 
+            }
+
+            if (myLeft == null) {
                 modify();
-                left = new TtreePage(getStorage(), mbr);
+                myLeft = new TtreePage(getStorage(), aObj);
             } else {
-                pg = ref.pg;
-                ref.pg = left;
-                int result = left.insert(comparator, mbr, unique, ref);
-                if (result == NOT_UNIQUE) { 
+                page = aPageRef.myPage;
+                aPageRef.myPage = myLeft;
+
+                final int result = myLeft.insert(aComparator, aObj, aUniqueInsert, aPageRef);
+
+                if (result == NOT_UNIQUE) {
                     return NOT_UNIQUE;
                 }
+
                 modify();
-                left = ref.pg;
-                ref.pg = pg;
-                if (result == OK) return OK;
+
+                myLeft = aPageRef.myPage;
+                aPageRef.myPage = page;
+
+                if (result == OK) {
+                    return OK;
+                }
             }
-            if (balance > 0) { 
-                balance = 0;
+
+            if (myBalance > 0) {
+                myBalance = 0;
                 return OK;
-            } else if (balance == 0) { 
-                balance = -1;
+            } else if (myBalance == 0) {
+                myBalance = -1;
                 return OVERFLOW;
-            } else { 
-                TtreePage left = this.left;
+            } else {
+                final TtreePage left = myLeft;
+
                 left.load();
                 left.modify();
-                if (left.balance < 0) { // single LL turn
-                    this.left = left.right;
-                    left.right = this;
-                    balance = 0;
-                    left.balance = 0;
-                    ref.pg = left;
+
+                if (left.myBalance < 0) { // single LL turn
+                    myLeft = left.myRight;
+                    left.myRight = this;
+                    myBalance = 0;
+                    left.myBalance = 0;
+                    aPageRef.myPage = left;
                 } else { // double LR turn
-                    TtreePage right = left.right;
+                    final TtreePage right = left.myRight;
+
                     right.load();
                     right.modify();
-                    left.right = right.left;
-                    right.left = left;
-                    this.left = right.right;
-                    right.right = this;
-                    balance = (right.balance < 0) ? 1 : 0;
-                    left.balance = (right.balance > 0) ? -1 : 0;
-                    right.balance = 0;
-                    ref.pg = right;
+                    left.myRight = right.myLeft;
+                    right.myLeft = left;
+                    myLeft = right.myRight;
+                    right.myRight = this;
+                    myBalance = right.myBalance < 0 ? 1 : 0;
+                    left.myBalance = right.myBalance > 0 ? -1 : 0;
+                    right.myBalance = 0;
+                    aPageRef.myPage = right;
                 }
-                return OK;
-            }
-        } 
-        diff = comparator.compareMembers(mbr, loadItem(n-1));
-        if (diff >= 0) { 
-            if (unique && diff == 0) { 
-                return NOT_UNIQUE;
-            }
-            if ((right == null || diff == 0) && n != maxItems) { 
-                modify();
-                item[n] = mbr;
-                nItems += 1;
-                return OK;
-            }
-            if (right == null) { 
-                 modify();
-                 right = new TtreePage(getStorage(), mbr);
-            } else { 
-                pg = ref.pg;
-                ref.pg = right;
-                int result = right.insert(comparator, mbr, unique, ref);
-                if (result == NOT_UNIQUE) { 
-                    return NOT_UNIQUE;
-                }
-                modify();
-                right = ref.pg;
-                ref.pg = pg;
-                if (result == OK) return OK;
-            }
-            if (balance < 0) { 
-                balance = 0;
-                return OK;
-            } else if (balance == 0) { 
-                balance = 1;
-                return OVERFLOW;
-            } else { 
-                TtreePage right = this.right;
-                right.load();
-                right.modify();
-                if (right.balance > 0) { // single RR turn
-                    this.right = right.left;
-                    right.left = this;
-                    balance = 0;
-                    right.balance = 0;
-                    ref.pg = right;
-                } else { // double RL turn
-                    TtreePage left = right.left;
-                    left.load();
-                    left.modify();
-                    right.left = left.right;
-                    left.right = right;
-                    this.right = left.left;
-                    left.left = this;
-                    balance = (left.balance > 0) ? -1 : 0;
-                    right.balance = (left.balance < 0) ? 1 : 0;
-                    left.balance = 0;
-                    ref.pg = left;
-                }
+
                 return OK;
             }
         }
-        int l = 1, r = n-1;
-        while (l < r)  {
-            int i = (l+r) >> 1;
-            diff = comparator.compareMembers(mbr, loadItem(i));
-            if (diff > 0) { 
-                l = i + 1;
-            } else { 
-                r = i;
-                if (diff == 0) { 
-                    if (unique) { 
+
+        diff = aComparator.compareMembers(aObj, loadItem(count - 1));
+
+        if (diff >= 0) {
+            if (aUniqueInsert && diff == 0) {
+                return NOT_UNIQUE;
+            }
+
+            if ((myRight == null || diff == 0) && count != MAX_ITEMS) {
+                modify();
+
+                myItems[count] = aObj;
+                myItemCount += 1;
+
+                return OK;
+            }
+
+            if (myRight == null) {
+                modify();
+                myRight = new TtreePage(getStorage(), aObj);
+            } else {
+                page = aPageRef.myPage;
+                aPageRef.myPage = myRight;
+
+                final int result = myRight.insert(aComparator, aObj, aUniqueInsert, aPageRef);
+
+                if (result == NOT_UNIQUE) {
+                    return NOT_UNIQUE;
+                }
+
+                modify();
+
+                myRight = aPageRef.myPage;
+                aPageRef.myPage = page;
+
+                if (result == OK) {
+                    return OK;
+                }
+            }
+
+            if (myBalance < 0) {
+                myBalance = 0;
+                return OK;
+            } else if (myBalance == 0) {
+                myBalance = 1;
+                return OVERFLOW;
+            } else {
+                final TtreePage right = myRight;
+
+                right.load();
+                right.modify();
+
+                if (right.myBalance > 0) { // single RR turn
+                    myRight = right.myLeft;
+                    right.myLeft = this;
+                    myBalance = 0;
+                    right.myBalance = 0;
+                    aPageRef.myPage = right;
+                } else { // double RL turn
+                    final TtreePage left = right.myLeft;
+
+                    left.load();
+                    left.modify();
+                    right.myLeft = left.myRight;
+                    left.myRight = right;
+                    myRight = left.myLeft;
+                    left.myLeft = this;
+                    myBalance = left.myBalance > 0 ? -1 : 0;
+                    right.myBalance = left.myBalance < 0 ? 1 : 0;
+                    left.myBalance = 0;
+                    aPageRef.myPage = left;
+                }
+
+                return OK;
+            }
+        }
+
+        int left = 1;
+        int right = count - 1;
+
+        while (left < right) {
+            final int i = left + right >> 1;
+
+            diff = aComparator.compareMembers(aObj, loadItem(i));
+
+            if (diff > 0) {
+                left = i + 1;
+            } else {
+                right = i;
+
+                if (diff == 0) {
+                    if (aUniqueInsert) {
                         return NOT_UNIQUE;
                     }
+
                     break;
                 }
             }
         }
+
         // Insert before item[r]
         modify();
-        if (n != maxItems) {
-            System.arraycopy(item, r, item, r+1, n-r);
-            //for (int i = n; i > r; i--) item[i] = item[i-1]; 
-            item[r] = mbr;
-            nItems += 1;
+
+        if (count != MAX_ITEMS) {
+            System.arraycopy(myItems, right, myItems, right + 1, count - right);
+
+            myItems[right] = aObj;
+            myItemCount += 1;
+
             return OK;
-        } else { 
-            Object reinsertItem;
-            if (balance >= 0) { 
+        } else {
+            final Object reinsertItem;
+
+            if (myBalance >= 0) {
                 reinsertItem = loadItem(0);
-                System.arraycopy(item, 1, item, 0, r-1);
-                //for (int i = 1; i < r; i++) item[i-1] = item[i]; 
-                item[r-1] = mbr;
-            } else { 
-                reinsertItem = loadItem(n-1);
-                System.arraycopy(item, r, item, r+1, n-r-1);
-                //for (int i = n-1; i > r; i--) item[i] = item[i-1]; 
-                item[r] = mbr;
+                System.arraycopy(myItems, 1, myItems, 0, right - 1);
+                myItems[right - 1] = aObj;
+            } else {
+                reinsertItem = loadItem(count - 1);
+                System.arraycopy(myItems, right, myItems, right + 1, count - right - 1);
+                myItems[right] = aObj;
             }
-            return insert(comparator, reinsertItem, unique, ref);
+
+            return insert(aComparator, reinsertItem, aUniqueInsert, aPageRef);
         }
     }
-       
-    final int balanceLeftBranch(PageReference ref) 
-    {
-        if (balance < 0) { 
-            balance = 0;
+
+    final int balanceLeftBranch(final PageReference aPageRef) {
+        if (myBalance < 0) {
+            myBalance = 0;
             return UNDERFLOW;
-        } else if (balance == 0) { 
-            balance = 1;
+        } else if (myBalance == 0) {
+            myBalance = 1;
             return OK;
-        } else { 
-            TtreePage right = this.right;
+        } else {
+            final TtreePage right = myRight;
+
             right.load();
             right.modify();
-            if (right.balance >= 0) { // single RR turn
-                this.right = right.left;
-                right.left = this;
-                if (right.balance == 0) { 
-                    this.balance = 1;
-                    right.balance = -1;
-                    ref.pg = right;
+
+            if (right.myBalance >= 0) { // single RR turn
+                myRight = right.myLeft;
+                right.myLeft = this;
+
+                if (right.myBalance == 0) {
+                    myBalance = 1;
+                    right.myBalance = -1;
+                    aPageRef.myPage = right;
                     return OK;
-                } else { 
-                    balance = 0;
-                    right.balance = 0;
-                    ref.pg = right;
+                } else {
+                    myBalance = 0;
+                    right.myBalance = 0;
+                    aPageRef.myPage = right;
                     return UNDERFLOW;
                 }
             } else { // double RL turn
-                TtreePage left = right.left;
+                final TtreePage left = right.myLeft;
+
                 left.load();
                 left.modify();
-                right.left = left.right;
-                left.right = right;
-                this.right = left.left;
-                left.left = this;
-                balance = left.balance > 0 ? -1 : 0;
-                right.balance = left.balance < 0 ? 1 : 0;
-                left.balance = 0;
-                ref.pg = left;
+                right.myLeft = left.myRight;
+                left.myRight = right;
+                myRight = left.myLeft;
+                left.myLeft = this;
+                myBalance = left.myBalance > 0 ? -1 : 0;
+                right.myBalance = left.myBalance < 0 ? 1 : 0;
+                left.myBalance = 0;
+                aPageRef.myPage = left;
+
                 return UNDERFLOW;
             }
         }
     }
 
-    final int balanceRightBranch(PageReference ref) 
-    {
-        if (balance > 0) { 
-            balance = 0;
+    final int balanceRightBranch(final PageReference aPageRef) {
+        if (myBalance > 0) {
+            myBalance = 0;
             return UNDERFLOW;
-        } else if (balance == 0) { 
-            balance = -1;
+        } else if (myBalance == 0) {
+            myBalance = -1;
             return OK;
-        } else { 
-            TtreePage left = this.left;
+        } else {
+            final TtreePage left = myLeft;
+
             left.load();
             left.modify();
-            if (left.balance <= 0) { // single LL turn
-                this.left = left.right;
-                left.right = this;
-                if (left.balance == 0) { 
-                    balance = -1;
-                    left.balance = 1;
-                    ref.pg = left;
+
+            if (left.myBalance <= 0) { // single LL turn
+                myLeft = left.myRight;
+                left.myRight = this;
+
+                if (left.myBalance == 0) {
+                    myBalance = -1;
+                    left.myBalance = 1;
+                    aPageRef.myPage = left;
                     return OK;
-                } else { 
-                    balance = 0;
-                    left.balance = 0;
-                    ref.pg = left;
+                } else {
+                    myBalance = 0;
+                    left.myBalance = 0;
+                    aPageRef.myPage = left;
                     return UNDERFLOW;
                 }
             } else { // double LR turn
-                TtreePage right = left.right;
+                final TtreePage right = left.myRight;
+
                 right.load();
                 right.modify();
-                left.right = right.left;
-                right.left = left;
-                this.left = right.right;
-                right.right = this;
-                balance = right.balance < 0 ? 1 : 0;
-                left.balance = right.balance > 0 ? -1 : 0;
-                right.balance = 0;
-                ref.pg = right;
+                left.myRight = right.myLeft;
+                right.myLeft = left;
+                myLeft = right.myRight;
+                right.myRight = this;
+                myBalance = right.myBalance < 0 ? 1 : 0;
+                left.myBalance = right.myBalance > 0 ? -1 : 0;
+                right.myBalance = 0;
+                aPageRef.myPage = right;
+
                 return UNDERFLOW;
             }
         }
     }
-    
-    final int remove(PersistentComparator comparator, Object mbr, PageReference ref)
-    {
+
+    final int remove(final PersistentComparator aComparator, final Object aObj, final PageReference aPageRef) {
         load();
-        TtreePage pg;
-        int n = nItems;
-        int diff = comparator.compareMembers(mbr, loadItem(0));
-        if (diff <= 0) { 
-            if (left != null) { 
+
+        final int count = myItemCount;
+
+        int diff = aComparator.compareMembers(aObj, loadItem(0));
+        TtreePage page;
+
+        if (diff <= 0) {
+            if (myLeft != null) {
                 modify();
-                pg = ref.pg;
-                ref.pg = left;
-                int h = left.remove(comparator, mbr, ref);
-                left = ref.pg;
-                ref.pg = pg;
-                if (h == UNDERFLOW) { 
-                    return balanceLeftBranch(ref);
-                } else if (h == OK) { 
+
+                page = aPageRef.myPage;
+                aPageRef.myPage = myLeft;
+
+                final int height = myLeft.remove(aComparator, aObj, aPageRef);
+
+                myLeft = aPageRef.myPage;
+                aPageRef.myPage = page;
+
+                if (height == UNDERFLOW) {
+                    return balanceLeftBranch(aPageRef);
+                } else if (height == OK) {
                     return OK;
                 }
             }
         }
-        diff = comparator.compareMembers(mbr, loadItem(n-1));
-        if (diff <= 0) {            
-            for (int i = 0; i < n; i++) { 
-                if (item[i] == mbr) { 
-                    if (n == 1) { 
-                        if (right == null) { 
+
+        diff = aComparator.compareMembers(aObj, loadItem(count - 1));
+
+        if (diff <= 0) {
+            for (int i = 0; i < count; i++) {
+                if (myItems[i] == aObj) {
+                    if (count == 1) {
+                        if (myRight == null) {
                             deallocate();
-                            ref.pg = left;
+                            aPageRef.myPage = myLeft;
                             return UNDERFLOW;
-                        } else if (left == null) { 
+                        } else if (myLeft == null) {
                             deallocate();
-                            ref.pg = right;
+                            aPageRef.myPage = myRight;
                             return UNDERFLOW;
-                        } 
-                    }
-                    modify();
-                    if (n <= minItems) { 
-                        if (left != null && balance <= 0) {  
-                            TtreePage prev = left;
-                            prev.load();
-                            while (prev.right != null) {                                 
-                                prev = prev.right;
-                                prev.load();
-                            }
-                            System.arraycopy(item, 0, item, 1, i);
-                            //while (--i >= 0) { 
-                            //    item[i+1] = item[i];
-                            //}
-                            item[0] = prev.item[prev.nItems-1];
-                            pg = ref.pg;
-                            ref.pg = left;
-                            int h = left.remove(comparator, loadItem(0), ref);
-                            left = ref.pg;
-                            ref.pg = pg;
-                            if (h == UNDERFLOW) {
-                                h = balanceLeftBranch(ref);
-                            }
-                            return h;
-                        } else if (right != null) { 
-                            TtreePage next = right;
-                            next.load();
-                            while (next.left != null) { 
-                                next = next.left;
-                                next.load();
-                            }
-                            System.arraycopy(item, i+1, item, i, n-i-1);
-                            //while (++i < n) { 
-                            //    item[i-1] = item[i];
-                            //}
-                            item[n-1] = next.item[0];
-                            pg = ref.pg;
-                            ref.pg = right;
-                            int h = right.remove(comparator, loadItem(n-1), ref);
-                            right = ref.pg;
-                            ref.pg = pg;
-                            if (h == UNDERFLOW) {
-                                h = balanceRightBranch(ref);
-                            }
-                            return h;
                         }
                     }
-                    System.arraycopy(item, i+1, item, i, n-i-1);
-                    //while (++i < n) { 
-                    //    item[i-1] = item[i];
-                    //}
-                    item[n-1] = null;
-                    nItems -= 1;
+
+                    modify();
+
+                    if (count <= MIN_ITEMS) {
+                        if (myLeft != null && myBalance <= 0) {
+                            TtreePage prev = myLeft;
+
+                            prev.load();
+
+                            while (prev.myRight != null) {
+                                prev = prev.myRight;
+                                prev.load();
+                            }
+
+                            System.arraycopy(myItems, 0, myItems, 1, i);
+
+                            myItems[0] = prev.myItems[prev.myItemCount - 1];
+                            page = aPageRef.myPage;
+                            aPageRef.myPage = myLeft;
+
+                            int height = myLeft.remove(aComparator, loadItem(0), aPageRef);
+
+                            myLeft = aPageRef.myPage;
+                            aPageRef.myPage = page;
+
+                            if (height == UNDERFLOW) {
+                                height = balanceLeftBranch(aPageRef);
+                            }
+
+                            return height;
+                        } else if (myRight != null) {
+                            TtreePage next = myRight;
+
+                            next.load();
+
+                            while (next.myLeft != null) {
+                                next = next.myLeft;
+                                next.load();
+                            }
+
+                            System.arraycopy(myItems, i + 1, myItems, i, count - i - 1);
+
+                            myItems[count - 1] = next.myItems[0];
+                            page = aPageRef.myPage;
+                            aPageRef.myPage = myRight;
+
+                            int height = myRight.remove(aComparator, loadItem(count - 1), aPageRef);
+
+                            myRight = aPageRef.myPage;
+                            aPageRef.myPage = page;
+
+                            if (height == UNDERFLOW) {
+                                height = balanceRightBranch(aPageRef);
+                            }
+
+                            return height;
+                        }
+                    }
+
+                    System.arraycopy(myItems, i + 1, myItems, i, count - i - 1);
+
+                    myItems[count - 1] = null;
+                    myItemCount -= 1;
+
                     return OK;
                 }
             }
         }
-        if (right != null) { 
+
+        if (myRight != null) {
             modify();
-            pg = ref.pg;
-            ref.pg = right;
-            int h = right.remove(comparator, mbr, ref);
-            right = ref.pg;
-            ref.pg = pg;
-            if (h == UNDERFLOW) { 
-                return balanceRightBranch(ref);
-            } else { 
-                return h;
+
+            page = aPageRef.myPage;
+            aPageRef.myPage = myRight;
+
+            final int height = myRight.remove(aComparator, aObj, aPageRef);
+
+            myRight = aPageRef.myPage;
+            aPageRef.myPage = page;
+
+            if (height == UNDERFLOW) {
+                return balanceRightBranch(aPageRef);
+            } else {
+                return height;
             }
         }
+
         return NOT_FOUND;
     }
 
+    final int toArray(final Object[] aArray, final int aIndex) {
+        int arrayIndex = aIndex;
 
-    final int toArray(Object [] arr, int index) { 
         load();
-        if (left != null) { 
-            index = left.toArray(arr, index);
+
+        if (myLeft != null) {
+            arrayIndex = myLeft.toArray(aArray, arrayIndex);
         }
-        for (int i = 0, n = nItems; i < n; i++) { 
-            arr[index++] = loadItem(i);
+
+        for (int index = 0, count = myItemCount; index < count; index++) {
+            aArray[arrayIndex++] = loadItem(index);
         }
-        if (right != null) { 
-            index = right.toArray(arr, index);
+
+        if (myRight != null) {
+            arrayIndex = myRight.toArray(aArray, arrayIndex);
         }
-        return index;
+
+        return arrayIndex;
     }
 
-    final void prune() { 
+    final void prune() {
         load();
-        if (left != null) { 
-            left.prune();
+
+        if (myLeft != null) {
+            myLeft.prune();
         }
-        if (right != null) { 
-            right.prune();
+
+        if (myRight != null) {
+            myRight.prune();
         }
+
         deallocate();
+    }
+
+    static class PageReference {
+
+        TtreePage myPage;
+
+        PageReference(final TtreePage aPage) {
+            myPage = aPage;
+        }
     }
 
 }

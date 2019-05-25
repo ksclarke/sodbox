@@ -1,338 +1,454 @@
+
 package info.freelibrary.sodbox.impl;
 
-import info.freelibrary.sodbox.*;
+import java.util.ArrayList;
+import java.util.ConcurrentModificationException;
+import java.util.Iterator;
+import java.util.Map;
+import java.util.NoSuchElementException;
 
-import java.util.*;
+import info.freelibrary.sodbox.Assert;
+import info.freelibrary.sodbox.IterableIterator;
+import info.freelibrary.sodbox.PersistentCollection;
+import info.freelibrary.sodbox.PersistentIterator;
+import info.freelibrary.sodbox.Rectangle;
+import info.freelibrary.sodbox.SpatialIndex;
+import info.freelibrary.sodbox.Storage;
+import info.freelibrary.sodbox.StorageError;
 
 public class Rtree<T> extends PersistentCollection<T> implements SpatialIndex<T> {
-    private int       height;
-    private int       n;
-    private RtreePage root;
-    private transient int updateCounter;
 
-    Rtree() {}
+    private int myHeight;
 
-    public void put(Rectangle r, T obj) {
-        Storage db = getStorage();
-        if (root == null) { 
-            root = new RtreePage(db, obj, r);
-            height = 1;
-        } else { 
-            RtreePage p = root.insert(db, r, obj, height); 
-            if (p != null) {
-                root = new RtreePage(db, root, p);
-                height += 1;
+    private int myCount;
+
+    private RtreePage myRoot;
+
+    private transient int myUpdateCounter;
+
+    Rtree() {
+    }
+
+    @Override
+    public void put(final Rectangle aRect, final T aObj) {
+        final Storage storage = getStorage();
+
+        if (myRoot == null) {
+            myRoot = new RtreePage(storage, aObj, aRect);
+            myHeight = 1;
+        } else {
+            final RtreePage page = myRoot.insert(storage, aRect, aObj, myHeight);
+
+            if (page != null) {
+                myRoot = new RtreePage(storage, myRoot, page);
+                myHeight += 1;
             }
         }
-        updateCounter += 1;
-        n += 1;
+
+        myUpdateCounter += 1;
+        myCount += 1;
+
         modify();
     }
-    
-    public int size() { 
-        return n;
+
+    @Override
+    public int size() {
+        return myCount;
     }
 
-    public void remove(Rectangle r, T obj) {
-        if (root == null) { 
+    @Override
+    public void remove(final Rectangle aRect, final T aObj) {
+        if (myRoot == null) {
             throw new StorageError(StorageError.KEY_NOT_FOUND);
         }
-        ArrayList reinsertList = new ArrayList();
-        int reinsertLevel = root.remove(r, obj, height, reinsertList);
-        if (reinsertLevel < 0) { 
-             throw new StorageError(StorageError.KEY_NOT_FOUND);
-        }        
-        for (int i = reinsertList.size(); --i >= 0;) {
-            RtreePage p = (RtreePage)reinsertList.get(i);
-            for (int j = 0, n = p.n; j < n; j++) { 
-                RtreePage q = root.insert(getStorage(), p.b[j], p.branch.get(j), height - reinsertLevel); 
-                if (q != null) { 
-                    // root splitted
-                    root = new RtreePage(getStorage(), root, q);
-                    height += 1;
+
+        final ArrayList reinsertList = new ArrayList();
+
+        int reinsertLevel = myRoot.remove(aRect, aObj, myHeight, reinsertList);
+
+        if (reinsertLevel < 0) {
+            throw new StorageError(StorageError.KEY_NOT_FOUND);
+        }
+
+        for (int index = reinsertList.size(); --index >= 0;) {
+            final RtreePage page = (RtreePage) reinsertList.get(index);
+
+            for (int jndex = 0, n = page.myIndex; jndex < n; jndex++) {
+                final RtreePage splitPage = myRoot.insert(getStorage(), page.myRectangle[jndex], page.myBranch.get(
+                        jndex), myHeight - reinsertLevel);
+
+                // Root split
+                if (splitPage != null) {
+                    myRoot = new RtreePage(getStorage(), myRoot, splitPage);
+                    myHeight += 1;
                 }
             }
+
             reinsertLevel -= 1;
-            p.deallocate();
+            page.deallocate();
         }
-        if (root.n == 1 && height > 1) { 
-            RtreePage newRoot = (RtreePage)root.branch.get(0);
-            root.deallocate();
-            root = newRoot;
-            height -= 1;
+
+        if (myRoot.myIndex == 1 && myHeight > 1) {
+            final RtreePage newRoot = (RtreePage) myRoot.myBranch.get(0);
+
+            myRoot.deallocate();
+            myRoot = newRoot;
+            myHeight -= 1;
         }
-        n -= 1;
-        updateCounter += 1;
+
+        myCount -= 1;
+        myUpdateCounter += 1;
+
         modify();
     }
-    
-    public Object[] get(Rectangle r) {
-        return getList(r).toArray();
+
+    @Override
+    public Object[] get(final Rectangle aRect) {
+        return getList(aRect).toArray();
     }
 
-    public ArrayList<T> getList(Rectangle r) { 
-        ArrayList<T> result = new ArrayList<T>();
-        if (root != null) { 
-            root.find(r, result, height);
+    @Override
+    public ArrayList<T> getList(final Rectangle aRect) {
+        final ArrayList<T> result = new ArrayList<>();
+
+        if (myRoot != null) {
+            myRoot.find(aRect, result, myHeight);
         }
+
         return result;
     }
 
+    @Override
     public Object[] toArray() {
         return get(getWrappingRectangle());
     }
 
-    public <E> E[] toArray(E[] arr) {
-        return getList(getWrappingRectangle()).toArray(arr);
+    @Override
+    public <E> E[] toArray(final E[] aArray) {
+        return getList(getWrappingRectangle()).toArray(aArray);
     }
-    
+
+    @Override
     public Rectangle getWrappingRectangle() {
-        if (root != null) { 
-            return root.cover();
+        if (myRoot != null) {
+            return myRoot.cover();
         }
+
         return null;
     }
 
+    @Override
     public void clear() {
-        if (root != null) { 
-            root.purge(height);
-            root = null;
+        if (myRoot != null) {
+            myRoot.purge(myHeight);
+            myRoot = null;
         }
-        height = 0;
-        n = 0;
+
+        myHeight = 0;
+        myCount = 0;
+
         modify();
     }
 
+    @Override
     public void deallocate() {
         clear();
         super.deallocate();
     }
 
-    class RtreeIterator<E> extends IterableIterator<E> implements PersistentIterator {
-        RtreeIterator(Rectangle r) { 
-            counter = updateCounter;
-            if (height == 0) { 
-                return;
-            }
-            this.r = r;            
-            pageStack = new RtreePage[height];
-            posStack = new int[height];
-
-            if (!gotoFirstItem(0, root)) { 
-                pageStack = null;
-                posStack = null;
-            }
-        }
-
-        public boolean hasNext() {
-            if (counter != updateCounter) { 
-                throw new ConcurrentModificationException();
-            }
-            return pageStack != null;
-        }
-
-        protected Object current(int sp) { 
-            return pageStack[sp].branch.get(posStack[sp]);
-        }
-
-        public E next() {
-            if (!hasNext()) { 
-                throw new NoSuchElementException();
-            }
-            E curr = (E)current(height-1);
-            if (!gotoNextItem(height-1)) { 
-                pageStack = null;
-                posStack = null;
-            }
-            return curr;
-        }
- 
-        public int nextOid() {
-            if (!hasNext()) { 
-                return 0;
-            }
-            int oid = getStorage().getOid(pageStack[height-1].branch.getRaw(posStack[height-1]));
-            if (!gotoNextItem(height-1)) { 
-                pageStack = null;
-                posStack = null;
-            }
-            return oid;
-        }
-        
-        private boolean gotoFirstItem(int sp, RtreePage pg) { 
-            for (int i = 0, n = pg.n; i < n; i++) { 
-                if (r.intersects(pg.b[i])) { 
-                    if (sp+1 == height || gotoFirstItem(sp+1, (RtreePage)pg.branch.get(i))) { 
-                        pageStack[sp] = pg;
-                        posStack[sp] = i;
-                        return true;
-                    }
-                }
-            }
-            return false;
-        }
-              
- 
-        private boolean gotoNextItem(int sp) {
-            RtreePage pg = pageStack[sp];
-            for (int i = posStack[sp], n = pg.n; ++i < n;) { 
-                if (r.intersects(pg.b[i])) { 
-                    if (sp+1 == height || gotoFirstItem(sp+1, (RtreePage)pg.branch.get(i))) { 
-                        pageStack[sp] = pg;
-                        posStack[sp] = i;
-                        return true;
-                    }
-                }
-            }
-            pageStack[sp] = null;
-            return (sp > 0) ? gotoNextItem(sp-1) : false;
-        }
-              
-        public void remove() { 
-            throw new UnsupportedOperationException();
-        }
-
-        RtreePage[] pageStack;
-        int[]       posStack;
-        int         counter;
-        Rectangle   r;
-    }
-    
-    static class RtreeEntry<T> implements Map.Entry<Rectangle,T> {
-        RtreePage pg;
-        int       pos;
-
-	public Rectangle getKey() {
-	    return pg.b[pos];
-	}
-
-	public T getValue() {
-	    return (T)pg.branch.get(pos);
-	}
-
-  	public T setValue(T value) {
-            throw new UnsupportedOperationException();
-        }
-
-        RtreeEntry(RtreePage pg, int pos) { 
-            this.pg = pg;
-            this.pos = pos;
-        }
-    }
-        
-    class RtreeEntryIterator extends RtreeIterator<Map.Entry<Rectangle,T>> {
-        RtreeEntryIterator(Rectangle r) { 
-            super(r);
-        }
-        
-        protected Object current(int sp) { 
-            return new RtreeEntry(pageStack[sp], posStack[sp]);
-        }
-    }
-
+    @Override
     public Iterator<T> iterator() {
         return iterator(getWrappingRectangle());
     }
 
-    public IterableIterator<Map.Entry<Rectangle,T>> entryIterator() {
+    @Override
+    public IterableIterator<Map.Entry<Rectangle, T>> entryIterator() {
         return entryIterator(getWrappingRectangle());
     }
 
-    public IterableIterator<T> iterator(Rectangle r) { 
-        return new RtreeIterator<T>(r);
+    @Override
+    public IterableIterator<T> iterator(final Rectangle aRect) {
+        return new RtreeIterator<>(aRect);
     }
 
-    public IterableIterator<Map.Entry<Rectangle,T>> entryIterator(Rectangle r) { 
-        return new RtreeEntryIterator(r);
+    @Override
+    public IterableIterator<Map.Entry<Rectangle, T>> entryIterator(final Rectangle aRect) {
+        return new RtreeEntryIterator(aRect);
     }
 
-    static class Neighbor { 
-        Object   child;
-        Neighbor next;
-        int      level;
-        double   distance;
-
-        Neighbor(Object child, double distance, int level) { 
-            this.child = child;
-            this.distance = distance;
-            this.level = level;
-        }
+    @Override
+    public IterableIterator<T> neighborIterator(final int aX, final int aY) {
+        return new NeighborIterator(aX, aY);
     }
 
-    class NeighborIterator<E> extends IterableIterator<E> implements PersistentIterator 
-    {
-        Neighbor list;
-        int counter;
-        int x;
-        int y;
+    class RtreeIterator<E> extends IterableIterator<E> implements PersistentIterator {
 
-        NeighborIterator(int x, int y) { 
-            this.x = x;
-            this.y = y;
-            counter = updateCounter;
-            if (height == 0) { 
+        RtreePage[] myPageStack;
+
+        int[] myPositionStack;
+
+        int myCounter;
+
+        Rectangle myRect;
+
+        RtreeIterator(final Rectangle aRect) {
+            myCounter = myUpdateCounter;
+
+            if (myHeight == 0) {
                 return;
             }
-            list = new Neighbor(root, root.cover().distance(x, y), height);
-        }
 
-        void insert(Neighbor node) { 
-            Neighbor prev = null, next = list;
-            double distance = node.distance;
-            while (next != null && next.distance < distance) { 
-                prev = next;
-                next = prev.next;
-            }
-            node.next = next;
-            if (prev == null) { 
-                list = node;
-            } else { 
-                prev.next = node;
+            myRect = aRect;
+            myPageStack = new RtreePage[myHeight];
+            myPositionStack = new int[myHeight];
+
+            if (!gotoFirstItem(0, myRoot)) {
+                myPageStack = null;
+                myPositionStack = null;
             }
         }
 
-        public boolean hasNext() { 
-            if (counter != updateCounter) { 
+        @Override
+        public boolean hasNext() {
+            if (myCounter != myUpdateCounter) {
                 throw new ConcurrentModificationException();
             }
-            while (true) { 
-                Neighbor neighbor = list;
-                if (neighbor == null) { 
-                    return false;
-                }
-                if (neighbor.level == 0) { 
-                    return true;
-                }
-                list = neighbor.next;
-                RtreePage pg = (RtreePage)neighbor.child;
-                for (int i = 0, n = pg.n; i < n; i++) { 
-                    insert(new Neighbor(pg.branch.get(i), pg.b[i].distance(x, y), neighbor.level-1));
-                }
-            }
+
+            return myPageStack != null;
         }
 
+        protected Object current(final int aStackPosition) {
+            return myPageStack[aStackPosition].myBranch.get(myPositionStack[aStackPosition]);
+        }
+
+        @Override
         public E next() {
-            if (!hasNext()) { 
+            final E current;
+
+            if (!hasNext()) {
                 throw new NoSuchElementException();
             }
-            Neighbor neighbor = list;
-            list = neighbor.next;
-            Assert.that(neighbor.level == 0);
-            return (E)neighbor.child;
+
+            current = (E) current(myHeight - 1);
+
+            if (!gotoNextItem(myHeight - 1)) {
+                myPageStack = null;
+                myPositionStack = null;
+            }
+
+            return current;
         }
 
-        public int nextOid() {
-            return getStorage().getOid(next());
+        @Override
+        public int nextOID() {
+            if (!hasNext()) {
+                return 0;
+            }
+
+            final int oid = getStorage().getOid(myPageStack[myHeight - 1].myBranch.getRaw(myPositionStack[myHeight -
+                    1]));
+
+            if (!gotoNextItem(myHeight - 1)) {
+                myPageStack = null;
+                myPositionStack = null;
+            }
+
+            return oid;
         }
 
-        public void remove() { 
+        private boolean gotoFirstItem(final int aStackPosition, final RtreePage aPage) {
+            for (int index = 0, n = aPage.myIndex; index < n; index++) {
+                if (myRect.intersects(aPage.myRectangle[index])) {
+                    if (aStackPosition + 1 == myHeight || gotoFirstItem(aStackPosition + 1, (RtreePage) aPage.myBranch
+                            .get(index))) {
+                        myPageStack[aStackPosition] = aPage;
+                        myPositionStack[aStackPosition] = index;
+
+                        return true;
+                    }
+                }
+            }
+
+            return false;
+        }
+
+        private boolean gotoNextItem(final int aStackPosition) {
+            final RtreePage page = myPageStack[aStackPosition];
+
+            for (int index = myPositionStack[aStackPosition], n = page.myIndex; ++index < n;) {
+                if (myRect.intersects(page.myRectangle[index])) {
+                    if (aStackPosition + 1 == myHeight || gotoFirstItem(aStackPosition + 1, (RtreePage) page.myBranch
+                            .get(index))) {
+                        myPageStack[aStackPosition] = page;
+                        myPositionStack[aStackPosition] = index;
+
+                        return true;
+                    }
+                }
+            }
+
+            myPageStack[aStackPosition] = null;
+
+            return aStackPosition > 0 ? gotoNextItem(aStackPosition - 1) : false;
+        }
+
+        @Override
+        public void remove() {
             throw new UnsupportedOperationException();
         }
     }
-        
-    public IterableIterator<T> neighborIterator(int x, int y) { 
-        return new NeighborIterator(x, y);
+
+    static class RtreeEntry<T> implements Map.Entry<Rectangle, T> {
+
+        RtreePage myPage;
+
+        int myPosition;
+
+        RtreeEntry(final RtreePage aPage, final int aPosition) {
+            myPage = aPage;
+            myPosition = aPosition;
+        }
+
+        @Override
+        public Rectangle getKey() {
+            return myPage.myRectangle[myPosition];
+        }
+
+        @Override
+        public T getValue() {
+            return (T) myPage.myBranch.get(myPosition);
+        }
+
+        @Override
+        public T setValue(final T aValue) {
+            throw new UnsupportedOperationException();
+        }
+    }
+
+    class RtreeEntryIterator extends RtreeIterator<Map.Entry<Rectangle, T>> {
+
+        RtreeEntryIterator(final Rectangle aRect) {
+            super(aRect);
+        }
+
+        @Override
+        protected Object current(final int aStackPosition) {
+            return new RtreeEntry(myPageStack[aStackPosition], myPositionStack[aStackPosition]);
+        }
+    }
+
+    static class Neighbor {
+
+        Object myChild;
+
+        Neighbor myNext;
+
+        int myLevel;
+
+        double myDistance;
+
+        Neighbor(final Object aChild, final double aDistance, final int aLevel) {
+            myChild = aChild;
+            myDistance = aDistance;
+            myLevel = aLevel;
+        }
+    }
+
+    class NeighborIterator<E> extends IterableIterator<E> implements PersistentIterator {
+
+        Neighbor myList;
+
+        int myCounter;
+
+        int myX;
+
+        int myY;
+
+        NeighborIterator(final int aX, final int aY) {
+            myX = aX;
+            myY = aY;
+
+            myCounter = myUpdateCounter;
+
+            if (myHeight == 0) {
+                return;
+            }
+
+            myList = new Neighbor(myRoot, myRoot.cover().distance(aX, aY), myHeight);
+        }
+
+        void insert(final Neighbor aNode) {
+            Neighbor prev = null;
+            Neighbor next = myList;
+
+            final double distance = aNode.myDistance;
+
+            while (next != null && next.myDistance < distance) {
+                prev = next;
+                next = prev.myNext;
+            }
+
+            aNode.myNext = next;
+
+            if (prev == null) {
+                myList = aNode;
+            } else {
+                prev.myNext = aNode;
+            }
+        }
+
+        @Override
+        public boolean hasNext() {
+            if (myCounter != myUpdateCounter) {
+                throw new ConcurrentModificationException();
+            }
+
+            while (true) {
+                final Neighbor neighbor = myList;
+
+                if (neighbor == null) {
+                    return false;
+                }
+
+                if (neighbor.myLevel == 0) {
+                    return true;
+                }
+
+                myList = neighbor.myNext;
+
+                final RtreePage page = (RtreePage) neighbor.myChild;
+
+                for (int index = 0, n = page.myIndex; index < n; index++) {
+                    insert(new Neighbor(page.myBranch.get(index), page.myRectangle[index].distance(myX, myY),
+                            neighbor.myLevel - 1));
+                }
+            }
+        }
+
+        @Override
+        public E next() {
+            final Neighbor neighbor;
+
+            if (!hasNext()) {
+                throw new NoSuchElementException();
+            }
+
+            neighbor = myList;
+            myList = neighbor.myNext;
+
+            Assert.that(neighbor.myLevel == 0);
+
+            return (E) neighbor.myChild;
+        }
+
+        @Override
+        public int nextOID() {
+            return getStorage().getOid(next());
+        }
+
+        @Override
+        public void remove() {
+            throw new UnsupportedOperationException();
+        }
     }
 }
-    
-

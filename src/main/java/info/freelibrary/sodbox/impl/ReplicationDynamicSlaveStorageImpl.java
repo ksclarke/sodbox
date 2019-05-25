@@ -1,33 +1,43 @@
+
 package info.freelibrary.sodbox.impl;
 
-import java.io.*;
-import java.net.*;
+import java.io.IOException;
+import java.net.Socket;
 
-import info.freelibrary.sodbox.*;
+import info.freelibrary.sodbox.IFile;
 
+public class ReplicationDynamicSlaveStorageImpl extends ReplicationSlaveStorageImpl {
 
-public class ReplicationDynamicSlaveStorageImpl extends ReplicationSlaveStorageImpl
-{
-    public ReplicationDynamicSlaveStorageImpl(String host, int port, String pageTimestampFilePath) { 
-        super(pageTimestampFilePath);
-        this.host = host;
-        this.port = port;
+    protected String myHost;
+
+    protected int myPort;
+
+    /**
+     * Creates a replication storage slave.
+     *
+     * @param aHost A host
+     * @param aPort A port
+     * @param aPageTimestampFilePath A page timestamp file path
+     */
+    public ReplicationDynamicSlaveStorageImpl(final String aHost, final int aPort,
+            final String aPageTimestampFilePath) {
+        super(aPageTimestampFilePath);
+
+        myHost = aHost;
+        myPort = aPort;
     }
 
-    public void open(IFile file, long pagePoolSize) {
-        initialized = false;
-        prevIndex = -1;
-        outOfSync = true;
-        super.open(file, pagePoolSize);
+    @Override
+    public void open(final IFile aFile, final long aPagePoolSize) {
+        isInitialized = false;
+        myPreviousIndex = -1;
+        isOutOfSync = true;
+        super.open(aFile, aPagePoolSize);
     }
 
+    @Override
     Socket getSocket() throws IOException {
-        return new Socket(host, port);
+        return new Socket(myHost, myPort);
     }
 
-    protected String host;
-    protected int    port;
-}    
-
-    
-                                               
+}

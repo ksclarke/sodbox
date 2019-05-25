@@ -1,382 +1,498 @@
+
 package info.freelibrary.sodbox.impl;
-import info.freelibrary.sodbox.*;
 
-import java.util.*;
+import java.util.ArrayList;
+import java.util.Date;
+import java.util.Iterator;
+import java.util.NoSuchElementException;
 
-public class TimeSeriesImpl<T extends TimeSeries.Tick> extends PersistentCollection<T> implements TimeSeries<T> { 
-    public ArrayList<T> elements() { 
-        return new ArrayList<T>(this);
+import info.freelibrary.sodbox.Assert;
+import info.freelibrary.sodbox.Index;
+import info.freelibrary.sodbox.IterableIterator;
+import info.freelibrary.sodbox.Key;
+import info.freelibrary.sodbox.PersistentCollection;
+import info.freelibrary.sodbox.Storage;
+import info.freelibrary.sodbox.StorageError;
+import info.freelibrary.sodbox.TimeSeries;
+
+public class TimeSeriesImpl<T extends TimeSeries.Tick> extends PersistentCollection<T> implements TimeSeries<T> {
+
+    private Index myIndex;
+
+    private long myMaxBlockTimeInterval;
+
+    private String myBlockClassName;
+
+    private transient Class myBlockClass;
+
+    TimeSeriesImpl(final Storage aStorage, final Class aBlockClass, final long aMaxBlockTimeInterval) {
+        myBlockClass = aBlockClass;
+        myMaxBlockTimeInterval = aMaxBlockTimeInterval;
+        myBlockClassName = ClassDescriptor.getClassName(aBlockClass);
+        myIndex = aStorage.createIndex(long.class, false);
     }
 
-    public Object[] toArray() { 
+    TimeSeriesImpl() {
+    }
+
+    @Override
+    public ArrayList<T> elements() {
+        return new ArrayList<>(this);
+    }
+
+    @Override
+    public Object[] toArray() {
         return elements().toArray();
     }
 
-    public <E> E[] toArray(E[] arr) { 
-        return elements().toArray(arr);
+    @Override
+    public <E> E[] toArray(final E[] aArray) {
+        return elements().toArray(aArray);
     }
 
-    public boolean add(T tick) { 
-        long time = tick.getTime();
-        Iterator iterator = index.iterator(new Key(time - maxBlockTimeInterval), new Key(time), Index.DESCENT_ORDER);
-        if (iterator.hasNext()) { 
-            insertInBlock((Block)iterator.next(), tick);
-        } else { 
-            addNewBlock(tick);
+    @Override
+    public boolean add(final T aTick) {
+        final long time = aTick.getTime();
+        final Iterator iterator = myIndex.iterator(new Key(time - myMaxBlockTimeInterval), new Key(time),
+                Index.DESCENT_ORDER);
+
+        if (iterator.hasNext()) {
+            insertInBlock((Block) iterator.next(), aTick);
+        } else {
+            addNewBlock(aTick);
         }
+
         return true;
     }
 
-    class TimeSeriesIterator extends IterableIterator<T> { 
-        TimeSeriesIterator(long from, long till) { 
-            pos = -1;
-            this.till = till;
-            blockIterator = index.iterator(new Key(from - maxBlockTimeInterval), new Key(till), Index.ASCENT_ORDER);
-            while (blockIterator.hasNext()) { 
-                Block block = (Block)blockIterator.next();
-                int n = block.used;
-                Tick[] e = block.getTicks();
-                int l = 0, r = n;
-                while (l < r)  {
-                    int i = (l+r) >> 1;
-                    if (from > e[i].getTime()) { 
-                        l = i+1;
-                    } else { 
-                        r = i;
-                    }
-                }
-                Assert.that(l == r && (l == n || e[l].getTime() >= from)); 
-                if (l < n) {
-                    if (e[l].getTime() <= till) { 
-                        pos = l;
-                        currBlock = block;
-                    }
-                    return;
-                }
-            } 
-        }
-
-        public boolean hasNext() { 
-            return pos >= 0;
-        }
-
-        public T next() { 
-            if (pos < 0) { 
-                 throw new NoSuchElementException();
-            }
-            T tick = (T)currBlock.getTicks()[pos];
-            if (++pos == currBlock.used) { 
-                if (blockIterator.hasNext()) { 
-                    currBlock = (Block)blockIterator.next();
-                    pos = 0;
-                } else { 
-                    pos = -1;
-                    return tick;
-                }
-            }
-            if (currBlock.getTicks()[pos].getTime() > till) {
-                pos = -1;
-            }
-            return tick;
-        }
-
-        public void remove() { 
-            throw new UnsupportedOperationException();
-        }
-
-        private Iterator blockIterator;
-        private Block    currBlock;
-        private int      pos;
-        private long     till;
-    }
-                
-            
-    class TimeSeriesReverseIterator extends IterableIterator<T> { 
-        TimeSeriesReverseIterator(long from, long till) { 
-            pos = -1;
-            this.from = from;
-            blockIterator = index.iterator(new Key(from - maxBlockTimeInterval), new Key(till), Index.DESCENT_ORDER);
-            while (blockIterator.hasNext()) { 
-                Block block = (Block)blockIterator.next();
-                int n = block.used;
-                Tick[] e =  block.getTicks();
-                int l = 0, r = n;
-                while (l < r)  {
-                    int i = (l+r) >> 1;
-                    if (till >= e[i].getTime()) { 
-                        l = i+1;
-                    } else { 
-                        r = i;
-                    }
-                }
-                Assert.that(l == r && (l == n || e[l].getTime() > till)); 
-                if (l > 0) {
-                    if (e[l-1].getTime() >= from) { 
-                        pos = l-1;
-                        currBlock = block;
-                    }
-                    return;
-                }
-            } 
-        }
-
-        public boolean hasNext() { 
-            return pos >= 0;
-        }
-
-        public T next() { 
-            if (pos < 0) { 
-                 throw new NoSuchElementException();
-            }
-            T tick = (T)currBlock.getTicks()[pos];
-            if (--pos < 0) { 
-                if (blockIterator.hasNext()) { 
-                    currBlock = (Block)blockIterator.next();
-                    pos = currBlock.used-1;
-                } else { 
-                    pos = -1;
-                    return tick;
-                }
-            }
-            if (currBlock.getTicks()[pos].getTime() < from) {
-                pos = -1;
-            }
-            return tick;
-        }
-
-        public void remove() { 
-            throw new UnsupportedOperationException();
-        }
-
-        private Iterator blockIterator;
-        private Block    currBlock;
-        private int      pos;
-        private long     from;
-    }
-                            
-    public Iterator<T> iterator() { 
+    @Override
+    public Iterator<T> iterator() {
         return iterator(null, null, true);
     }
 
-    public IterableIterator<T> iterator(Date from, Date till) {
-        return iterator(from, till, true);
+    @Override
+    public IterableIterator<T> iterator(final Date aFrom, final Date aTo) {
+        return iterator(aFrom, aTo, true);
     }
 
-    public IterableIterator<T> iterator(boolean ascent) {
-        return iterator(null, null, ascent);
+    @Override
+    public IterableIterator<T> iterator(final boolean aAscent) {
+        return iterator(null, null, aAscent);
     }
 
-    public IterableIterator<T> iterator(Date from, Date till, boolean ascent) { 
-        long low = from == null ? 0 : from.getTime();
-        long high = till == null ? Long.MAX_VALUE : till.getTime();
-        return ascent 
-            ? (IterableIterator<T>)new TimeSeriesIterator(low, high)
-            : (IterableIterator<T>)new TimeSeriesReverseIterator(low, high);
+    @Override
+    public IterableIterator<T> iterator(final Date aFrom, final Date aTo, final boolean aAscent) {
+        final long low = aFrom == null ? 0 : aFrom.getTime();
+        final long high = aTo == null ? Long.MAX_VALUE : aTo.getTime();
+
+        return aAscent ? (IterableIterator<T>) new TimeSeriesIterator(low, high)
+                : (IterableIterator<T>) new TimeSeriesReverseIterator(low, high);
     }
 
+    @Override
     public Date getFirstTime() {
-        Iterator blockIterator = index.iterator();
-        if (blockIterator.hasNext()) { 
-            Block block = (Block)blockIterator.next();            
-            return new Date(block.timestamp);
-        } 
+        final Iterator blockIterator = myIndex.iterator();
+
+        if (blockIterator.hasNext()) {
+            final Block block = (Block) blockIterator.next();
+            return new Date(block.myTimestamp);
+        }
+
         return null;
     }
 
+    @Override
     public Date getLastTime() {
-        Iterator blockIterator = index.iterator(null, null, Index.DESCENT_ORDER);
-        if (blockIterator.hasNext()) { 
-            Block block = (Block)blockIterator.next();            
-            return new Date(block.getTicks()[block.used-1].getTime());
-        } 
+        final Iterator blockIterator = myIndex.iterator(null, null, Index.DESCENT_ORDER);
+
+        if (blockIterator.hasNext()) {
+            final Block block = (Block) blockIterator.next();
+            return new Date(block.getTicks()[block.myUsed - 1].getTime());
+        }
+
         return null;
     }
 
+    @Override
     public int size() {
-        return (int)countTicks();
+        return (int) countTicks();
     }
 
+    @Override
     public long countTicks() {
-        long n = 0;
-        Iterator blockIterator = index.iterator();
-        while (blockIterator.hasNext()) { 
-            Block block = (Block)blockIterator.next();            
-            n += block.used;
+        final Iterator blockIterator = myIndex.iterator();
+
+        long count = 0;
+
+        while (blockIterator.hasNext()) {
+            final Block block = (Block) blockIterator.next();
+            count += block.myUsed;
         }
-        return n;
+
+        return count;
     }
-       
-    public T getTick(Date timestamp) {
-        long time = timestamp.getTime();
-        Iterator blockIterator = index.iterator(new Key(time - maxBlockTimeInterval), new Key(time), Index.ASCENT_ORDER);
-        while (blockIterator.hasNext()) { 
-            Block block = (Block)blockIterator.next();
-            int n = block.used;
-            Tick[] e = block.getTicks();
-            int l = 0, r = n;
-            while (l < r)  {
-                int i = (l+r) >> 1;
-                if (time > e[i].getTime()) { 
-                    l = i+1;
-                } else { 
-                    r = i;
+
+    @Override
+    public T getTick(final Date aTimestamp) {
+        final long time = aTimestamp.getTime();
+        final Iterator blockIterator = myIndex.iterator(new Key(time - myMaxBlockTimeInterval), new Key(time),
+                Index.ASCENT_ORDER);
+
+        while (blockIterator.hasNext()) {
+            final Block block = (Block) blockIterator.next();
+            final int count = block.myUsed;
+            final Tick[] ticks = block.getTicks();
+
+            int left = 0;
+            int right = count;
+
+            while (left < right) {
+                final int index = (left + right) >> 1;
+
+                if (time > ticks[index].getTime()) {
+                    left = index + 1;
+                } else {
+                    right = index;
                 }
             }
-            Assert.that(l == r && (l == n || e[l].getTime() >= time)); 
-            if (l < n && e[l].getTime() == time) { 
-                return (T)e[l];
+
+            Assert.that(left == right && (left == count || ticks[left].getTime() >= time));
+
+            if (left < count && ticks[left].getTime() == time) {
+                return (T) ticks[left];
             }
         }
+
         return null;
     }
 
-    public boolean has(Date timestamp) {
-        return getTick(timestamp) != null;
+    @Override
+    public boolean has(final Date aTimestamp) {
+        return getTick(aTimestamp) != null;
     }
 
-    public int remove(Date from, Date till) {
-        long low = from == null ? 0 : from.getTime();
-        long high = till == null ? Long.MAX_VALUE : till.getTime();
-        int  nRemoved = 0;
-        Key  fromKey = new Key(low - maxBlockTimeInterval);
-        Key  tillKey =  new Key(high);
-        Iterator blockIterator = index.iterator(fromKey, tillKey, Index.ASCENT_ORDER);
-        while (blockIterator.hasNext()) { 
-            Block block = (Block)blockIterator.next();
-            int n = block.used;
-            Tick[] e = block.getTicks();
-            int l = 0, r = n;
-            while (l < r)  {
-                int i = (l+r) >> 1;
-                if (low > e[i].getTime()) { 
-                    l = i+1;
-                } else { 
-                    r = i;
+    @Override
+    public int remove(final Date aFrom, final Date aTo) {
+        final long low = aFrom == null ? 0 : aFrom.getTime();
+        final long high = aTo == null ? Long.MAX_VALUE : aTo.getTime();
+        final Key fromKey = new Key(low - myMaxBlockTimeInterval);
+        final Key tillKey = new Key(high);
+
+        Iterator blockIterator = myIndex.iterator(fromKey, tillKey, Index.ASCENT_ORDER);
+        int removedCount = 0;
+
+        while (blockIterator.hasNext()) {
+            final Block block = (Block) blockIterator.next();
+            final int count = block.myUsed;
+            final Tick[] ticks = block.getTicks();
+
+            int left = 0;
+            int right = count;
+
+            while (left < right) {
+                final int index = (left + right) >> 1;
+
+                if (low > ticks[index].getTime()) {
+                    left = index + 1;
+                } else {
+                    right = index;
                 }
             }
-            Assert.that(l == r && (l == n || e[l].getTime() >= low)); 
-            while (r < n && e[r].getTime() <= high) {
-                r += 1;
-                nRemoved += 1;
+
+            Assert.that(left == right && (left == count || ticks[left].getTime() >= low));
+
+            while (right < count && ticks[right].getTime() <= high) {
+                right += 1;
+                removedCount += 1;
             }
-            if (l == 0 && r == n) { 
-                index.remove(new Key(block.timestamp), block);
-                blockIterator = index.iterator(fromKey, tillKey, Index.ASCENT_ORDER);
+
+            if (left == 0 && right == count) {
+                myIndex.remove(new Key(block.myTimestamp), block);
+                blockIterator = myIndex.iterator(fromKey, tillKey, Index.ASCENT_ORDER);
                 block.deallocate();
-            } else if (l < n && l != r) { 
-                if (l == 0) { 
-                    index.remove(new Key(block.timestamp), block);
-                    block.timestamp = e[r].getTime();
-                    index.put(new Key(block.timestamp), block);
-                    blockIterator = index.iterator(fromKey, tillKey, Index.ASCENT_ORDER);
+            } else if (left < count && left != right) {
+                if (left == 0) {
+                    myIndex.remove(new Key(block.myTimestamp), block);
+                    block.myTimestamp = ticks[right].getTime();
+                    myIndex.put(new Key(block.myTimestamp), block);
+                    blockIterator = myIndex.iterator(fromKey, tillKey, Index.ASCENT_ORDER);
                 }
-                while (r < n) { 
-                    e[l++] = e[r++];
+
+                while (right < count) {
+                    ticks[left++] = ticks[right++];
                 }
-                block.used = l;
+
+                block.myUsed = left;
                 block.modify();
             }
         }
-        return nRemoved;
+
+        return removedCount;
     }
 
-    private void addNewBlock(Tick t)
-    {
-        Block block;
-        try { 
-            block = (Block)blockClass.newInstance();             
-        } catch (Exception x) { 
-            throw new StorageError(StorageError.CONSTRUCTOR_FAILURE, blockClass, x);
+    private void addNewBlock(final Tick aTick) {
+        final Block block;
+
+        try {
+            block = (Block) myBlockClass.newInstance();
+        } catch (final Exception x) {
+            throw new StorageError(StorageError.CONSTRUCTOR_FAILURE, myBlockClass, x);
         }
-        block.timestamp = t.getTime();
-        block.used = 1;
-        block.getTicks()[0] = t;
-        index.put(new Key(block.timestamp), block);
+
+        block.myTimestamp = aTick.getTime();
+        block.myUsed = 1;
+        block.getTicks()[0] = aTick;
+        myIndex.put(new Key(block.myTimestamp), block);
     }
 
-    void insertInBlock(Block block, Tick tick)
-    {
-        long t = tick.getTime();
-        int i, n = block.used;
-        
-        Tick[] e =  block.getTicks();
-        int l = 0, r = n;
-        while (l < r)  {
-            i = (l+r) >> 1;
-            if (t >= e[i].getTime()) { 
-                l = i+1;
-            } else { 
-                r = i;
+    void insertInBlock(final Block aBlock, final Tick aTick) {
+        final long time = aTick.getTime();
+        final int count = aBlock.myUsed;
+        final Tick[] ticks = aBlock.getTicks();
+
+        int right = count;
+        int left = 0;
+        int index;
+
+        while (left < right) {
+            index = (left + right) >> 1;
+
+            if (time >= ticks[index].getTime()) {
+                left = index + 1;
+            } else {
+                right = index;
             }
         }
-        Assert.that(l == r && (l == n || e[l].getTime() >= t));
-        if (r == 0) { 
-            if (e[n-1].getTime() - t > maxBlockTimeInterval || n == e.length) { 
-                addNewBlock(tick);
+
+        Assert.that(left == right && (left == count || ticks[left].getTime() >= time));
+
+        if (right == 0) {
+            if (ticks[count - 1].getTime() - time > myMaxBlockTimeInterval || count == ticks.length) {
+                addNewBlock(aTick);
                 return;
             }
-            if (block.timestamp != t) { 
-                index.remove(new Key(block.timestamp), block);                
-                block.timestamp = t;
-                index.put(new Key(block.timestamp), block);
+
+            if (aBlock.myTimestamp != time) {
+                myIndex.remove(new Key(aBlock.myTimestamp), aBlock);
+                aBlock.myTimestamp = time;
+                myIndex.put(new Key(aBlock.myTimestamp), aBlock);
             }
-        } else if (r == n) {
-            if (t - e[0].getTime() > maxBlockTimeInterval || n == e.length) { 
-                addNewBlock(tick);
+        } else if (right == count) {
+            if (time - ticks[0].getTime() > myMaxBlockTimeInterval || count == ticks.length) {
+                addNewBlock(aTick);
                 return;
-            } 
-        }
-        if (n == e.length) { 
-            addNewBlock(e[n-1]);
-            for (i = n; --i > r; ) { 
-                e[i] = e[i-1];
             }
-        } else { 
-            for (i = n; i > r; i--) { 
-                e[i] = e[i-1];
-            }
-            block.used += 1;
         }
-        e[r] = tick;
-        block.modify();
+
+        if (count == ticks.length) {
+            addNewBlock(ticks[count - 1]);
+
+            for (index = count; --index > right;) {
+                ticks[index] = ticks[index - 1];
+            }
+        } else {
+            for (index = count; index > right; index--) {
+                ticks[index] = ticks[index - 1];
+            }
+
+            aBlock.myUsed += 1;
+        }
+
+        ticks[right] = aTick;
+        aBlock.modify();
     }
 
-    TimeSeriesImpl(Storage storage, Class blockClass, long maxBlockTimeInterval) {
-        this.blockClass = blockClass;
-        this.maxBlockTimeInterval = maxBlockTimeInterval;
-        blockClassName = ClassDescriptor.getClassName(blockClass);
-        index = storage.createIndex(long.class, false);
-    }
-
-    TimeSeriesImpl() {}
-   
+    @Override
     public void onLoad() {
-        blockClass = ClassDescriptor.loadClass(getStorage(), blockClassName);
+        myBlockClass = ClassDescriptor.loadClass(getStorage(), myBlockClassName);
     }
 
+    @Override
     public void deallocateMembers() {
         clear();
     }
 
-    public void clear() { 
-        Iterator blockIterator = index.iterator();
+    @Override
+    public void clear() {
+        final Iterator blockIterator = myIndex.iterator();
         while (blockIterator.hasNext()) {
-            Block block = (Block)blockIterator.next();
+            final Block block = (Block) blockIterator.next();
             block.deallocate();
         }
-        index.clear();
-    }        
+        myIndex.clear();
+    }
 
-
+    @Override
     public void deallocate() {
         clear();
-        index.deallocate();
+        myIndex.deallocate();
         super.deallocate();
     }
 
-    private Index index;
-    private long  maxBlockTimeInterval;
-    private String blockClassName;
-    private transient Class blockClass;
-}
+    class TimeSeriesIterator extends IterableIterator<T> {
 
+        private Iterator myBlockIterator;
+
+        private Block myCurrentBlock;
+
+        private int myPosition;
+
+        private long myTo;
+
+        TimeSeriesIterator(final long aFrom, final long aTo) {
+            myPosition = -1;
+            myTo = aTo;
+            myBlockIterator = myIndex.iterator(new Key(aFrom - myMaxBlockTimeInterval), new Key(aTo),
+                    Index.ASCENT_ORDER);
+
+            while (myBlockIterator.hasNext()) {
+                final Block block = (Block) myBlockIterator.next();
+                final int count = block.myUsed;
+                final Tick[] ticks = block.getTicks();
+
+                int left = 0;
+                int right = count;
+
+                while (left < right) {
+                    final int i = (left + right) >> 1;
+
+                    if (aFrom > ticks[i].getTime()) {
+                        left = i + 1;
+                    } else {
+                        right = i;
+                    }
+                }
+
+                Assert.that(left == right && (left == count || ticks[left].getTime() >= aFrom));
+
+                if (left < count) {
+                    if (ticks[left].getTime() <= aTo) {
+                        myPosition = left;
+                        myCurrentBlock = block;
+                    }
+
+                    return;
+                }
+            }
+        }
+
+        @Override
+        public boolean hasNext() {
+            return myPosition >= 0;
+        }
+
+        @Override
+        public T next() {
+            if (myPosition < 0) {
+                throw new NoSuchElementException();
+            }
+
+            final T tick = (T) myCurrentBlock.getTicks()[myPosition];
+
+            if (++myPosition == myCurrentBlock.myUsed) {
+                if (myBlockIterator.hasNext()) {
+                    myCurrentBlock = (Block) myBlockIterator.next();
+                    myPosition = 0;
+                } else {
+                    myPosition = -1;
+                    return tick;
+                }
+            }
+
+            if (myCurrentBlock.getTicks()[myPosition].getTime() > myTo) {
+                myPosition = -1;
+            }
+
+            return tick;
+        }
+
+        @Override
+        public void remove() {
+            throw new UnsupportedOperationException();
+        }
+    }
+
+    class TimeSeriesReverseIterator extends IterableIterator<T> {
+
+        private Iterator myBlockIterator;
+
+        private Block myCurrentBlock;
+
+        private int myPosition;
+
+        private long myFrom;
+
+        TimeSeriesReverseIterator(final long aFrom, final long aTo) {
+            myPosition = -1;
+
+            this.myFrom = aFrom;
+            myBlockIterator = myIndex.iterator(new Key(aFrom - myMaxBlockTimeInterval), new Key(aTo),
+                    Index.DESCENT_ORDER);
+
+            while (myBlockIterator.hasNext()) {
+                final Block block = (Block) myBlockIterator.next();
+                final int count = block.myUsed;
+                final Tick[] ticks = block.getTicks();
+
+                int left = 0;
+                int right = count;
+
+                while (left < right) {
+                    final int index = (left + right) >> 1;
+
+                    if (aTo >= ticks[index].getTime()) {
+                        left = index + 1;
+                    } else {
+                        right = index;
+                    }
+                }
+
+                Assert.that(left == right && (left == count || ticks[left].getTime() > aTo));
+
+                if (left > 0) {
+                    if (ticks[left - 1].getTime() >= aFrom) {
+                        myPosition = left - 1;
+                        myCurrentBlock = block;
+                    }
+
+                    return;
+                }
+            }
+        }
+
+        @Override
+        public boolean hasNext() {
+            return myPosition >= 0;
+        }
+
+        @Override
+        public T next() {
+            if (myPosition < 0) {
+                throw new NoSuchElementException();
+            }
+
+            final T tick = (T) myCurrentBlock.getTicks()[myPosition];
+
+            if (--myPosition < 0) {
+                if (myBlockIterator.hasNext()) {
+                    myCurrentBlock = (Block) myBlockIterator.next();
+                    myPosition = myCurrentBlock.myUsed - 1;
+                } else {
+                    myPosition = -1;
+                    return tick;
+                }
+            }
+
+            if (myCurrentBlock.getTicks()[myPosition].getTime() < myFrom) {
+                myPosition = -1;
+            }
+
+            return tick;
+        }
+
+        @Override
+        public void remove() {
+            throw new UnsupportedOperationException();
+        }
+    }
+}

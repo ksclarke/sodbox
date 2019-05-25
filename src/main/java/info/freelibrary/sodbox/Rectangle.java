@@ -1,3 +1,4 @@
+
 package info.freelibrary.sodbox;
 
 /**
@@ -5,216 +6,220 @@ package info.freelibrary.sodbox;
  */
 public class Rectangle implements IValue, Cloneable {
 
-	private int top;
-	private int left;
-	private int bottom;
-	private int right;
+    private int myTop;
 
-	/**
-	 * Default constructor for <code>Rectangle</code>.
-	 */
-	public Rectangle() {}
+    private int myLeft;
 
-	/**
-	 * Create copy of the rectangle.
-	 */
-	public Rectangle(Rectangle r) {
-		this.top = r.top;
-		this.left = r.left;
-		this.bottom = r.bottom;
-		this.right = r.right;
-	}
+    private int myBottom;
 
-	/**
-	 * Smallest Y coordinate of the rectangle.
-	 */
-	public final int getTop() {
-		return top;
-	}
+    private int myRight;
 
-	/**
-	 * Smallest X coordinate of the rectangle.
-	 */
-	public final int getLeft() {
-		return left;
-	}
+    /**
+     * Default constructor for <code>Rectangle</code>.
+     */
+    public Rectangle() {
+    }
 
-	/**
-	 * Greatest Y coordinate of the rectangle.
-	 */
-	public final int getBottom() {
-		return bottom;
-	}
+    /**
+     * Create copy of the rectangle.
+     *
+     * @param aRectangle A rectangle
+     */
+    public Rectangle(final Rectangle aRectangle) {
+        this.myTop = aRectangle.myTop;
+        this.myLeft = aRectangle.myLeft;
+        this.myBottom = aRectangle.myBottom;
+        this.myRight = aRectangle.myRight;
+    }
 
-	/**
-	 * Greatest X coordinate of the rectangle.
-	 */
-	public final int getRight() {
-		return right;
-	}
+    /**
+     * Construct rectangle with specified coordinates.
+     */
+    public Rectangle(final int aTop, final int aLeft, final int aBottom, final int aRight) {
+        Assert.that(aTop <= aBottom && aLeft <= aRight);
 
-	/**
-	 * Rectangle's area.
-	 */
-	public final long area() {
-		return (long) (bottom - top) * (right - left);
-	}
+        this.myTop = aTop;
+        this.myLeft = aLeft;
+        this.myBottom = aBottom;
+        this.myRight = aRight;
+    }
 
-	/**
-	 * Area of covered rectangle for two specified rectangles.
-	 */
-	public static long joinArea(Rectangle a, Rectangle b) {
-		int left = (a.left < b.left) ? a.left : b.left;
-		int right = (a.right > b.right) ? a.right : b.right;
-		int top = (a.top < b.top) ? a.top : b.top;
-		int bottom = (a.bottom > b.bottom) ? a.bottom : b.bottom;
+    /**
+     * Smallest Y coordinate of the rectangle.
+     */
+    public final int getTop() {
+        return myTop;
+    }
 
-		return (long) (bottom - top) * (right - left);
-	}
+    /**
+     * Smallest X coordinate of the rectangle.
+     */
+    public final int getLeft() {
+        return myLeft;
+    }
 
-	/**
-	 * Calculate distance from the specified point to the rectangle.
-	 */
-	public double distance(int x, int y) {
-		if (x >= left && x <= right) {
-			if (y >= top) {
-				if (y <= bottom) {
-					return 0;
-				}
-				else {
-					return y - bottom;
-				}
-			}
-			else {
-				return top - y;
-			}
-		}
-		else if (y >= top && y <= bottom) {
-			if (x < left) {
-				return left - x;
-			}
-			else {
-				return x - right;
-			}
-		}
+    /**
+     * Greatest Y coordinate of the rectangle.
+     */
+    public final int getBottom() {
+        return myBottom;
+    }
 
-		int dx = x < left ? left - x : x - right;
-		int dy = y < top ? top - y : y - bottom;
+    /**
+     * Greatest X coordinate of the rectangle.
+     */
+    public final int getRight() {
+        return myRight;
+    }
 
-		return Math.sqrt((double) dx * dx + (double) dy * dy);
-	}
+    /**
+     * Rectangle's area.
+     */
+    public final long area() {
+        return (long) (myBottom - myTop) * (myRight - myLeft);
+    }
 
-	/**
-	 * Clone the rectangle.
-	 */
-	public Object clone() {
-		try {
-			Rectangle r = (Rectangle) super.clone();
+    /**
+     * Area of covered rectangle for two specified rectangles.
+     */
+    public static long joinArea(final Rectangle a1stRectangle, final Rectangle a2ndRectangle) {
+        final int left = a1stRectangle.myLeft < a2ndRectangle.myLeft ? a1stRectangle.myLeft : a2ndRectangle.myLeft;
+        final int right = a1stRectangle.myRight > a2ndRectangle.myRight ? a1stRectangle.myRight
+                : a2ndRectangle.myRight;
+        final int top = a1stRectangle.myTop < a2ndRectangle.myTop ? a1stRectangle.myTop : a2ndRectangle.myTop;
+        final int bottom = a1stRectangle.myBottom > a2ndRectangle.myBottom ? a1stRectangle.myBottom
+                : a2ndRectangle.myBottom;
 
-			r.top = this.top;
-			r.left = this.left;
-			r.bottom = this.bottom;
-			r.right = this.right;
+        return (long) (bottom - top) * (right - left);
+    }
 
-			return r;
-		}
-		catch (CloneNotSupportedException e) {
-			// this shouldn't happen, since we are Cloneable
-			throw new InternalError();
-		}
-	}
+    /**
+     * Calculate distance from the specified point to the rectangle.
+     */
+    public double distance(final int aX, final int aY) {
+        if (aX >= myLeft && aX <= myRight) {
+            if (aY >= myTop) {
+                if (aY <= myBottom) {
+                    return 0;
+                } else {
+                    return aY - myBottom;
+                }
+            } else {
+                return myTop - aY;
+            }
+        } else if (aY >= myTop && aY <= myBottom) {
+            if (aX < myLeft) {
+                return myLeft - aX;
+            } else {
+                return aX - myRight;
+            }
+        }
 
-	/**
-	 * Construct rectangle with specified coordinates.
-	 */
-	public Rectangle(int top, int left, int bottom, int right) {
-		Assert.that(top <= bottom && left <= right);
+        final int dx = aX < myLeft ? myLeft - aX : aX - myRight;
+        final int dy = aY < myTop ? myTop - aY : aY - myBottom;
 
-		this.top = top;
-		this.left = left;
-		this.bottom = bottom;
-		this.right = right;
-	}
+        return Math.sqrt((double) dx * dx + (double) dy * dy);
+    }
 
-	/**
-	 * Join two rectangles. This rectangle is updates to contain cover of this
-	 * and specified rectangle.
-	 * 
-	 * @param r rectangle to be joined with this rectangle
-	 */
-	public final void join(Rectangle r) {
-		if (left > r.left) {
-			left = r.left;
-		}
+    /**
+     * Clone the rectangle.
+     */
+    @Override
+    public Object clone() {
+        try {
+            final Rectangle r = (Rectangle) super.clone();
 
-		if (right < r.right) {
-			right = r.right;
-		}
+            r.myTop = this.myTop;
+            r.myLeft = this.myLeft;
+            r.myBottom = this.myBottom;
+            r.myRight = this.myRight;
 
-		if (top > r.top) {
-			top = r.top;
-		}
+            return r;
+        } catch (final CloneNotSupportedException e) {
+            // this shouldn't happen, since we are Cloneable
+            throw new InternalError();
+        }
+    }
 
-		if (bottom < r.bottom) {
-			bottom = r.bottom;
-		}
-	}
+    /**
+     * Join two rectangles. This rectangle is updates to contain cover of this and specified rectangle.
+     *
+     * @param aRectangle rectangle to be joined with this rectangle
+     */
+    public final void join(final Rectangle aRectangle) {
+        if (myLeft > aRectangle.myLeft) {
+            myLeft = aRectangle.myLeft;
+        }
 
-	/**
-	 * Non destructive join of two rectangles.
-	 * 
-	 * @param a first joined rectangle
-	 * @param b second joined rectangle
-	 * @return rectangle containing cover of these two rectangles
-	 */
-	public static Rectangle join(Rectangle a, Rectangle b) {
-		Rectangle r = new Rectangle(a);
+        if (myRight < aRectangle.myRight) {
+            myRight = aRectangle.myRight;
+        }
 
-		r.join(b);
+        if (myTop > aRectangle.myTop) {
+            myTop = aRectangle.myTop;
+        }
 
-		return r;
-	}
+        if (myBottom < aRectangle.myBottom) {
+            myBottom = aRectangle.myBottom;
+        }
+    }
 
-	/**
-	 * Checks if this rectangle intersects with specified rectangle.
-	 */
-	public final boolean intersects(Rectangle r) {
-		return left <= r.right && top <= r.bottom && right >= r.left
-				&& bottom >= r.top;
-	}
+    /**
+     * Non destructive join of two rectangles.
+     *
+     * @param a1stRectangle first joined rectangle
+     * @param a2ndRectangle second joined rectangle
+     * @return rectangle containing cover of these two rectangles
+     */
+    public static Rectangle join(final Rectangle a1stRectangle, final Rectangle a2ndRectangle) {
+        final Rectangle rectangle = new Rectangle(a1stRectangle);
 
-	/**
-	 * Checks if this rectangle contains the specified rectangle.
-	 */
-	public final boolean contains(Rectangle r) {
-		return left <= r.left && top <= r.top && right >= r.right
-				&& bottom >= r.bottom;
-	}
+        rectangle.join(a2ndRectangle);
 
-	/**
-	 * Check if two rectangles are equal.
-	 */
-	public boolean equals(Object o) {
-		if (o instanceof Rectangle) {
-			Rectangle r = (Rectangle) o;
+        return rectangle;
+    }
 
-			return left == r.left && top == r.top && right == r.right
-					&& bottom == r.bottom;
-		}
+    /**
+     * Checks if this rectangle intersects with specified rectangle.
+     */
+    public final boolean intersects(final Rectangle aRectangle) {
+        return myLeft <= aRectangle.myRight && myTop <= aRectangle.myBottom && myRight >= aRectangle.myLeft &&
+                myBottom >= aRectangle.myTop;
+    }
 
-		return false;
-	}
+    /**
+     * Checks if this rectangle contains the specified rectangle.
+     */
+    public final boolean contains(final Rectangle aRectangle) {
+        return myLeft <= aRectangle.myLeft && myTop <= aRectangle.myTop && myRight >= aRectangle.myRight &&
+                myBottom >= aRectangle.myBottom;
+    }
 
-	/**
-	 * Hash code consists of all rectangle coordinates.
-	 */
-	public int hashCode() {
-		return top ^ (bottom << 1) ^ (left << 2) ^ (right << 3);
-	}
+    /**
+     * Check if two rectangles are equal.
+     */
+    @Override
+    public boolean equals(final Object aObject) {
+        if (aObject instanceof Rectangle) {
+            final Rectangle r = (Rectangle) aObject;
 
-	public String toString() {
-		return "top=" + top + ", left=" + left + ", bottom=" + bottom
-				+ ", right=" + right;
-	}
+            return myLeft == r.myLeft && myTop == r.myTop && myRight == r.myRight && myBottom == r.myBottom;
+        }
+
+        return false;
+    }
+
+    /**
+     * Hash code consists of all rectangle coordinates.
+     */
+    @Override
+    public int hashCode() {
+        return myTop ^ myBottom << 1 ^ myLeft << 2 ^ myRight << 3;
+    }
+
+    @Override
+    public String toString() {
+        return "top=" + myTop + ", left=" + myLeft + ", bottom=" + myBottom + ", right=" + myRight;
+    }
 
 }

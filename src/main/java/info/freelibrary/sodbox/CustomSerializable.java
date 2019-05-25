@@ -1,3 +1,4 @@
+
 package info.freelibrary.sodbox;
 
 /**
@@ -5,13 +6,13 @@ package info.freelibrary.sodbox;
  */
 public interface CustomSerializable {
 
-	/**
-	 * Get string representation of object. This string representation may be
-	 * used by CustomSerailize.parse method to create new instance of this
-	 * object.
-	 * 
-	 * @return string representation of object
-	 */
-	public String toString();
+    /**
+     * Get string representation of object. This string representation may be used by CustomSerailize.parse method to
+     * create new instance of this object.
+     *
+     * @return string representation of object
+     */
+    @Override
+    String toString();
 
 }

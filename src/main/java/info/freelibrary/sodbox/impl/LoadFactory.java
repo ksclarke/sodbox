@@ -1,5 +1,14 @@
+
 package info.freelibrary.sodbox.impl;
 
-public interface LoadFactory { 
-    Object create(ClassDescriptor desc);
+public interface LoadFactory {
+
+    /**
+     * Create an object.
+     *
+     * @param aClassDescriptor A class descriptor
+     * @return The constructed object
+     */
+    Object create(ClassDescriptor aClassDescriptor);
+
 }

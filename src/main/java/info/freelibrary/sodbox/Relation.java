@@ -1,3 +1,4 @@
+
 package info.freelibrary.sodbox;
 
 /**
@@ -5,37 +6,38 @@ package info.freelibrary.sodbox;
  */
 public abstract class Relation<M, O> extends Persistent implements Link<M> {
 
-	private O owner;
+    private O myOwner;
 
-	protected Relation() {}
+    protected Relation() {
+    }
 
-	/**
-	 * Relation constructor. Creates empty relation with specified owner and no
-	 * members. Members can be added to the relation later.
-	 * 
-	 * @param owner owner of the relation
-	 */
-	public Relation(O owner) {
-		this.owner = owner;
-	}
+    /**
+     * Relation constructor. Creates empty relation with specified owner and no members. Members can be added to the
+     * relation later.
+     *
+     * @param aOwner owner of the relation
+     */
+    public Relation(final O aOwner) {
+        myOwner = aOwner;
+    }
 
-	/**
-	 * Get relation owner.
-	 * 
-	 * @return owner of the relation
-	 */
-	public O getOwner() {
-		return owner;
-	}
+    /**
+     * Get relation owner.
+     *
+     * @return owner of the relation
+     */
+    public O getOwner() {
+        return myOwner;
+    }
 
-	/**
-	 * Set relation owner.
-	 * 
-	 * @param owner new owner of the relation
-	 */
-	public void setOwner(O owner) {
-		this.owner = owner;
-		modify();
-	}
+    /**
+     * Set relation owner.
+     *
+     * @param aOwner new owner of the relation
+     */
+    public void setOwner(final O aOwner) {
+        myOwner = aOwner;
+        modify();
+    }
 
 }

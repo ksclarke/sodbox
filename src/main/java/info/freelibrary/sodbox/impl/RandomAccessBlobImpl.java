@@ -1,233 +1,321 @@
-package info.freelibrary.sodbox.impl;
 
-import info.freelibrary.sodbox.*;
+package info.freelibrary.sodbox.impl;
 
 import java.util.Iterator;
 import java.util.Map;
 
-public class RandomAccessBlobImpl extends PersistentResource implements Blob { 
-    long  size;
-    Index chunks;
+import info.freelibrary.sodbox.Assert;
+import info.freelibrary.sodbox.Blob;
+import info.freelibrary.sodbox.Index;
+import info.freelibrary.sodbox.Key;
+import info.freelibrary.sodbox.Persistent;
+import info.freelibrary.sodbox.PersistentResource;
+import info.freelibrary.sodbox.RandomAccessInputStream;
+import info.freelibrary.sodbox.RandomAccessOutputStream;
+import info.freelibrary.sodbox.Storage;
+
+public class RandomAccessBlobImpl extends PersistentResource implements Blob {
+
+    static final int CHUNK_SIZE = Page.PAGE_SIZE - ObjectHeader.SIZE_OF;
+
+    long mySize;
+
+    Index myChunks;
+
+    RandomAccessBlobImpl(final Storage aStorage) {
+        super(aStorage);
+        myChunks = aStorage.createIndex(long.class, true);
+    }
+
+    RandomAccessBlobImpl() {
+    }
+
+    @Override
+    public RandomAccessInputStream getInputStream() {
+        return getInputStream(0);
+    }
+
+    @Override
+    public RandomAccessInputStream getInputStream(final int aFlags) {
+        return new BlobInputStream();
+    }
+
+    @Override
+    public RandomAccessOutputStream getOutputStream() {
+        return getOutputStream(0);
+    }
+
+    @Override
+    public RandomAccessOutputStream getOutputStream(final boolean aMultisession) {
+        return getOutputStream(0);
+    }
+
+    @Override
+    public RandomAccessOutputStream getOutputStream(final long aPosition, final boolean aMultisession) {
+        final RandomAccessOutputStream stream = getOutputStream(aMultisession);
+
+        stream.setPosition(aPosition);
+
+        return stream;
+    }
+
+    @Override
+    public RandomAccessOutputStream getOutputStream(final int aFlags) {
+        return new BlobOutputStream(aFlags);
+    }
+
+    @Override
+    public void deallocate() {
+        final Iterator iterator = myChunks.iterator();
+
+        while (iterator.hasNext()) {
+            iterator.next();
+            iterator.remove();
+        }
+
+        myChunks.clear();
+
+        super.deallocate();
+    }
 
     static class Chunk extends Persistent {
-        byte[] body;
 
-        Chunk() {}
+        byte[] myBody;
 
-        Chunk(Storage db) {
-            super(db);
-            body = new byte[CHUNK_SIZE];
+        Chunk() {
+        }
+
+        Chunk(final Storage aStorage) {
+            super(aStorage);
+
+            myBody = new byte[CHUNK_SIZE];
         }
     }
 
-    static final int CHUNK_SIZE = Page.pageSize - ObjectHeader.sizeof; 
-
     class BlobInputStream extends RandomAccessInputStream {
-        protected Chunk currChunk;
-        protected long  currPos;
-        protected long  currChunkPos;
-        protected Iterator iterator;
 
+        protected Chunk myCurrentChunk;
+
+        protected long myCurrentPosition;
+
+        protected long myCurrentChunkPosition;
+
+        protected Iterator myIterator;
+
+        protected BlobInputStream() {
+            setPosition(0);
+        }
+
+        @Override
         public int read() {
-            byte[] b = new byte[1];
+            final byte[] b = new byte[1];
             return read(b, 0, 1) == 1 ? b[0] & 0xFF : -1;
         }
 
-        public int read(byte b[], int off, int len) {
-            if (currPos >= size) { 
+        @Override
+        public int read(final byte[] aBytes, final int aOffset, final int aLength) {
+            int length = aLength;
+            int offset = aOffset;
+
+            if (myCurrentPosition >= mySize) {
                 return -1;
             }
-            long rest = size - currPos;
-            if (len > rest) { 
-                len = (int)rest;
+
+            final long rest = mySize - myCurrentPosition;
+
+            if (length > rest) {
+                length = (int) rest;
             }
-            int rc = len;
-            while (len > 0) { 
-                if (currPos >= currChunkPos + CHUNK_SIZE) {
-                    Map.Entry e = (Map.Entry)iterator.next();
-                    currChunkPos = ((Long)e.getKey()).longValue();
-                    currChunk = (Chunk)e.getValue();
-                    Assert.that(currPos < currChunkPos + CHUNK_SIZE);
+
+            final int read = length;
+
+            while (length > 0) {
+                if (myCurrentPosition >= myCurrentChunkPosition + CHUNK_SIZE) {
+                    final Map.Entry entry = (Map.Entry) myIterator.next();
+
+                    myCurrentChunkPosition = ((Long) entry.getKey()).longValue();
+                    myCurrentChunk = (Chunk) entry.getValue();
+                    Assert.that(myCurrentPosition < myCurrentChunkPosition + CHUNK_SIZE);
                 }
-                if (currPos < currChunkPos) { 
-                    int fill = len < currChunkPos - currPos ? len : (int)(currChunkPos - currPos);
-                    len -= fill;
-                    currPos += fill;
-                    while (--fill >= 0) { 
-                        b[off++] = 0;
+
+                if (myCurrentPosition < myCurrentChunkPosition) {
+                    int fill = length < myCurrentChunkPosition - myCurrentPosition ? length
+                            : (int) (myCurrentChunkPosition - myCurrentPosition);
+
+                    length -= fill;
+                    myCurrentPosition += fill;
+
+                    while (--fill >= 0) {
+                        aBytes[offset++] = 0;
                     }
                 }
-                int chunkOffs = (int)(currPos - currChunkPos);
-                int copy = len < CHUNK_SIZE - chunkOffs ? len : CHUNK_SIZE - chunkOffs;
-                System.arraycopy(currChunk.body, chunkOffs, b, off, copy);
-                len -= copy;
-                off += copy;
-                currPos += copy;
+
+                final int chunkOffs = (int) (myCurrentPosition - myCurrentChunkPosition);
+                final int copy = length < CHUNK_SIZE - chunkOffs ? length : CHUNK_SIZE - chunkOffs;
+
+                System.arraycopy(myCurrentChunk.myBody, chunkOffs, aBytes, offset, copy);
+
+                length -= copy;
+                offset += copy;
+                myCurrentPosition += copy;
             }
-            return rc;
+
+            return read;
         }
 
-        public long setPosition(long newPos) { 
-            if (newPos < 0) { 
+        @Override
+        public long setPosition(final long aNewPosition) {
+            final Key key;
+
+            if (aNewPosition < 0) {
                 return -1;
             }
-            currPos = newPos > size ? size : newPos;
-            iterator = chunks.entryIterator(new Key(currPos/CHUNK_SIZE*CHUNK_SIZE), null, Index.ASCENT_ORDER);
-            currChunkPos = Long.MIN_VALUE;
-            currChunk = null;
-            return currPos;
+
+            myCurrentPosition = aNewPosition > mySize ? mySize : aNewPosition;
+            key = new Key(myCurrentPosition / CHUNK_SIZE * CHUNK_SIZE);
+            myIterator = myChunks.entryIterator(key, null, Index.ASCENT_ORDER);
+            myCurrentChunkPosition = Long.MIN_VALUE;
+            myCurrentChunk = null;
+
+            return myCurrentPosition;
         }
 
-        public long getPosition() { 
-            return currPos;
+        @Override
+        public long getPosition() {
+            return myCurrentPosition;
         }
 
+        @Override
         public long size() {
-            return size;
+            return mySize;
         }
 
-        public long skip(long offs) {
-            return setPosition(currPos + offs);
+        @Override
+        public long skip(final long aOffset) {
+            return setPosition(myCurrentPosition + aOffset);
         }
 
+        @Override
         public int available() {
-            return (int)(size - currPos);
+            return (int) (mySize - myCurrentPosition);
         }
 
+        @Override
         public void close() {
-            currChunk = null;
-            iterator = null;
+            myCurrentChunk = null;
+            myIterator = null;
         }
 
-        protected BlobInputStream() {  
-            setPosition(0);
-        }
     }
 
     class BlobOutputStream extends RandomAccessOutputStream {
-        protected Chunk currChunk;
-        protected long  currPos;
-        protected long  currChunkPos;
-        protected Iterator iterator;
 
-        public void write(int b) { 
-            byte[] buf = new byte[1];
-            buf[0] = (byte)b;
+        protected Chunk myCurrentChunk;
+
+        protected long myCurrentPosition;
+
+        protected long myCurrentChunkPosition;
+
+        protected Iterator myIterator;
+
+        protected BlobOutputStream(final int aFlags) {
+            setPosition((aFlags & APPEND) != 0 ? mySize : 0);
+        }
+
+        @Override
+        public void write(final int aByte) {
+            final byte[] buf = new byte[1];
+
+            buf[0] = (byte) aByte;
             write(buf, 0, 1);
         }
 
-        public void write(byte b[], int off, int len) { 
-            while (len > 0) {
+        @SuppressWarnings("unchecked")
+        @Override
+        public void write(final byte[] aBytes, final int aOffset, final int aLength) {
+            int length = aLength;
+            int offset = aOffset;
+
+            while (length > 0) {
                 boolean newChunk = false;
-                if (currPos >= currChunkPos + CHUNK_SIZE) {
-                    if (iterator.hasNext()) { 
-                        Map.Entry e = (Map.Entry)iterator.next();
-                        currChunkPos = ((Long)e.getKey()).longValue();
-                        currChunk = (Chunk)e.getValue();
-                        Assert.that(currPos < currChunkPos + CHUNK_SIZE);
-                    } else { 
-                        currChunk = new Chunk(getStorage());
-                        currChunkPos = currPos/CHUNK_SIZE*CHUNK_SIZE;
+
+                if (myCurrentPosition >= myCurrentChunkPosition + CHUNK_SIZE) {
+                    if (myIterator.hasNext()) {
+                        final Map.Entry e = (Map.Entry) myIterator.next();
+
+                        myCurrentChunkPosition = ((Long) e.getKey()).longValue();
+                        myCurrentChunk = (Chunk) e.getValue();
+                        Assert.that(myCurrentPosition < myCurrentChunkPosition + CHUNK_SIZE);
+                    } else {
+                        myCurrentChunk = new Chunk(getStorage());
+                        myCurrentChunkPosition = myCurrentPosition / CHUNK_SIZE * CHUNK_SIZE;
                         newChunk = true;
                     }
                 }
-                if (currPos < currChunkPos) { 
-                    currChunk = new Chunk(getStorage());
-                    currChunkPos = currPos/CHUNK_SIZE*CHUNK_SIZE;
+
+                if (myCurrentPosition < myCurrentChunkPosition) {
+                    myCurrentChunk = new Chunk(getStorage());
+                    myCurrentChunkPosition = myCurrentPosition / CHUNK_SIZE * CHUNK_SIZE;
                     newChunk = true;
                 }
-                int chunkOffs = (int)(currPos - currChunkPos);
-                int copy = len < CHUNK_SIZE - chunkOffs ? len : CHUNK_SIZE - chunkOffs;
-                System.arraycopy(b, off, currChunk.body, chunkOffs, copy);
-                len -= copy;
-                currPos += copy;
-                off += copy;
-                if (newChunk) { 
-                    chunks.put(new Key(currChunkPos), currChunk);
-                    iterator = chunks.entryIterator(new Key(currChunkPos + CHUNK_SIZE), null, Index.ASCENT_ORDER);
-                } else { 
-                    currChunk.modify();
+
+                final int chunkOffs = (int) (myCurrentPosition - myCurrentChunkPosition);
+                final int copy = length < CHUNK_SIZE - chunkOffs ? length : CHUNK_SIZE - chunkOffs;
+
+                System.arraycopy(aBytes, offset, myCurrentChunk.myBody, chunkOffs, copy);
+
+                length -= copy;
+                myCurrentPosition += copy;
+                offset += copy;
+
+                if (newChunk) {
+                    myChunks.put(new Key(myCurrentChunkPosition), myCurrentChunk);
+                    myIterator = myChunks.entryIterator(new Key(myCurrentChunkPosition + CHUNK_SIZE), null,
+                            Index.ASCENT_ORDER);
+                } else {
+                    myCurrentChunk.modify();
                 }
             }
-            if (currPos > size) { 
-                size = currPos;
+
+            if (myCurrentPosition > mySize) {
+                mySize = myCurrentPosition;
                 modify();
             }
         }
 
-        public long setPosition(long newPos) { 
-            if (newPos < 0) { 
+        @Override
+        public long setPosition(final long aNewPosition) {
+            if (aNewPosition < 0) {
                 return -1;
             }
-            currPos = newPos;
-            iterator = chunks.entryIterator(new Key(currPos/CHUNK_SIZE*CHUNK_SIZE), null, Index.ASCENT_ORDER);
-            currChunkPos = Long.MIN_VALUE;
-            currChunk = null;
-            return currPos;
+
+            myCurrentPosition = aNewPosition;
+            myIterator = myChunks.entryIterator(new Key(myCurrentPosition / CHUNK_SIZE * CHUNK_SIZE), null,
+                    Index.ASCENT_ORDER);
+            myCurrentChunkPosition = Long.MIN_VALUE;
+            myCurrentChunk = null;
+
+            return myCurrentPosition;
         }
 
-        public long getPosition() { 
-            return currPos;
+        @Override
+        public long getPosition() {
+            return myCurrentPosition;
         }
 
+        @Override
         public long size() {
-            return size;
+            return mySize;
         }
 
-        public long skip(long offs) {
-            return setPosition(currPos + offs);
+        public long skip(final long aOffset) {
+            return setPosition(myCurrentPosition + aOffset);
         }
 
+        @Override
         public void close() {
-            currChunk = null;
-            iterator = null;
-        }
-
-        protected BlobOutputStream(int flags) {  
-            setPosition((flags & APPEND) != 0 ? size : 0);
+            myCurrentChunk = null;
+            myIterator = null;
         }
     }
-
-    public RandomAccessInputStream getInputStream() { 
-        return getInputStream(0);
-    }
-
-    public RandomAccessInputStream getInputStream(int flags) { 
-        return new BlobInputStream();
-    }
-
-    public RandomAccessOutputStream getOutputStream() { 
-        return getOutputStream(0);
-    }
-
-    public RandomAccessOutputStream getOutputStream(boolean multisession) { 
-        return getOutputStream(0);
-    }
-
-    public RandomAccessOutputStream getOutputStream(long position, boolean multisession) { 
-        RandomAccessOutputStream stream = getOutputStream(multisession);
-        stream.setPosition(position);
-        return stream;
-    }
-
-    public RandomAccessOutputStream getOutputStream(int flags) { 
-        return new BlobOutputStream(flags);
-    }
-
-    public void deallocate() { 
-        Iterator iterator = chunks.iterator();
-        while (iterator.hasNext()) { 
-            iterator.next();
-            iterator.remove();
-        }
-        chunks.clear();
-        super.deallocate();
-    }
-
-    RandomAccessBlobImpl(Storage storage) { 
-        super(storage);
-        chunks = storage.createIndex(long.class, true);
-    }
-
-    RandomAccessBlobImpl() {}
-}   
+}

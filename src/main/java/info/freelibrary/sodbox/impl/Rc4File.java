@@ -1,5 +1,7 @@
+
 package info.freelibrary.sodbox.impl;
-import  info.freelibrary.sodbox.*;
+
+import info.freelibrary.sodbox.IFile;
 
 // Rc4Cipher - the RC4 encryption method
 //
@@ -29,114 +31,151 @@ import  info.freelibrary.sodbox.*;
 // Visit the ACME Labs Java page for up-to-date versions of this and other
 // fine Java utilities: http://www.acme.com/java/
 
-public class Rc4File implements IFile 
-{ 
-    public void write(long pos, byte[] buf) 
-    {
-        if (pos > length) { 
-            if (zeroPage == null) { 
-                zeroPage = new byte[Page.pageSize];
-                crypt(zeroPage, zeroPage);
-            }
-            do { 
-                file.write(length, zeroPage);
-            } while ((length += Page.pageSize) < pos);
-        } 
-        if (pos == length) { 
-            length += Page.pageSize;
-        }        
-        crypt(buf, cipherBuf);
-        file.write(pos, cipherBuf);
+public class Rc4File implements IFile {
+
+    private final IFile myFile;
+
+    private byte[] myCipherBuffer;
+
+    private byte[] myPattern;
+
+    private long myLength;
+
+    private byte[] myZeroPage;
+
+    /**
+     * Creates a Rc4File.
+     *
+     * @param aFilePath A path for the Rc4File
+     * @param aReadOnly Whether the file is read only
+     * @param aNoFlush Whether the file is flushable
+     * @param aKey A key
+     */
+    public Rc4File(final String aFilePath, final boolean aReadOnly, final boolean aNoFlush, final String aKey) {
+        myFile = new OSFile(aFilePath, aReadOnly, aNoFlush);
+        myLength = myFile.length() & ~(Page.PAGE_SIZE - 1);
+        setKey(aKey.getBytes());
     }
 
-    public int read(long pos, byte[] buf) 
-    { 
-        if (pos < length) { 
-            int rc = file.read(pos, buf);
-            crypt(buf, buf);
-            return rc;
-        } 
+    /**
+     * Creates a Rc4File.
+     *
+     * @param aFile A Rc4File
+     * @param aKey A key
+     */
+    public Rc4File(final IFile aFile, final String aKey) {
+        myFile = aFile;
+        myLength = aFile.length() & ~(Page.PAGE_SIZE - 1);
+        setKey(aKey.getBytes());
+    }
+
+    @Override
+    public void write(final long aPosition, final byte[] aBytes) {
+        if (aPosition > myLength) {
+            if (myZeroPage == null) {
+                myZeroPage = new byte[Page.PAGE_SIZE];
+                crypt(myZeroPage, myZeroPage);
+            }
+
+            do {
+                myFile.write(myLength, myZeroPage);
+            } while ((myLength += Page.PAGE_SIZE) < aPosition);
+        }
+
+        if (aPosition == myLength) {
+            myLength += Page.PAGE_SIZE;
+        }
+
+        crypt(aBytes, myCipherBuffer);
+        myFile.write(aPosition, myCipherBuffer);
+    }
+
+    @Override
+    public int read(final long aPosition, final byte[] aBytes) {
+        if (aPosition < myLength) {
+            final int read = myFile.read(aPosition, aBytes);
+
+            crypt(aBytes, aBytes);
+
+            return read;
+        }
+
         return 0;
     }
 
-    public Rc4File(String filePath, boolean readOnly, boolean noFlush, String key) 
-    { 
-        file = new OSFile(filePath, readOnly, noFlush);
-        length = file.length() & ~(Page.pageSize-1);
-        setKey(key.getBytes());
-    }
+    private void setKey(final byte[] aKey) {
+        final byte[] state = new byte[256];
 
-    public Rc4File(IFile file, String key) 
-    { 
-        this.file = file;
-        length = file.length() & ~(Page.pageSize-1);
-        setKey(key.getBytes());
-    }
+        for (int counter = 0; counter < 256; ++counter) {
+            state[counter] = (byte) counter;
+        }
 
-    private void setKey(byte[] key)
-    {
-        byte[] state = new byte[256];
-	for (int counter = 0; counter < 256; ++counter) { 
-	    state[counter] = (byte)counter;
+        int index1 = 0;
+        int index2 = 0;
+
+        for (int counter = 0; counter < 256; ++counter) {
+            final byte temp;
+
+            index2 = aKey[index1] + state[counter] + index2 & 0xff;
+            temp = state[counter];
+            state[counter] = state[index2];
+            state[index2] = temp;
+            index1 = (index1 + 1) % aKey.length;
         }
-	int index1 = 0;
-	int index2 = 0;
-	for (int counter = 0; counter < 256; ++counter) {
-	    index2 = (key[index1] + state[counter] + index2) & 0xff;
-	    byte temp = state[counter];
-	    state[counter] = state[index2];
-	    state[index2] = temp;
-	    index1 = (index1 + 1) % key.length;
-        }
-        pattern = new byte[Page.pageSize];
-        cipherBuf = new byte[Page.pageSize];
+
+        myPattern = new byte[Page.PAGE_SIZE];
+        myCipherBuffer = new byte[Page.PAGE_SIZE];
+
         int x = 0;
         int y = 0;
-        for (int i = 0; i < Page.pageSize; i++) {
-            x = (x + 1) & 0xff;
-            y = (y + state[x]) & 0xff;
-            byte temp = state[x];
+
+        for (int index = 0; index < Page.PAGE_SIZE; index++) {
+            final byte temp;
+
+            x = x + 1 & 0xff;
+            y = y + state[x] & 0xff;
+            temp = state[x];
             state[x] = state[y];
             state[y] = temp;
-            pattern[i] = state[(state[x] + state[y]) & 0xff];
+            myPattern[index] = state[state[x] + state[y] & 0xff];
         }
     }
 
-    private final void crypt(byte[] clearText, byte[] cipherText)
-    {
-	for (int i = 0; i < clearText.length; i++) {
-	    cipherText[i] = (byte)(clearText[i] ^ pattern[i]);
+    private void crypt(final byte[] aClearText, final byte[] aCipherText) {
+        for (int index = 0; index < aClearText.length; index++) {
+            aCipherText[index] = (byte) (aClearText[index] ^ myPattern[index]);
         }
     }
 
-    public void close() { 
-        file.close();
+    @Override
+    public void close() {
+        myFile.close();
     }
 
-    public boolean tryLock(boolean shared) { 
-        return file.tryLock(shared);
+    @Override
+    public boolean tryLock(final boolean aSharedLock) {
+        return myFile.tryLock(aSharedLock);
     }
 
-    public void lock(boolean shared) { 
-        file.lock(shared);
-        length = file.length() & ~(Page.pageSize-1);
+    @Override
+    public void lock(final boolean aSharedLock) {
+        myFile.lock(aSharedLock);
+        myLength = myFile.length() & ~(Page.PAGE_SIZE - 1);
     }
 
-    public void unlock() { 
-        file.unlock();
+    @Override
+    public void unlock() {
+        myFile.unlock();
     }
 
-    public void sync() { 
-        file.sync();
+    @Override
+    public void sync() {
+        myFile.sync();
     }
 
+    @Override
     public long length() {
-        return file.length();
+        return myFile.length();
     }
 
-    private IFile  file;
-    private byte[] cipherBuf;
-    private byte[] pattern;
-    private long   length;
-    private byte[] zeroPage;
 }

@@ -1,322 +1,446 @@
+
 package info.freelibrary.sodbox.impl;
-import info.freelibrary.sodbox.*;
 
-public class BlobImpl extends PersistentResource implements Blob { 
-    int           size;
-    BlobImpl      next;
-    byte[]        body;
-    transient int used;
+import info.freelibrary.sodbox.Blob;
+import info.freelibrary.sodbox.PersistentResource;
+import info.freelibrary.sodbox.RandomAccessInputStream;
+import info.freelibrary.sodbox.RandomAccessOutputStream;
+import info.freelibrary.sodbox.Storage;
 
-    static final int headerSize = ObjectHeader.sizeof + 3*4;
+public class BlobImpl extends PersistentResource implements Blob {
 
-    void discard(int flags) { 
-        if (--used == 0 && (flags & ENABLE_SEGMENT_CACHING) == 0) { 
+    static final int HEADER_SIZE = ObjectHeader.SIZE_OF + 3 * 4;
+
+    int mySize;
+
+    BlobImpl myNext;
+
+    byte[] myBody;
+
+    transient int myUsed;
+
+    BlobImpl(final Storage aStorage, final int aSize) {
+        super(aStorage);
+        myBody = new byte[aSize];
+    }
+
+    BlobImpl() {
+    }
+
+    void discard(final int aFlags) {
+        if (--myUsed == 0 && (aFlags & ENABLE_SEGMENT_CACHING) == 0) {
             invalidate();
-            next = null;
+            myNext = null;
         }
     }
 
-
-    static class BlobInputStream extends RandomAccessInputStream {
-        protected BlobImpl curr;
-        protected BlobImpl first;
-        protected int      pos;
-        protected int      blobOffs;
-        protected int      flags;
-
-        public int read() {
-            byte[] b = new byte[1];
-            return read(b, 0, 1) == 1 ? b[0] & 0xFF : -1;
-        }
-
-        public int read(byte b[], int off, int len) {
-            if (pos >= first.size) { 
-                return -1;
-            }
-            int rest = first.size - pos;
-            if (len > rest) { 
-                len = rest;
-            }
-            int rc = len;
-            while (len > 0) { 
-                if (blobOffs == curr.body.length) { 
-                    BlobImpl prev = curr;
-                    curr = prev.next;
-                    curr.load();
-                    curr.used += 1;
-                    if (prev != first) { 
-                        prev.discard(flags);
-                    }
-                    blobOffs = 0;
-                }
-                int n = len > curr.body.length - blobOffs ? curr.body.length - blobOffs : len; 
-                System.arraycopy(curr.body, blobOffs, b, off, n);
-                blobOffs += n;
-                off += n;
-                len -= n;
-                pos += n;
-            }
-            return rc;
-        }
-
-        public long setPosition(long newPos) { 
-            if (newPos < pos) { 
-                if (newPos >= pos - blobOffs) { 
-                    blobOffs -= pos - newPos;
-                    return pos = (int)newPos;
-                }
-                if (first != curr) { 
-                    curr.discard(flags);
-                    curr = first;
-                }
-                pos = 0;
-                blobOffs = 0;
-            }
-            skip(newPos - pos);
-            return pos;
-        }
-
-        public long getPosition() { 
-            return pos;
-        }
-
-        public long size() {
-            return first.size;
-        }
-
-        public long skip(long offs) {
-            int rest = first.size - pos;
-            if (offs > rest) { 
-                offs = rest;
-            }
-            int len = (int)offs;
-            while (len > 0) { 
-                if (blobOffs == curr.body.length) { 
-                    BlobImpl prev = curr;
-                    curr = prev.next;
-                    curr.load();
-                    curr.used += 1;
-                    if (prev != first) { 
-                        prev.discard(flags);
-                    }
-                    blobOffs = 0;
-                }
-                int n = len > curr.body.length - blobOffs ? curr.body.length - blobOffs : len; 
-                pos += n;
-                len -= n;
-                blobOffs += n;
-            }
-            return offs;
-        }
-
-
-        public int available() {
-            return first.size - pos;
-        }
-
-        public void close() {
-            curr.discard(flags);
-            if (first != curr) { 
-                first.discard(flags);
-            }
-            curr = first = null;
-        }
-
-        protected BlobInputStream(BlobImpl first, int flags) { 
-            this.flags = flags;
-            this.first = first;
-            first.load();
-            curr = first;
-            first.used += 1;
-        }
-    }
-
-    static class BlobOutputStream extends RandomAccessOutputStream { 
-        protected BlobImpl first;
-        protected BlobImpl curr;
-        protected int      pos;
-        protected int      blobOffs;
-        protected int      flags;
-        protected boolean  modified;
-
-        public void write(int b) { 
-            byte[] buf = new byte[1];
-            buf[0] = (byte)b;
-            write(buf, 0, 1);
-        }
-
-        public void write(byte b[], int off, int len) { 
-            while (len > 0) { 
-                if (blobOffs == curr.body.length) { 
-                    BlobImpl prev = curr;
-                    if (prev.next == null) { 
-                        int length = curr.body.length;
-                        if ((flags & DOUBLE_SEGMENT_SIZE) != 0 && (length << 1) > length) { 
-                            length = ((length + headerSize) << 1) - headerSize;
-                        }
-                        BlobImpl next = new BlobImpl(curr.getStorage(), length);
-                        curr = prev.next = next;
-                        modified = true;
-                    } else {
-                        curr = prev.next;
-                        curr.load();
-                    }
-                    curr.used += 1;
-                    if (prev != first) {
-                        if (modified) { 
-                            prev.store();
-                        }
-                        prev.discard(flags);
-                    }
-                    blobOffs = 0;
-                }
-                int n = len > curr.body.length - blobOffs ? curr.body.length - blobOffs : len;  
-                System.arraycopy(b, off, curr.body, blobOffs, n);
-                modified = true;
-                blobOffs += n;
-                off += n;
-                len -= n;
-                pos += n;
-            }
-            if (pos > first.size) { 
-                first.size = pos;
-            }
-        }
-
-        public void close() {
-            if ((flags & TRUNCATE_LAST_SEGMENT) != 0 && blobOffs < curr.body.length && curr.next == null) { 
-                byte[] tmp = new byte[blobOffs];
-                System.arraycopy(curr.body, 0, tmp, 0, blobOffs);
-                curr.body = tmp;
-            }
-            curr.store();
-            curr.discard(flags);
-            if (curr != first) {
-                first.store();
-                first.discard(flags);
-            }
-            first = curr = null;
-        }
-
-        public long setPosition(long newPos) { 
-            if (newPos < pos) { 
-                if (newPos >= pos - blobOffs) { 
-                    blobOffs -= pos - newPos;
-                    return pos = (int)newPos;
-                }
-                if (first != curr) {
-                    if (modified) { 
-                        curr.store();
-                        modified = false;
-                    }
-                    curr.discard(flags);
-                    curr = first;
-                }
-                pos = 0;
-                blobOffs = 0;
-            }
-            skip(newPos - pos);
-            return pos;
-        }
-
-        public long getPosition() { 
-            return pos;
-        }
-
-        public long size() {
-            return first.size;
-        }
-
-        public long skip(long offs) { 
-            int rest = first.size - pos;
-            if (offs > rest) { 
-                offs = rest;
-            }
-            int len = (int)offs;
-            while (len > 0) { 
-                if (blobOffs == curr.body.length) { 
-                    BlobImpl prev = curr;
-                    curr = prev.next;
-                    curr.load();
-                    curr.used += 1;
-                    if (prev != first) {
-                        if (modified) { 
-                            prev.store();
-                            modified = false;
-                        }
-                        prev.discard(flags);
-                    }
-                    blobOffs = 0;
-                }
-                int n = len > curr.body.length - blobOffs ? curr.body.length - blobOffs : len; 
-                pos += n;
-                len -= n;
-                blobOffs += n;
-            }
-            return offs;
-        }
-            
-
-        BlobOutputStream(BlobImpl first, int flags) { 
-            this.flags = flags;
-            this.first = first;
-            first.load();
-            first.used += 1;
-            curr = first;
-            if ((flags & APPEND) != 0) { 
-                skip(first.size);
-            }
-        }
-    }
-
-    public boolean recursiveLoading() { 
+    @Override
+    public boolean recursiveLoading() {
         return false;
     }
 
-    public RandomAccessInputStream getInputStream() { 
+    @Override
+    public RandomAccessInputStream getInputStream() {
         return getInputStream(0);
     }
 
-    public RandomAccessInputStream getInputStream(int flags) { 
-        return new BlobInputStream(this, flags);
+    @Override
+    public RandomAccessInputStream getInputStream(final int aFlags) {
+        return new BlobInputStream(this, aFlags);
     }
 
-    public RandomAccessOutputStream getOutputStream() { 
+    @Override
+    public RandomAccessOutputStream getOutputStream() {
         return getOutputStream(APPEND);
     }
 
-    public RandomAccessOutputStream getOutputStream(boolean multisession) { 
-        return getOutputStream(multisession ? APPEND : TRUNCATE_LAST_SEGMENT|APPEND);
+    @Override
+    public RandomAccessOutputStream getOutputStream(final boolean aMultisession) {
+        return getOutputStream(aMultisession ? APPEND : TRUNCATE_LAST_SEGMENT | APPEND);
     }
 
-    public RandomAccessOutputStream getOutputStream(long position, boolean multisession) { 
-        RandomAccessOutputStream stream = getOutputStream(multisession);
-        stream.setPosition(position);
+    @Override
+    public RandomAccessOutputStream getOutputStream(final long aPosition, final boolean aMultisession) {
+        final RandomAccessOutputStream stream = getOutputStream(aMultisession);
+
+        stream.setPosition(aPosition);
+
         return stream;
     }
 
-    public RandomAccessOutputStream getOutputStream(int flags) { 
-        return new BlobOutputStream(this, flags);
+    @Override
+    public RandomAccessOutputStream getOutputStream(final int aFlags) {
+        return new BlobOutputStream(this, aFlags);
     }
 
-    public void deallocate() { 
+    @Override
+    public void deallocate() {
         load();
-        if (size > 0) {
-            BlobImpl curr = next;
-            while (curr != null) { 
-                curr.load();
-                BlobImpl tail = curr.next;
-                curr.deallocate();
-                curr = tail;
+
+        if (mySize > 0) {
+            BlobImpl current = myNext;
+
+            while (current != null) {
+                final BlobImpl tail;
+
+                current.load();
+                tail = current.myNext;
+                current.deallocate();
+                current = tail;
             }
         }
+
         super.deallocate();
     }
 
-    BlobImpl(Storage storage, int size) { 
-        super(storage);
-        body = new byte[size];
+    static class BlobInputStream extends RandomAccessInputStream {
+
+        protected BlobImpl myCurrent;
+
+        protected BlobImpl myFirst;
+
+        protected int myPosition;
+
+        protected int myBlobOffs;
+
+        protected int myFlags;
+
+        protected BlobInputStream(final BlobImpl aFirst, final int aFlags) {
+            myFlags = aFlags;
+            myFirst = aFirst;
+            aFirst.load();
+            myCurrent = aFirst;
+            aFirst.myUsed += 1;
+        }
+
+        @Override
+        public int read() {
+            final byte[] b = new byte[1];
+            return read(b, 0, 1) == 1 ? b[0] & 0xFF : -1;
+        }
+
+        @Override
+        public int read(final byte[] aBytes, final int aOffset, final int aLength) {
+            int offset = aOffset;
+            int length = aLength;
+
+            if (myPosition >= myFirst.mySize) {
+                return -1;
+            }
+
+            final int rest = myFirst.mySize - myPosition;
+
+            if (length > rest) {
+                length = rest;
+            }
+
+            final int rc = length;
+
+            while (length > 0) {
+                if (myBlobOffs == myCurrent.myBody.length) {
+                    final BlobImpl previous = myCurrent;
+
+                    myCurrent = previous.myNext;
+                    myCurrent.load();
+                    myCurrent.myUsed += 1;
+
+                    if (previous != myFirst) {
+                        previous.discard(myFlags);
+                    }
+
+                    myBlobOffs = 0;
+                }
+
+                final int n = length > myCurrent.myBody.length - myBlobOffs ? myCurrent.myBody.length - myBlobOffs
+                        : length;
+
+                System.arraycopy(myCurrent.myBody, myBlobOffs, aBytes, offset, n);
+
+                myBlobOffs += n;
+                offset += n;
+                length -= n;
+                myPosition += n;
+            }
+
+            return rc;
+        }
+
+        @Override
+        public long setPosition(final long aPosition) {
+            if (aPosition < myPosition) {
+                if (aPosition >= myPosition - myBlobOffs) {
+                    myBlobOffs -= myPosition - aPosition;
+                    return myPosition = (int) aPosition;
+                }
+
+                if (myFirst != myCurrent) {
+                    myCurrent.discard(myFlags);
+                    myCurrent = myFirst;
+                }
+
+                myPosition = 0;
+                myBlobOffs = 0;
+            }
+
+            skip(aPosition - myPosition);
+            return myPosition;
+        }
+
+        @Override
+        public long getPosition() {
+            return myPosition;
+        }
+
+        @Override
+        public long size() {
+            return myFirst.mySize;
+        }
+
+        @Override
+        public long skip(final long aOffset) {
+            final int rest = myFirst.mySize - myPosition;
+
+            long offset = aOffset;
+
+            if (offset > rest) {
+                offset = rest;
+            }
+
+            int len = (int) offset;
+
+            while (len > 0) {
+                if (myBlobOffs == myCurrent.myBody.length) {
+                    final BlobImpl prev = myCurrent;
+
+                    myCurrent = prev.myNext;
+                    myCurrent.load();
+                    myCurrent.myUsed += 1;
+
+                    if (prev != myFirst) {
+                        prev.discard(myFlags);
+                    }
+
+                    myBlobOffs = 0;
+                }
+
+                final int n = len > myCurrent.myBody.length - myBlobOffs ? myCurrent.myBody.length - myBlobOffs : len;
+
+                myPosition += n;
+                len -= n;
+                myBlobOffs += n;
+            }
+
+            return offset;
+        }
+
+        @Override
+        public int available() {
+            return myFirst.mySize - myPosition;
+        }
+
+        @Override
+        public void close() {
+            myCurrent.discard(myFlags);
+
+            if (myFirst != myCurrent) {
+                myFirst.discard(myFlags);
+            }
+
+            myCurrent = myFirst = null;
+        }
+
     }
 
-    BlobImpl() {}
-}   
+    static class BlobOutputStream extends RandomAccessOutputStream {
+
+        protected BlobImpl myFirst;
+
+        protected BlobImpl myCurrent;
+
+        protected int myPosition;
+
+        protected int myBlobOffs;
+
+        protected int myFlags;
+
+        protected boolean isModified;
+
+
+        BlobOutputStream(final BlobImpl aFirst, final int aFlags) {
+            myFlags = aFlags;
+            myFirst = aFirst;
+            aFirst.load();
+            aFirst.myUsed += 1;
+            myCurrent = aFirst;
+
+            if ((aFlags & APPEND) != 0) {
+                skip(aFirst.mySize);
+            }
+        }
+
+        @Override
+        public void write(final int aByte) {
+            final byte[] bytes = new byte[1];
+
+            bytes[0] = (byte) aByte;
+            write(bytes, 0, 1);
+        }
+
+        @Override
+        public void write(final byte[] aBytes, final int aOffset, final int aLength) {
+            int offset = aOffset;
+            int length = aLength;
+
+            while (length > 0) {
+                if (myBlobOffs == myCurrent.myBody.length) {
+                    final BlobImpl previous = myCurrent;
+
+                    if (previous.myNext == null) {
+                        int bodyLength = myCurrent.myBody.length;
+
+                        if ((myFlags & DOUBLE_SEGMENT_SIZE) != 0 && bodyLength << 1 > bodyLength) {
+                            bodyLength = (bodyLength + HEADER_SIZE << 1) - HEADER_SIZE;
+                        }
+
+                        final BlobImpl next = new BlobImpl(myCurrent.getStorage(), bodyLength);
+
+                        myCurrent = previous.myNext = next;
+                        isModified = true;
+                    } else {
+                        myCurrent = previous.myNext;
+                        myCurrent.load();
+                    }
+
+                    myCurrent.myUsed += 1;
+
+                    if (previous != myFirst) {
+                        if (isModified) {
+                            previous.store();
+                        }
+
+                        previous.discard(myFlags);
+                    }
+
+                    myBlobOffs = 0;
+                }
+
+                final int n = length > myCurrent.myBody.length - myBlobOffs ? myCurrent.myBody.length - myBlobOffs
+                        : length;
+
+                System.arraycopy(aBytes, offset, myCurrent.myBody, myBlobOffs, n);
+
+                isModified = true;
+                myBlobOffs += n;
+                offset += n;
+                length -= n;
+                myPosition += n;
+            }
+
+            if (myPosition > myFirst.mySize) {
+                myFirst.mySize = myPosition;
+            }
+        }
+
+        @Override
+        public void close() {
+            if ((myFlags & TRUNCATE_LAST_SEGMENT) != 0 && myBlobOffs < myCurrent.myBody.length &&
+                    myCurrent.myNext == null) {
+                final byte[] tmp = new byte[myBlobOffs];
+
+                System.arraycopy(myCurrent.myBody, 0, tmp, 0, myBlobOffs);
+
+                myCurrent.myBody = tmp;
+            }
+
+            myCurrent.store();
+            myCurrent.discard(myFlags);
+
+            if (myCurrent != myFirst) {
+                myFirst.store();
+                myFirst.discard(myFlags);
+            }
+
+            myFirst = myCurrent = null;
+        }
+
+        @Override
+        public long setPosition(final long aNewPosition) {
+            if (aNewPosition < myPosition) {
+                if (aNewPosition >= myPosition - myBlobOffs) {
+                    myBlobOffs -= myPosition - aNewPosition;
+                    return myPosition = (int) aNewPosition;
+                }
+
+                if (myFirst != myCurrent) {
+                    if (isModified) {
+                        myCurrent.store();
+                        isModified = false;
+                    }
+
+                    myCurrent.discard(myFlags);
+                    myCurrent = myFirst;
+                }
+
+                myPosition = 0;
+                myBlobOffs = 0;
+            }
+
+            skip(aNewPosition - myPosition);
+
+            return myPosition;
+        }
+
+        @Override
+        public long getPosition() {
+            return myPosition;
+        }
+
+        @Override
+        public long size() {
+            return myFirst.mySize;
+        }
+
+        public long skip(final long aOffset) {
+            final int rest = myFirst.mySize - myPosition;
+
+            long offset = aOffset;
+
+            if (offset > rest) {
+                offset = rest;
+            }
+
+            int length = (int) offset;
+
+            while (length > 0) {
+                if (myBlobOffs == myCurrent.myBody.length) {
+                    final BlobImpl prev = myCurrent;
+
+                    myCurrent = prev.myNext;
+                    myCurrent.load();
+                    myCurrent.myUsed += 1;
+
+                    if (prev != myFirst) {
+                        if (isModified) {
+                            prev.store();
+                            isModified = false;
+                        }
+
+                        prev.discard(myFlags);
+                    }
+
+                    myBlobOffs = 0;
+                }
+
+                final int n = length > myCurrent.myBody.length - myBlobOffs ? myCurrent.myBody.length - myBlobOffs
+                        : length;
+
+                myPosition += n;
+                length -= n;
+                myBlobOffs += n;
+            }
+
+            return offset;
+        }
+    }
+
+}

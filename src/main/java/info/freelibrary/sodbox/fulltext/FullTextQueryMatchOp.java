@@ -1,54 +1,59 @@
+
 package info.freelibrary.sodbox.fulltext;
 
 /**
  * Match node of full text query
  */
-public class FullTextQueryMatchOp extends FullTextQuery
-{
+public class FullTextQueryMatchOp extends FullTextQuery {
+
     /**
-     * Matched word (shown be lowercvases and in normal form, unless used in quotes)
+     * Matched word (shown be lower-case and in normal form, unless used in quotes)
      */
-    public String word;
+    public String myWord;
 
     /**
      * Position of word in the query (zero based)
      */
-    public int    pos;
+    public int myPosition;
 
     /**
      * Index of the word in query (set and used internally, should not be accessed by application)
      */
-    public int    wno;
+    public int myWordInQueryIndex;
 
+    /**
+     * Match node constructor
+     *
+     * @param aOp operation code (should ne MATCH or STICT_MATCH)
+     * @param aWord searched word
+     * @param aPosition position of word in the query
+     */
+    public FullTextQueryMatchOp(final int aOp, final String aWord, final int aPosition) {
+        super(aOp);
+
+        myWord = aWord;
+        myPosition = aPosition;
+    }
 
     /**
      * Query node visitor.
      */
-    public void visit(FullTextQueryVisitor visitor) { 
-        visitor.visit(this);
+    @Override
+    public void visit(final FullTextQueryVisitor aVisitor) {
+        aVisitor.visit(this);
     }
 
     /**
      * Match node provides query constraint
      */
-    public boolean isConstrained() { 
+    @Override
+    public boolean isConstrained() {
         return true;
     }
 
-    public String toString() { 
-        return op == MATCH ? word : '"' + word + '"';
+    @Override
+    public String toString() {
+        return myOp == MATCH ? myWord : '"' + myWord + '"';
     }
 
-
-    /**
-     * Match node constructor
-     * @param op operation code (should ne MATCH or STICT_MATCH)
-     * @param word searched word
-     * @param pos position of word in the query
-     */
-    public FullTextQueryMatchOp(int op, String word, int pos) { 
-        super(op);
-        this.word = word;
-        this.pos = pos;
-    }
-}    
+}

@@ -1,26 +1,26 @@
+
 package info.freelibrary.sodbox.impl;
 
-class LRU { 
-    LRU next;
-    LRU prev;
+class LRU {
 
-    LRU() 
-    { 
-        next = prev = this;
+    LRU myNext;
+
+    LRU myPrevious;
+
+    LRU() {
+        myNext = myPrevious = this;
     }
 
-    final void unlink() 
-    { 
-        next.prev = prev;
-        prev.next = next;
+    final void unlink() {
+        myNext.myPrevious = myPrevious;
+        myPrevious.myNext = myNext;
     }
 
-    final void link(LRU node) 
-    { 
-        node.next = next;
-        node.prev = this;
-        next.prev = node;
-        next      = node;
+    final void link(final LRU aNode) {
+        aNode.myNext = myNext;
+        aNode.myPrevious = this;
+        myNext.myPrevious = aNode;
+        myNext = aNode;
     }
+
 }
-

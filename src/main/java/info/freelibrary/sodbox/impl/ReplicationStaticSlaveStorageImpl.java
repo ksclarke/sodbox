@@ -1,53 +1,68 @@
+
 package info.freelibrary.sodbox.impl;
 
-import java.io.*;
-import java.net.*;
+import java.io.IOException;
+import java.net.ServerSocket;
+import java.net.Socket;
 
-import info.freelibrary.sodbox.*;
+import info.freelibrary.sodbox.IFile;
+import info.freelibrary.sodbox.StorageError;
 
+public class ReplicationStaticSlaveStorageImpl extends ReplicationSlaveStorageImpl {
 
-public class ReplicationStaticSlaveStorageImpl extends ReplicationSlaveStorageImpl
-{
-    public ReplicationStaticSlaveStorageImpl(int port, String pageTimestampFilePath) { 
-        super(pageTimestampFilePath);
-        this.port = port;
+    protected ServerSocket myAcceptor;
+
+    protected int myPort;
+
+    /**
+     * Creates a new replication static slave storage.
+     * 
+     * @param aPort
+     * @param aPageTimestampFilePath
+     */
+    public ReplicationStaticSlaveStorageImpl(final int aPort, final String aPageTimestampFilePath) {
+        super(aPageTimestampFilePath);
+
+        myPort = aPort;
     }
 
-    public void open(IFile file, long pagePoolSize) {
-        try { 
-            acceptor = new ServerSocket(port);
+    @Override
+    public void open(final IFile aFile, final long aPagePoolSize) {
+        try {
+            myAcceptor = new ServerSocket(myPort);
         } catch (IOException x) {
             throw new StorageError(StorageError.BAD_REPLICATION_PORT);
         }
-        byte[] rootPage = new byte[Page.pageSize];
-        int rc = file.read(0, rootPage);
-        if (rc == Page.pageSize) { 
-            prevIndex =  rootPage[DB_HDR_CURR_INDEX_OFFSET];
-            initialized = rootPage[DB_HDR_INITIALIZED_OFFSET] != 0;
-        } else { 
-            initialized = false;
-            prevIndex = -1;
+
+        final byte[] rootPage = new byte[Page.PAGE_SIZE];
+        final int rc = aFile.read(0, rootPage);
+
+        if (rc == Page.PAGE_SIZE) {
+            myPreviousIndex = rootPage[DB_HDR_CURR_INDEX_OFFSET];
+            isInitialized = rootPage[DB_HDR_INITIALIZED_OFFSET] != 0;
+        } else {
+            isInitialized = false;
+            myPreviousIndex = -1;
         }
-        outOfSync = false;
-        super.open(file, pagePoolSize);
+
+        isOutOfSync = false;
+
+        super.open(aFile, aPagePoolSize);
     }
 
-    Socket getSocket() throws IOException { 
-        return acceptor.accept();
+    @Override
+    Socket getSocket() throws IOException {
+        return myAcceptor.accept();
     }
 
     // Cancel accept
-    void cancelIO() { 
-        try { 
-            Socket s = new Socket("localhost", port);
-            s.close();
-        } catch (IOException x) {}
+    @Override
+    void cancelIO() {
+        try {
+            new Socket("localhost", myPort).close();
+        } catch (IOException details) {
+            // LOG THIS
+        }
     }
-            
 
-    protected ServerSocket acceptor;
-    protected int          port;
-}    
-
-    
-                                               
+}

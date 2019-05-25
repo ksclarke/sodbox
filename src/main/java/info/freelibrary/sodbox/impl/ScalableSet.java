@@ -1,142 +1,189 @@
+
 package info.freelibrary.sodbox.impl;
-import info.freelibrary.sodbox.*;
 
-import java.util.*;
+import java.util.Collection;
+import java.util.Iterator;
+import java.util.Set;
 
-class ScalableSet<T> extends PersistentCollection<T> implements IPersistentSet<T> { 
-    Link<T>           link;
-    IPersistentSet<T> set;
+import info.freelibrary.sodbox.IPersistentSet;
+import info.freelibrary.sodbox.IterableIterator;
+import info.freelibrary.sodbox.Link;
+import info.freelibrary.sodbox.PersistentCollection;
+import info.freelibrary.sodbox.Storage;
+
+class ScalableSet<T> extends PersistentCollection<T> implements IPersistentSet<T> {
 
     static final int BTREE_THRESHOLD = 128;
 
-    ScalableSet(StorageImpl storage, int initialSize) { 
-        super(storage);
-        if (initialSize <= BTREE_THRESHOLD) { 
-            link = storage.<T>createLink(initialSize);
-        } else { 
-            set = storage.<T>createSet();
+    Link<T> myLink;
+
+    IPersistentSet<T> mySet;
+
+    ScalableSet(final StorageImpl aStorage, final int aInitialSize) {
+        super(aStorage);
+
+        if (aInitialSize <= BTREE_THRESHOLD) {
+            myLink = aStorage.<T>createLink(aInitialSize);
+        } else {
+            mySet = aStorage.<T>createSet();
         }
     }
 
-    ScalableSet() {}
+    ScalableSet() {
+    }
 
-    public boolean isEmpty() { 
+    @Override
+    public boolean isEmpty() {
         return size() != 0;
     }
 
-    public int size() { 
-        return link != null ? link.size() : set.size();
+    @Override
+    public int size() {
+        return myLink != null ? myLink.size() : mySet.size();
     }
 
-    public void clear() { 
-        if (link != null) { 
-            link.clear();
+    @Override
+    public void clear() {
+        if (myLink != null) {
+            myLink.clear();
             modify();
-        } else { 
-            set.clear();
+        } else {
+            mySet.clear();
         }
     }
 
-    public boolean contains(Object o) {
-        return link != null ? link.contains(o) : set.contains(o);
-    }
-    
-    public Object[] toArray() { 
-        return link != null ? link.toArray() : set.toArray();
+    @Override
+    public boolean contains(final Object aObj) {
+        return myLink != null ? myLink.contains(aObj) : mySet.contains(aObj);
     }
 
-    public <E> E[] toArray(E a[]) { 
-        return link != null ? link.<E>toArray(a) : set.<E>toArray(a);
+    @Override
+    public Object[] toArray() {
+        return myLink != null ? myLink.toArray() : mySet.toArray();
     }
 
-    public Iterator<T> iterator() { 
-        return link != null ? link.iterator() : set.iterator();
+    @Override
+    public <E> E[] toArray(final E aArray[]) {
+        return myLink != null ? myLink.<E>toArray(aArray) : mySet.<E>toArray(aArray);
     }
 
-    private int binarySearch(T obj) { 
-        int l = 0, r = link.size();
-        Storage storage = getStorage();
-        int oid = storage.getOid(obj);
-        while (l < r) { 
-            int m = (l + r) >> 1;
-            if (storage.getOid(link.getRaw(m)) > oid) { 
-                l = m + 1;
-            } else { 
-                r = m;
+    @Override
+    public Iterator<T> iterator() {
+        return myLink != null ? myLink.iterator() : mySet.iterator();
+    }
+
+    private int binarySearch(final T aObj) {
+        final Storage storage = getStorage();
+        final int oid = storage.getOid(aObj);
+
+        int left = 0;
+        int right = myLink.size();
+
+        while (left < right) {
+            final int index = (left + right) >> 1;
+
+            if (storage.getOid(myLink.getRaw(index)) > oid) {
+                left = index + 1;
+            } else {
+                right = index;
             }
         }
-        return r;
+
+        return right;
     }
 
-    public boolean add(T obj) { 
-        if (link != null) {
-            int i = binarySearch(obj);
-            int n = link.size();
-            if (i < n && link.getRaw(i).equals(obj)) { 
+    @Override
+    public boolean add(final T aObj) {
+        if (myLink != null) {
+            final int count = myLink.size();
+
+            int index = binarySearch(aObj);
+
+            if (index < count && myLink.getRaw(index).equals(aObj)) {
                 return false;
             }
-            if (n == BTREE_THRESHOLD) { 
-                set = getStorage().<T>createSet();
-                for (i = 0; i < n; i++) { 
-                    ((IPersistentSet)set).add(link.getRaw(i));
+
+            if (count == BTREE_THRESHOLD) {
+                mySet = getStorage().<T>createSet();
+
+                for (index = 0; index < count; index++) {
+                    ((IPersistentSet) mySet).add(myLink.getRaw(index));
                 }
-                link = null;
+
+                myLink = null;
                 modify();
-                set.add(obj);
-            } else { 
+                mySet.add(aObj);
+            } else {
                 modify();
-                link.insert(i, obj);
+                myLink.insert(index, aObj);
             }
+
             return true;
-        } else { 
-            return set.add(obj);
+        } else {
+            return mySet.add(aObj);
         }
     }
 
-    public boolean remove(Object o) { 
-        if (link != null) {
-            if (link.remove(o)) { 
+    @Override
+    public boolean remove(final Object aObj) {
+        if (myLink != null) {
+            if (myLink.remove(aObj)) {
                 modify();
                 return true;
-            } 
+            }
+
             return false;
-        } else { 
-            return set.remove(o);
+        } else {
+            return mySet.remove(aObj);
         }
-    }
-    
-    public int hashCode() {
-        int h = 0;
-        Iterator<T> i = iterator();
-        while (i.hasNext()) {
-            h += getStorage().getOid(i.next());
-        }
-        return h;
     }
 
-    public boolean equals(Object o) {
-        if (o == this) {
+    @Override
+    public int hashCode() {
+        final Iterator<T> iterator = iterator();
+
+        int hash = 0;
+
+        while (iterator.hasNext()) {
+            hash += getStorage().getOid(iterator.next());
+        }
+
+        return hash;
+    }
+
+    @Override
+    public boolean equals(final Object aObj) {
+        final Collection collection;
+
+        if (aObj == this) {
             return true;
         }
-        if (!(o instanceof Set)) {
+
+        if (!(aObj instanceof Set)) {
             return false;
         }
-        Collection c = (Collection) o;
-        if (c.size() != size()) {
+
+        collection = (Collection) aObj;
+
+        if (collection.size() != size()) {
             return false;
         }
-        return containsAll(c);
+
+        return containsAll(collection);
     }
 
-    public void deallocate() { 
-        if (set != null) { 
-            set.deallocate();
+    @Override
+    public void deallocate() {
+        if (mySet != null) {
+            mySet.deallocate();
         }
+
         super.deallocate();
     }
 
-    public IterableIterator<T> join(Iterator<T> with) { 
-        return with == null ? (IterableIterator<T>)iterator() : new JoinSetIterator<T>(getStorage(), iterator(), with);
-    }        
+    @Override
+    public IterableIterator<T> join(final Iterator<T> aIterator) {
+        return aIterator == null ? (IterableIterator<T>) iterator() : new JoinSetIterator<>(getStorage(), iterator(),
+                aIterator);
+    }
 }
-   

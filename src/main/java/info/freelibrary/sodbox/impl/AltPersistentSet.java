@@ -1,65 +1,92 @@
+
 package info.freelibrary.sodbox.impl;
-import  info.freelibrary.sodbox.*;
-import  java.util.*;
 
-class AltPersistentSet<T> extends AltBtree<T> implements IPersistentSet<T> { 
-    AltPersistentSet() { 
-        type = ClassDescriptor.tpObject;
-        unique = true;
+import java.util.Collection;
+import java.util.Iterator;
+import java.util.Set;
+
+import info.freelibrary.sodbox.IPersistentSet;
+import info.freelibrary.sodbox.IterableIterator;
+import info.freelibrary.sodbox.Key;
+
+class AltPersistentSet<T> extends AltBtree<T> implements IPersistentSet<T> {
+
+    AltPersistentSet() {
+        myType = ClassDescriptor.TP_OBJECT;
+        myUnique = true;
     }
 
-    AltPersistentSet(boolean unique) { 
-        type = ClassDescriptor.tpObject;
-        this.unique = unique;
+    AltPersistentSet(final boolean aUnique) {
+        myType = ClassDescriptor.TP_OBJECT;
+        myUnique = aUnique;
     }
 
-    public boolean isEmpty() { 
-        return nElems == 0;
+    @Override
+    public boolean isEmpty() {
+        return myNumOfElems == 0;
     }
 
-    public boolean contains(Object o) {
-        Key key = new Key(o);
-        Iterator i = iterator(key, key, ASCENT_ORDER);
+    @Override
+    public boolean contains(final Object aObject) {
+        final Key key = new Key(aObject);
+        final Iterator i = iterator(key, key, ASCENT_ORDER);
         return i.hasNext();
     }
-    
-    public <E> E[] toArray(E[] arr) { 
-        return (E[])super.toArray((T[])arr);
+
+    @SuppressWarnings("unchecked")
+    @Override
+    public <E> E[] toArray(final E[] aArray) {
+        return (E[]) super.toArray((T[]) aArray);
     }
 
-    public boolean add(T obj) { 
-        return put(new Key(obj), obj);
+    @Override
+    public boolean add(final T aObject) {
+        return put(new Key(aObject), aObject);
     }
 
-    public boolean remove(Object o) { 
-        T obj = (T)o;
+    @SuppressWarnings("unchecked")
+    @Override
+    public boolean remove(final Object aObject) {
+        final T obj = (T) aObject;
         return removeIfExists(new BtreeKey(checkKey(new Key(obj)), obj));
     }
-    
-    public boolean equals(Object o) {
-        if (o == this) {
+
+    @Override
+    public boolean equals(final Object aObject) {
+        if (aObject == this) {
             return true;
         }
-        if (!(o instanceof Set)) {
+
+        if (!(aObject instanceof Set)) {
             return false;
         }
-        Collection c = (Collection) o;
+
+        final Collection c = (Collection) aObject;
+
         if (c.size() != size()) {
             return false;
         }
+
         return containsAll(c);
     }
 
+    @Override
     public int hashCode() {
-        int h = 0;
-        Iterator i = iterator();
+        final Iterator i = iterator();
+
+        int hashCode = 0;
+
         while (i.hasNext()) {
-            h += getStorage().getOid(i.next());
+            hashCode += getStorage().getOid(i.next());
         }
-        return h;
+
+        return hashCode;
     }
 
-    public IterableIterator<T> join(Iterator<T> with) { 
-        return with == null ? (IterableIterator<T>)iterator() : new JoinSetIterator<T>(getStorage(), iterator(), with);
-    }        
+    @Override
+    public IterableIterator<T> join(final Iterator<T> aWith) {
+        return aWith == null ? (IterableIterator<T>) iterator() : new JoinSetIterator<>(getStorage(), iterator(),
+                aWith);
+    }
+
 }

@@ -1,19 +1,27 @@
+
 package info.freelibrary.sodbox.impl;
 
-class ObjectHeader { 
-    static final int sizeof = 8;
-    
-    static int getSize(byte[] arr, int offs) { 
-        return Bytes.unpack4(arr, offs);   
+final class ObjectHeader {
+
+    static final int SIZE_OF = 8;
+
+    private ObjectHeader() {
     }
-    static void setSize(byte[] arr, int offs, int size) { 
-        Bytes.pack4(arr, offs, size);   
+
+    static int getSize(final byte[] aBytes, final int aOffset) {
+        return Bytes.unpack4(aBytes, aOffset);
     }
-    static int getType(byte[] arr, int offs) { 
-        return Bytes.unpack4(arr, offs+4);   
+
+    static void setSize(final byte[] aArray, final int aOffset, final int aSize) {
+        Bytes.pack4(aArray, aOffset, aSize);
     }
-    static void setType(byte[] arr, int offs, int type) { 
-        Bytes.pack4(arr, offs+4, type);   
+
+    static int getType(final byte[] aBytes, final int aOffset) {
+        return Bytes.unpack4(aBytes, aOffset + 4);
     }
+
+    static void setType(final byte[] aArray, final int aOffset, final int aType) {
+        Bytes.pack4(aArray, aOffset + 4, aType);
+    }
+
 }
-    

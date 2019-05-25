@@ -1,83 +1,130 @@
+
 package info.freelibrary.sodbox.impl;
+
 import info.freelibrary.sodbox.Assert;
 
-public class Compressor 
-{ 
-    private byte[] buf;
-    private byte   acc;
-    private int    pos;
-    private int    btg;
+public class Compressor {
 
-    public Compressor(byte[] buf) { 
-        this.buf = buf;
+    private final byte[] myBytes;
+
+    private byte myAcc;
+
+    private int myPosition;
+
+    private int myBtg;
+
+    /**
+     * Creates a compressor.
+     *
+     * @param aBytes Bytes to compress
+     */
+    public Compressor(final byte[] aBytes) {
+        myBytes = aBytes;
     }
 
-    public final void encodeStart() { 
-        btg = 8;
-        acc = 0;
-        pos = 0;
-    }    
-    
-    private final void encodeBit(int b) { 
-        btg -= 1;
-        acc |= (b << btg);
-        if (btg == 0) {
-            buf[pos++] = acc;
-            acc = 0;
-            btg = 8;
+    /**
+     * Encodes starting point.
+     */
+    public final void encodeStart() {
+        myBtg = 8;
+        myAcc = 0;
+        myPosition = 0;
+    }
+
+    private void encodeBit(final int aBit) {
+        myBtg -= 1;
+        myAcc |= aBit << myBtg;
+
+        if (myBtg == 0) {
+            myBytes[myPosition++] = myAcc;
+            myAcc = 0;
+            myBtg = 8;
         }
     }
 
-    private int log2(int x) { 
+    private int log2(final int aX) {
+        int x = aX;
         int v;
-        for (v = -1; x != 0; x >>>= 1, v++);
+
+        for (v = -1; x != 0; x >>>= 1, v++) {
+        }
+
         return v;
     }
 
-    public final void encode(int x) {
-        Assert.that(x != 0);
-        int logofx = log2(x);
-        int nbits = logofx+1;
-        while (logofx-- != 0) { 
+    /**
+     * Encode.
+     *
+     * @param aX An X to encode
+     */
+    public final void encode(final int aX) {
+        Assert.that(aX != 0);
+
+        int logofx = log2(aX);
+        int nbits = logofx + 1;
+
+        while (logofx-- != 0) {
             encodeBit(0);
         }
+
         while (--nbits >= 0) {
-            encodeBit((x>>>nbits) & 1);
+            encodeBit(aX >>> nbits & 1);
         }
     }
 
-    public final byte[] encodeStop() { 
-        if (btg != 8) { 
-            buf[pos++] = acc;
+    /**
+     * Stop encoding.
+     *
+     * @return A byte array
+     */
+    public final byte[] encodeStop() {
+        if (myBtg != 8) {
+            myBytes[myPosition++] = myAcc;
         }
-        byte[] packedArray = new byte[pos];
-        System.arraycopy(buf, 0, packedArray, 0, pos);
+
+        final byte[] packedArray = new byte[myPosition];
+
+        System.arraycopy(myBytes, 0, packedArray, 0, myPosition);
+
         return packedArray;
     }
 
-    public final void decodeStart() { 
-        btg = 0;
-        acc = 0;
-        pos = 0;
+    /**
+     * Decode start.
+     */
+    public final void decodeStart() {
+        myBtg = 0;
+        myAcc = 0;
+        myPosition = 0;
     }
 
-    private final int decodeBit() { 
-        if (btg == 0) { 
-            acc = buf[pos++];
-            btg = 8;
+    private int decodeBit() {
+        if (myBtg == 0) {
+            myAcc = myBytes[myPosition++];
+            myBtg = 8;
         }
-        return (acc >> --btg) & 1;
+
+        return myAcc >> --myBtg & 1;
     }
 
-    public int decode() { 
-        int x = 1; 
+    /**
+     * Decode.
+     *
+     * @return Decoded
+     */
+    public int decode() {
         int nbits = 0;
+        int x = 1;
+
         while (decodeBit() == 0) {
-            nbits += 1; 
+            nbits += 1;
         }
+
         while (nbits-- > 0) {
             x += x + decodeBit();
         }
+
         return x;
-    }    
+    }
+
 }

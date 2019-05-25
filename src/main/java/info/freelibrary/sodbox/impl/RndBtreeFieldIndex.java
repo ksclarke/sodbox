@@ -1,257 +1,318 @@
+
 package info.freelibrary.sodbox.impl;
-import info.freelibrary.sodbox.*;
 
-import java.lang.reflect.*;
-import java.util.*;
+import java.lang.reflect.Array;
+import java.lang.reflect.Field;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Collection;
+import java.util.Date;
+import java.util.Iterator;
 
-class RndBtreeFieldIndex<T> extends RndBtree<T> implements FieldIndex<T> { 
-    String className;
-    String fieldName;
-    long   autoincCount;
-    transient Class cls;
-    transient Field fld;
+import info.freelibrary.sodbox.Assert;
+import info.freelibrary.sodbox.FieldIndex;
+import info.freelibrary.sodbox.IValue;
+import info.freelibrary.sodbox.IterableIterator;
+import info.freelibrary.sodbox.Key;
+import info.freelibrary.sodbox.StorageError;
 
-    RndBtreeFieldIndex() {}
-    
-    private final void locateField() 
-    {
-        fld = ClassDescriptor.locateField(cls, fieldName);
-        if (fld == null) { 
-           throw new StorageError(StorageError.INDEXED_FIELD_NOT_FOUND, className + "." + fieldName);
+class RndBtreeFieldIndex<T> extends RndBtree<T> implements FieldIndex<T> {
+
+    String myClassName;
+
+    String myFieldName;
+
+    long myAutoIncCount;
+
+    transient Class myClass;
+
+    transient Field myField;
+
+    RndBtreeFieldIndex() {
+    }
+
+    RndBtreeFieldIndex(final Class aClass, final String aFieldName, final boolean aUniqueKeyIndex) {
+        myClass = aClass;
+        isUniqueKeyIndex = aUniqueKeyIndex;
+        myFieldName = aFieldName;
+        myClassName = ClassDescriptor.getClassName(aClass);
+
+        locateField();
+        myType = checkType(myField.getType());
+    }
+
+    private void locateField() {
+        myField = ClassDescriptor.locateField(myClass, myFieldName);
+        if (myField == null) {
+            throw new StorageError(StorageError.INDEXED_FIELD_NOT_FOUND, myClassName + "." + myFieldName);
         }
     }
 
-    public Class getIndexedClass() { 
-        return cls;
+    @Override
+    public Class getIndexedClass() {
+        return myClass;
     }
 
-    public Field[] getKeyFields() { 
-        return new Field[]{fld};
+    @Override
+    public Field[] getKeyFields() {
+        return new Field[] { myField };
     }
 
-    public void onLoad()
-    {
-        cls = ClassDescriptor.loadClass(getStorage(), className);
+    @Override
+    public void onLoad() {
+        myClass = ClassDescriptor.loadClass(getStorage(), myClassName);
         locateField();
     }
 
-    RndBtreeFieldIndex(Class cls, String fieldName, boolean unique) {
-        this.cls = cls;
-        this.unique = unique;
-        this.fieldName = fieldName;
-        this.className = ClassDescriptor.getClassName(cls);
-        locateField();
-        type = checkType(fld.getType());
-    }
+    private Key extractKey(final Object aObj) {
+        try {
+            final Field field = myField;
 
-    private Key extractKey(Object obj) { 
-        try { 
-            Field f = fld;
             Key key = null;
-            switch (type) {
-              case ClassDescriptor.tpBoolean:
-                key = new Key(f.getBoolean(obj));
-                break;
-              case ClassDescriptor.tpByte:
-                key = new Key(f.getByte(obj));
-                break;
-              case ClassDescriptor.tpShort:
-                key = new Key(f.getShort(obj));
-                break;
-              case ClassDescriptor.tpChar:
-                key = new Key(f.getChar(obj));
-                break;
-              case ClassDescriptor.tpInt:
-                key = new Key(f.getInt(obj));
-                break;            
-              case ClassDescriptor.tpObject:
-                {
-                    Object val = f.get(obj);
-                    key = new Key(val, getStorage().makePersistent(val), true);
+
+            switch (myType) {
+                case ClassDescriptor.TP_BOOLEAN:
+                    key = new Key(field.getBoolean(aObj));
+                    break;
+                case ClassDescriptor.TP_BYTE:
+                    key = new Key(field.getByte(aObj));
+                    break;
+                case ClassDescriptor.TP_SHORT:
+                    key = new Key(field.getShort(aObj));
+                    break;
+                case ClassDescriptor.TP_CHAR:
+                    key = new Key(field.getChar(aObj));
+                    break;
+                case ClassDescriptor.TP_INT:
+                    key = new Key(field.getInt(aObj));
+                    break;
+                case ClassDescriptor.TP_OBJECT: {
+                    final Object value = field.get(aObj);
+                    key = new Key(value, getStorage().makePersistent(value), true);
                     break;
                 }
-              case ClassDescriptor.tpLong:
-                key = new Key(f.getLong(obj));
-                break;            
-              case ClassDescriptor.tpDate:
-                key = new Key((Date)f.get(obj));
-                break;
-              case ClassDescriptor.tpFloat:
-                key = new Key(f.getFloat(obj));
-                break;
-              case ClassDescriptor.tpDouble:
-                key = new Key(f.getDouble(obj));
-                break;
-              case ClassDescriptor.tpEnum:
-                key = new Key((Enum)f.get(obj));
-                break;
-              case ClassDescriptor.tpString:
-                {
-                    Object val = f.get(obj);
-                    if (val != null) { 
-                        key = new Key((String)val);
+                case ClassDescriptor.TP_LONG:
+                    key = new Key(field.getLong(aObj));
+                    break;
+                case ClassDescriptor.TP_DATE:
+                    key = new Key((Date) field.get(aObj));
+                    break;
+                case ClassDescriptor.TP_FLOAT:
+                    key = new Key(field.getFloat(aObj));
+                    break;
+                case ClassDescriptor.TP_DOUBLE:
+                    key = new Key(field.getDouble(aObj));
+                    break;
+                case ClassDescriptor.TP_ENUM:
+                    key = new Key((Enum) field.get(aObj));
+                    break;
+                case ClassDescriptor.TP_STRING: {
+                    final Object val = field.get(aObj);
+                    if (val != null) {
+                        key = new Key((String) val);
                     }
                 }
-                break;
-             case ClassDescriptor.tpValue:
-                key = new Key((IValue)f.get(obj));
-                break;
-              default:
-                Assert.failed("Invalid type");
+                    break;
+                case ClassDescriptor.TP_VALUE:
+                    key = new Key((IValue) field.get(aObj));
+                    break;
+                default:
+                    Assert.failed("Invalid type");
             }
+
             return key;
-        } catch (Exception x) { 
-            throw new StorageError(StorageError.ACCESS_VIOLATION, x);
+        } catch (final Exception details) {
+            throw new StorageError(StorageError.ACCESS_VIOLATION, details);
         }
     }
-            
 
-    public boolean put(T obj) {
-        Key key = extractKey(obj);
-        return key != null && super.insert(key, obj, false) == null;
+    @Override
+    public boolean put(final T aObj) {
+        final Key key = extractKey(aObj);
+        return key != null && super.insert(key, aObj, false) == null;
     }
 
-    public T set(T obj) {
-        Key key = extractKey(obj);
+    @Override
+    public T set(final T aObj) {
+        final Key key = extractKey(aObj);
+
         if (key == null) {
             throw new StorageError(StorageError.KEY_IS_NULL);
         }
-        return super.set(key, obj);
+
+        return super.set(key, aObj);
     }
 
-    public boolean addAll(Collection<? extends T> c) {
-        FieldValue[] arr = new FieldValue[c.size()];
-	Iterator<? extends T> e = c.iterator();
-        try { 
-            for (int i = 0; e.hasNext(); i++) {
-                T obj = e.next();
-                arr[i] = new FieldValue(obj, fld.get(obj));
+    @Override
+    public boolean addAll(final Collection<? extends T> aCollection) {
+        final FieldValue[] fieldValues = new FieldValue[aCollection.size()];
+        final Iterator<? extends T> iterator = aCollection.iterator();
+
+        try {
+            for (int index = 0; iterator.hasNext(); index++) {
+                final T obj = iterator.next();
+
+                fieldValues[index] = new FieldValue(obj, myField.get(obj));
             }
-        } catch (Exception x) { 
-            throw new StorageError(StorageError.ACCESS_VIOLATION, x);
+        } catch (final Exception details) {
+            throw new StorageError(StorageError.ACCESS_VIOLATION, details);
         }
-        Arrays.sort(arr);
-	for (int i = 0; i < arr.length; i++) {
-            add((T)arr[i].obj);
+
+        Arrays.sort(fieldValues);
+
+        for (int index = 0; index < fieldValues.length; index++) {
+            add((T) fieldValues[index].myObject);
         }
-	return arr.length > 0;
+
+        return fieldValues.length > 0;
     }
 
-    public boolean remove(Object obj) {
-        Key key = extractKey(obj);
-        return key != null && super.removeIfExists(key, obj);
+    @Override
+    public boolean remove(final Object aObj) {
+        final Key key = extractKey(aObj);
+        return key != null && super.removeIfExists(key, aObj);
     }
 
-    public boolean containsObject(T obj) {
-        Key key = extractKey(obj);
-        if (key == null) { 
+    @Override
+    public boolean containsObject(final T aObj) {
+        final Key key = extractKey(aObj);
+
+        if (key == null) {
             return false;
         }
-        if (unique) { 
+
+        if (isUniqueKeyIndex) {
             return super.get(key) != null;
-        } else { 
-            Object[] mbrs = get(key, key);
-            for (int i = 0; i < mbrs.length; i++) { 
-                if (mbrs[i] == obj) { 
+        } else {
+            final Object[] mbrs = get(key, key);
+
+            for (int index = 0; index < mbrs.length; index++) {
+                if (mbrs[index] == aObj) {
                     return true;
                 }
             }
+
             return false;
         }
     }
 
-    public boolean contains(Object obj) {
-        Key key = extractKey(obj);
-        if (key == null) { 
+    @Override
+    public boolean contains(final Object aObj) {
+        final Key key = extractKey(aObj);
+
+        if (key == null) {
             return false;
         }
-        if (unique) { 
+
+        if (isUniqueKeyIndex) {
             return super.get(key) != null;
-        } else { 
-            Object[] mbrs = get(key, key);
-            for (int i = 0; i < mbrs.length; i++) { 
-                if (mbrs[i].equals(obj)) { 
+        } else {
+            final Object[] mbrs = get(key, key);
+
+            for (int i = 0; i < mbrs.length; i++) {
+                if (mbrs[i].equals(aObj)) {
                     return true;
                 }
             }
+
             return false;
         }
     }
 
-    public synchronized void append(T obj) {
-        Key key;
-        try { 
-            switch (type) {
-              case ClassDescriptor.tpInt:
-                key = new Key((int)autoincCount);
-                fld.setInt(obj, (int)autoincCount);
-                break;            
-              case ClassDescriptor.tpLong:
-                key = new Key(autoincCount);
-                fld.setLong(obj, autoincCount);
-                break;            
-              default:
-                throw new StorageError(StorageError.UNSUPPORTED_INDEX_TYPE, fld.getType());
+    @Override
+    public synchronized void append(final T aObj) {
+        final Key key;
+
+        try {
+            switch (myType) {
+                case ClassDescriptor.TP_INT:
+                    key = new Key((int) myAutoIncCount);
+                    myField.setInt(aObj, (int) myAutoIncCount);
+                    break;
+                case ClassDescriptor.TP_LONG:
+                    key = new Key(myAutoIncCount);
+                    myField.setLong(aObj, myAutoIncCount);
+                    break;
+                default:
+                    throw new StorageError(StorageError.UNSUPPORTED_INDEX_TYPE, myField.getType());
             }
-        } catch (Exception x) { 
-            throw new StorageError(StorageError.ACCESS_VIOLATION, x);
+        } catch (final Exception details) {
+            throw new StorageError(StorageError.ACCESS_VIOLATION, details);
         }
-        autoincCount += 1;
-        getStorage().modify(obj);
-        super.insert(key, obj, false);
+
+        myAutoIncCount += 1;
+        getStorage().modify(aObj);
+
+        super.insert(key, aObj, false);
     }
 
-    public T[] getPrefix(String prefix) { 
-        ArrayList<T> list = getList(new Key(prefix, true), new Key(prefix + Character.MAX_VALUE, false));
-        return (T[])list.toArray((T[])Array.newInstance(cls, list.size()));        
+    @Override
+    public T[] getPrefix(final String aPrefix) {
+        final ArrayList<T> list = getList(new Key(aPrefix, true), new Key(aPrefix + Character.MAX_VALUE, false));
+        return list.toArray((T[]) Array.newInstance(myClass, list.size()));
     }
 
-    public T[] prefixSearch(String key) { 
-        ArrayList<T> list = prefixSearchList(key);
-        return (T[])list.toArray((T[])Array.newInstance(cls, list.size()));
+    @Override
+    public T[] prefixSearch(final String aKey) {
+        final ArrayList<T> list = prefixSearchList(aKey);
+        return list.toArray((T[]) Array.newInstance(myClass, list.size()));
     }
 
-    public T[] get(Key from, Key till) {
-        ArrayList<T> list = new ArrayList();
-        if (root != null) { 
-            root.find(checkKey(from), checkKey(till), height, list);
+    @Override
+    public T[] get(final Key aFrom, final Key aTo) {
+        final ArrayList<T> list = new ArrayList();
+
+        if (myRoot != null) {
+            myRoot.find(checkKey(aFrom), checkKey(aTo), myHeight, list);
         }
-        return (T[])list.toArray((T[])Array.newInstance(cls, list.size()));
+
+        return list.toArray((T[]) Array.newInstance(myClass, list.size()));
     }
 
+    @Override
     public T[] toArray() {
-        T[] arr = (T[])Array.newInstance(cls, nElems);
-        if (root != null) { 
-            root.traverseForward(height, arr, 0);
+        final T[] array = (T[]) Array.newInstance(myClass, myElementCount);
+
+        if (myRoot != null) {
+            myRoot.traverseForward(myHeight, array, 0);
         }
-        return arr;
+
+        return array;
     }
 
-    public IterableIterator<T> queryByExample(T obj) {
-        Key key = extractKey(obj);
+    public IterableIterator<T> queryByExample(final T aObj) {
+        final Key key = extractKey(aObj);
         return iterator(key, key, ASCENT_ORDER);
     }
 
-    public boolean isCaseInsensitive() { 
+    @Override
+    public boolean isCaseInsensitive() {
         return false;
     }
 }
 
-class RndBtreeCaseInsensitiveFieldIndex<T> extends RndBtreeFieldIndex<T> {    
-    RndBtreeCaseInsensitiveFieldIndex() {}
+class RndBtreeCaseInsensitiveFieldIndex<T> extends RndBtreeFieldIndex<T> {
 
-    RndBtreeCaseInsensitiveFieldIndex(Class cls, String fieldName, boolean unique) {
-        super(cls, fieldName, unique);
+    RndBtreeCaseInsensitiveFieldIndex() {
     }
 
-    Key checkKey(Key key) { 
-        if (key != null && key.oval instanceof String) { 
-            key = new Key(((String)key.oval).toLowerCase(), key.inclusion != 0);
-        }
-        return super.checkKey(key);
-    }  
+    RndBtreeCaseInsensitiveFieldIndex(final Class aClass, final String aFieldName, final boolean aUniqueKeyIndex) {
+        super(aClass, aFieldName, aUniqueKeyIndex);
+    }
 
-    public boolean isCaseInsensitive() { 
+    @Override
+    Key checkKey(final Key aKey) {
+        Key key = aKey;
+
+        if (key != null && key.myObjectValue instanceof String) {
+            key = new Key(((String) key.myObjectValue).toLowerCase(), key.myInclusion != 0);
+        }
+
+        return super.checkKey(key);
+    }
+
+    @Override
+    public boolean isCaseInsensitive() {
         return true;
     }
 }

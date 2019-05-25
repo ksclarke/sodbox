@@ -1,24 +1,44 @@
+
 package info.freelibrary.sodbox.fulltext;
 
 /**
  * Base class for full text query visitor
  */
-public class FullTextQueryVisitor 
-{    
-    public void visit(FullTextQuery q) { 
+public class FullTextQueryVisitor {
+
+    /**
+     * Visit a query.
+     *
+     * @param aQuery A query to visit
+     */
+    public void visit(final FullTextQuery aQuery) {
     }
 
-    public void visit(FullTextQueryBinaryOp q) { 
-        visit((FullTextQuery)q);
+    /**
+     * Visit a query.
+     *
+     * @param aQuery A query to visit
+     */
+    public void visit(final FullTextQueryBinaryOp aQuery) {
+        visit((FullTextQuery) aQuery);
     }
 
-    public void visit(FullTextQueryUnaryOp q) { 
-        visit((FullTextQuery)q);
+    /**
+     * Visit a query.
+     *
+     * @param aQuery A query to visit
+     */
+    public void visit(final FullTextQueryUnaryOp aQuery) {
+        visit((FullTextQuery) aQuery);
     }
 
-    public void visit(FullTextQueryMatchOp q) { 
-        visit((FullTextQuery)q);
+    /**
+     * Visit a query.
+     *
+     * @param aQuery A query to visit
+     */
+    public void visit(final FullTextQueryMatchOp aQuery) {
+        visit((FullTextQuery) aQuery);
     }
+
 }
-
-    
