@@ -33,7 +33,7 @@
   </developers>
 
   <properties>
-    <freelib.utils.version>0.8.10</freelib.utils.version>
+    <freelib.utils.version>1.0.1</freelib.utils.version>
     <codacy.plugin.version>1.0.2</codacy.plugin.version>
 
     <!-- Project settings -->
